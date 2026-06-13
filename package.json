@@ -1,0 +1,24 @@
+{
+  "name": "filekey-drop",
+  "private": true,
+  "version": "0.0.1",
+  "description": "FileKey Drop — give anyone a link; whatever they drop arrives end-to-end encrypted to your passkey.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "gen:keys": "bun run scripts/gen-keys.ts",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@hpke/core": "^1.9.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240000.0",
+    "@types/bun": "^1.3.14",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.80.0"
+  }
+}

@@ -1,0 +1,53 @@
+# FileKey Drop — Worker config. Fill REPLACE_ME before `wrangler deploy`.
+# Staging is the default env; production overrides below.
+name = "filekey-drop-staging"
+main = "worker/src/worker.ts"
+compatibility_date = "2026-06-01"
+
+account_id = "REPLACE_ME_ACCOUNT_ID"
+
+# Outbound transactional email (Cloudflare Email Service). The sender domain
+# (MAIL_FROM) must be onboarded + DKIM-verified in the dashboard first.
+[[send_email]]
+name = "EMAIL"
+
+# Ciphertext relay. Set a lifecycle rule on the bucket to expire objects ~7 days
+# (Dashboard > R2 > bucket > Settings, or `wrangler r2 bucket lifecycle`).
+[[r2_buckets]]
+binding = "DROP_BUCKET"
+bucket_name = "filekey-drop-staging"
+
+# One-time confirm-token nonces + rate-limit counters.
+[[kv_namespaces]]
+binding = "DROP_KV"
+id = "REPLACE_ME_KV_ID"
+
+[vars]
+ALLOWED_ORIGIN = "https://staging.drop.filekey.app"
+MAIL_FROM = "files@send.filekey.app"
+SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS"  # public half; paste gen-keys output
+
+# Secrets (DO NOT put here) — set with:
+#   wrangler secret put SERVER_KEM_PRIVATE_JWK
+#   wrangler secret put SERVER_SIGN_PRIVATE_JWK
+#   wrangler secret put CONFIRM_HMAC_KEY
+
+[env.production]
+name = "filekey-drop"
+account_id = "REPLACE_ME_ACCOUNT_ID"
+
+[[env.production.send_email]]
+name = "EMAIL"
+
+[[env.production.r2_buckets]]
+binding = "DROP_BUCKET"
+bucket_name = "filekey-drop"
+
+[[env.production.kv_namespaces]]
+binding = "DROP_KV"
+id = "REPLACE_ME_PROD_KV_ID"
+
+[env.production.vars]
+ALLOWED_ORIGIN = "https://drop.filekey.app"
+MAIL_FROM = "files@send.filekey.app"
+SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS_PROD"  # production keys differ from staging
