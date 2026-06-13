@@ -26,11 +26,15 @@ id = "REPLACE_ME_KV_ID"
 ALLOWED_ORIGIN = "https://staging.drop.filekey.app"
 MAIL_FROM = "files@send.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS"  # public half; paste gen-keys output
+R2_ACCOUNT_ID = "REPLACE_ME_ACCOUNT_ID"            # <id>.r2.cloudflarestorage.com
+R2_BUCKET = "filekey-drop-staging"                 # bucket name for S3 presigning
+MAX_UPLOAD_BYTES = "2147483648"                    # 2 GiB cap
 
 # Secrets (DO NOT put here) — set with:
-#   wrangler secret put SERVER_KEM_PRIVATE_JWK
-#   wrangler secret put SERVER_SIGN_PRIVATE_JWK
-#   wrangler secret put CONFIRM_HMAC_KEY
+#   wrangler secret put SERVER_KEM_PRIVATE_JWK    # from gen-keys
+#   wrangler secret put SERVER_SIGN_PRIVATE_JWK   # from gen-keys
+#   wrangler secret put R2_ACCESS_KEY_ID          # R2 > Manage API tokens
+#   wrangler secret put R2_SECRET_ACCESS_KEY
 
 [env.production]
 name = "filekey-drop"
@@ -51,3 +55,6 @@ id = "REPLACE_ME_PROD_KV_ID"
 ALLOWED_ORIGIN = "https://drop.filekey.app"
 MAIL_FROM = "files@send.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS_PROD"  # production keys differ from staging
+R2_ACCOUNT_ID = "REPLACE_ME_ACCOUNT_ID"
+R2_BUCKET = "filekey-drop"
+MAX_UPLOAD_BYTES = "2147483648"

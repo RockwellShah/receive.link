@@ -29,8 +29,6 @@ const kem = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" 
 const kemPriv = await crypto.subtle.exportKey("jwk", kem.privateKey);
 const kemPubRaw = rawFromEcJwk(await crypto.subtle.exportKey("jwk", kem.publicKey));
 
-const hmacKey = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64");
-
 const line = "─".repeat(72);
 console.log(`\n${line}\nFileKey Drop server keys — handle the SECRETS carefully\n${line}`);
 
@@ -40,8 +38,10 @@ console.log(JSON.stringify(signPriv));
 console.log(`\n# SECRET 2 — wrangler secret put SERVER_KEM_PRIVATE_JWK`);
 console.log(JSON.stringify(kemPriv));
 
-console.log(`\n# SECRET 3 — wrangler secret put CONFIRM_HMAC_KEY  (base64, 32 bytes)`);
-console.log(hmacKey);
+console.log(`\n# The other two secrets are R2 S3 credentials from the Cloudflare`);
+console.log(`# dashboard (R2 > Manage API tokens), NOT generated here:`);
+console.log(`#   wrangler secret put R2_ACCESS_KEY_ID`);
+console.log(`#   wrangler secret put R2_SECRET_ACCESS_KEY`);
 
 console.log(`\n${line}\n# PUBLIC — paste into wrangler.toml [vars]`);
 console.log(`SERVER_SIGN_PUBLIC_JWK = ${JSON.stringify(JSON.stringify(signPub))}`);
