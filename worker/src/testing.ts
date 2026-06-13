@@ -38,6 +38,16 @@ export class MemoryR2 {
     const copy = slice.slice();
     return { arrayBuffer: async () => copy.buffer as ArrayBuffer };
   }
+  /** Stand-in for S3 CopyObject (the binding seam used by r2.copyObject in tests). */
+  async copy(src: string, dst: string): Promise<boolean> {
+    const v = this.store.get(src);
+    if (!v) return false;
+    this.store.set(dst, v.slice());
+    return true;
+  }
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
 }
 
 export interface SentMail {

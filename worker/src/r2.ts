@@ -47,6 +47,29 @@ export async function objectInfo(env: Env, objectId: string): Promise<{ size: nu
 }
 
 /**
+ * Copy an object to a new key. Uses S3 CopyObject (server-side; bytes never
+ * transit the Worker, so it's O(1) Worker work for any size). In-memory test
+ * doubles expose a `copy` method on the binding, which we prefer when present.
+ * Returns false if the source is missing. This is how a validated upload is
+ * promoted to an immutable, sender-unknown delivery key (closes the mutable-PUT
+ * TOCTOU: the sender has no PUT URL for the final key).
+ */
+export async function copyObject(env: Env, srcKey: string, dstKey: string): Promise<boolean> {
+  const bucket = env.DROP_BUCKET as unknown as { copy?: (s: string, d: string) => Promise<boolean> };
+  if (typeof bucket.copy === "function") return bucket.copy(srcKey, dstKey);
+  const res = await client(env).fetch(objectUrl(env, dstKey), {
+    method: "PUT",
+    headers: { "x-amz-copy-source": `/${env.R2_BUCKET}/${srcKey}` },
+  });
+  return res.ok;
+}
+
+/** Delete an object via the binding (best-effort cleanup of staging objects). */
+export async function deleteObject(env: Env, objectId: string): Promise<void> {
+  await env.DROP_BUCKET.delete(objectId);
+}
+
+/**
  * Read just the first bytes via a ranged GET and confirm the FileKey magic.
  * This is what stops Drop being used as an open mailer for arbitrary bytes,
  * even though the upload itself went straight to R2.

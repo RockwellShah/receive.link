@@ -67,13 +67,18 @@ export function importKemPrivateKey(jwk: JsonWebKey): Promise<CryptoKey> {
   return suite.kem.importKey("jwk", jwk as JsonWebKey, false);
 }
 
+// HPKE `info` for domain separation: binds the sealed-email ciphertext to THIS
+// purpose, so it can never be replayed against another HPKE context that happens
+// to use the same server key. Must match on seal + unseal.
+const EMAIL_SEAL_INFO = new TextEncoder().encode("FILEKEY-DROP/email-seal/v1");
+
 /**
  * Seal `email` to the server KEM public key. Returns enc(65) || ct, where ct is
  * AES-256-GCM ciphertext + tag. Randomized: call once at setup, then the sealed
  * bytes are immutable inside the signed link (never re-seal a signed payload).
  */
 export async function sealEmail(serverKemPublicKey: CryptoKey, email: string): Promise<Uint8Array> {
-  const sender = await suite.createSenderContext({ recipientPublicKey: serverKemPublicKey });
+  const sender = await suite.createSenderContext({ recipientPublicKey: serverKemPublicKey, info: EMAIL_SEAL_INFO });
   const ct = new Uint8Array(await sender.seal(new TextEncoder().encode(email)));
   const enc = new Uint8Array(sender.enc);
   if (enc.length !== HPKE_ENC_LEN) throw new Error(`unexpected enc length ${enc.length}`);
@@ -91,6 +96,7 @@ export async function unsealEmail(serverKemPrivateKey: CryptoKey, sealed: Uint8A
   const recipient = await suite.createRecipientContext({
     recipientKey: serverKemPrivateKey,
     enc: toArrayBuffer(enc),
+    info: EMAIL_SEAL_INFO,
   });
   const pt = new Uint8Array(await recipient.open(toArrayBuffer(ct)));
   return new TextDecoder("utf-8", { fatal: true }).decode(pt);

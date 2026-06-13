@@ -59,10 +59,12 @@ test("receiver sets up -> sender encrypts + uploads -> receiver decrypts the rea
   // --- Delivery email reached the receiver's real (unsealed) address ---
   const delivery = h.email.sent.at(-1)!;
   expect(delivery.to).toBe("receiver@example.com");
-  expect(delivery.text).toContain(objectId);
+  expect(delivery.text).toContain("/d/");
+  // The email links to the immutable final key (a copy of the staged upload).
+  const finalId = delivery.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
 
   // --- Receiver fetches the ciphertext + decrypts with their identity ---
-  const stored = (await h.r2.get(objectId))!;
+  const stored = (await h.r2.get(finalId))!;
   const fetched = new Uint8Array(await stored.arrayBuffer());
   const res = await decrypt({ file: fetched, namespaces: NS, resolveIdentity: async () => receiver });
   expect(new TextDecoder().decode(res.plaintext)).toBe("the secret quarterly numbers");

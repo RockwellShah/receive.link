@@ -17,9 +17,16 @@ export function json(data: unknown, status: number, origin: string): Response {
   });
 }
 
+// All Drop JSON bodies are tiny (a link payload + a couple of base64 fields); the
+// file bytes go direct to R2, never through these endpoints. Cap the body so an
+// attacker can't force a huge allocation before the codec's length checks run.
+const MAX_JSON_BYTES = 64 * 1024;
+
 export async function readJson<T = Record<string, unknown>>(req: Request): Promise<T | null> {
   try {
-    return (await req.json()) as T;
+    const text = await req.text();
+    if (text.length > MAX_JSON_BYTES) return null;
+    return JSON.parse(text) as T;
   } catch {
     return null;
   }

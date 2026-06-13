@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { base64urlDecode, base64urlEncode } from "../../shared/codec";
 import { importKemPublicKey, sealEmail } from "../../shared/crypto";
+import { hex } from "../../shared/util";
 import {
   REG_EMAIL_PER_DAY,
   confirm,
@@ -76,8 +77,13 @@ test("full flow: register -> confirm -> upload-init -> upload-complete emails th
   expect(comp.status).toBe(200);
   expect(h.email.sent.length).toBe(2);
   expect(h.email.sent[1]!.to).toBe("receiver@example.com"); // unseal worked end-to-end
-  expect(h.email.sent[1]!.text).toContain(objectId);
   expect(h.email.sent[1]!.text).toContain("/d/");
+  // Delivered under a fresh, sender-unknown final key (not the staging objectId),
+  // and the staging object is cleaned up.
+  const finalId = h.email.sent[1]!.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
+  expect(finalId).not.toBe(objectId);
+  expect(await h.r2.head(finalId)).not.toBeNull();
+  expect(await h.r2.head(objectId)).toBeNull();
 });
 
 test("upload-complete rejects bytes that aren't FileKey ciphertext (no open mailer)", async () => {
@@ -102,6 +108,31 @@ test("upload-complete is idempotent: one upload, one delivery email", async () =
   await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
   await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
   expect(h.email.sent.length).toBe(2); // 1 confirm + 1 delivery
+});
+
+test("upload-complete rejects an object paired with a different link than minted it", async () => {
+  const h = await makeTestEnv();
+  const linkA = await setupLink(h, "alice@example.com", "Alice");
+  const linkB = await setupLink(h, "victim@example.com", "Victim");
+  // Mint + upload an object under link A.
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: linkA, size: 50 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(50));
+  // Completing it against the victim's link B must be rejected (no email to victim).
+  const before = h.email.sent.length;
+  const comp = await uploadComplete(post("/upload-complete", { payload: linkB, objectId }), h.env);
+  expect(comp.status).toBe(400);
+  expect(h.email.sent.length).toBe(before);
+});
+
+test("upload-complete honors a revocation set after init (on the delivery link)", async () => {
+  const h = await makeTestEnv();
+  const link = await setupLink(h);
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 50 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(50));
+  const linkId = (await parseAndVerify(link, h.env)).linkId;
+  await h.kv.put(`revoked:${hex(linkId)}`, "1"); // receiver revokes between init and complete
+  const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
+  expect(comp.status).toBe(410);
 });
 
 test("upload-init rejects a tampered link", async () => {

@@ -23,7 +23,7 @@ import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signReg
 import { sendConfirmEmail, sendDownloadEmail } from "./email";
 import { clientIp, json, readJson } from "./http";
 import { DAY, HOUR, rateLimit } from "./kv";
-import { hasFileKeyMagic, objectInfo, presignGet, presignPut } from "./r2";
+import { copyObject, deleteObject, hasFileKeyMagic, objectInfo, presignGet, presignPut } from "./r2";
 import type { Env } from "./types";
 import { hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
 
@@ -43,6 +43,15 @@ function maxUploadBytes(env: Env): number {
   const n = env.MAX_UPLOAD_BYTES ? parseInt(env.MAX_UPLOAD_BYTES, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_UPLOAD_BYTES;
 }
+
+// Strip CR/LF + C0/DEL controls so a sender-chosen label can't inject email
+// headers or smuggle control bytes. Applied before signing, so the signed label
+// is already clean everywhere it's later shown.
+const stripControl = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, "");
+
+// Canonicalize for abuse-limit keys only (we still deliver to the exact unsealed
+// address): trim + lowercase so "User@x.com " and "user@x.com" share a quota.
+const canonEmail = (s: string) => s.trim().toLowerCase();
 
 /**
  * Decode a Drop link and verify the server signature against the signing PUBLIC
@@ -71,6 +80,8 @@ export async function register(req: Request, env: Env): Promise<Response> {
 
   // Build the unsigned signable region (validates field lengths) and unseal the
   // email it commits to. A server-chosen random link_id guarantees uniqueness.
+  // Sanitize the label BEFORE signing so the signed bytes are clean everywhere.
+  const label = stripControl(body.label);
   let region: Uint8Array;
   let sealedEmailBytes: Uint8Array;
   try {
@@ -79,7 +90,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
       version: DROP_PAYLOAD_VERSION,
       linkId: randomBytes(LINK_ID_LEN),
       shareKey: base64urlDecode(body.shareKey),
-      label: body.label,
+      label,
       sealedEmail: sealedEmailBytes,
     });
   } catch {
@@ -97,14 +108,14 @@ export async function register(req: Request, env: Env): Promise<Response> {
 
   // Anti-bombing: silently succeed once an address is over its daily quota, so
   // register can't be used to probe or flood a victim. No existence oracle.
-  const emailHash = await sha256hex(email);
+  const emailHash = await sha256hex(canonEmail(email));
   if (!(await rateLimit(env.DROP_KV, `reg:em:${emailHash}`, REG_EMAIL_PER_DAY, DAY))) {
     return json({ ok: true }, 202, origin);
   }
 
   const nonce = base64urlEncode(randomBytes(16));
   await env.DROP_KV.put(`pending:${nonce}`, base64urlEncode(region), { expirationTtl: CONFIRM_TTL_SEC });
-  await sendConfirmEmail(env, email, `${origin}/confirm#${nonce}`, body.label);
+  await sendConfirmEmail(env, email, `${origin}/confirm#${nonce}`, label);
   return json({ ok: true }, 202, origin);
 }
 
@@ -154,7 +165,10 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
     return json({ error: "rate limited" }, 429, origin);
   }
 
+  // Bind the object to the link that minted it, so completion can't pair another
+  // (e.g. a victim's) link with this object. Expires with the presign window.
   const objectId = hex(randomBytes(OBJECT_ID_BYTES));
+  await env.DROP_KV.put(`upload:${objectId}`, linkIdHex, { expirationTtl: PRESIGN_TTL_SEC });
   const uploadUrl = await presignPut(env, objectId, PRESIGN_TTL_SEC);
   return json({ objectId, uploadUrl, expiresInSec: PRESIGN_TTL_SEC }, 200, origin);
 }
@@ -174,16 +188,43 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
   } catch {
     return json({ error: "invalid link" }, 400, origin);
   }
+  const linkIdHex = hex(link.linkId);
 
-  // Idempotent: a re-issued complete for an already-notified object is a no-op,
+  // Idempotent: a re-issued complete for an already-delivered object is a no-op,
   // so a client can't amplify one upload into many emails.
-  const notifiedKey = `notified:${body.objectId}`;
-  if (await env.DROP_KV.get(notifiedKey)) return json({ ok: true, already: true }, 200, origin);
+  const doneKey = `done:${body.objectId}`;
+  if (await env.DROP_KV.get(doneKey)) return json({ ok: true, already: true }, 200, origin);
 
-  const info = await objectInfo(env, body.objectId);
-  if (!info) return json({ error: "object not found" }, 404, origin);
-  if (info.size > maxUploadBytes(env)) return json({ error: "file too large" }, 413, origin);
-  if (!(await hasFileKeyMagic(env, body.objectId))) {
+  // The object must have been minted for THIS link (bound at upload-init). Stops
+  // an attacker pairing a victim's link with an object uploaded under their own
+  // link to bypass the victim link's flood cap + revocation.
+  if ((await env.DROP_KV.get(`upload:${body.objectId}`)) !== linkIdHex) {
+    return json({ error: "object/link mismatch" }, 400, origin);
+  }
+
+  // Revocation + per-link flood cap on the DELIVERY link — the email goes out
+  // here, so this is where the receiver link's controls must actually apply.
+  if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
+  if (!(await rateLimit(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
+    return json({ error: "link is over its daily limit" }, 429, origin);
+  }
+
+  const staged = await objectInfo(env, body.objectId);
+  if (!staged) return json({ error: "object not found" }, 404, origin);
+  if (staged.size > maxUploadBytes(env)) {
+    await deleteObject(env, body.objectId);
+    return json({ error: "file too large" }, 413, origin);
+  }
+
+  // Promote to an immutable, sender-unknown final key, then validate THAT copy.
+  // The sender holds no PUT URL for the final key, so it can't be swapped after
+  // the check (closes the mutable-PUT TOCTOU). Size + magic are checked on the
+  // final object, which is authoritative.
+  const finalId = hex(randomBytes(OBJECT_ID_BYTES));
+  if (!(await copyObject(env, body.objectId, finalId))) return json({ error: "object not found" }, 404, origin);
+  const finalInfo = await objectInfo(env, finalId);
+  if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await hasFileKeyMagic(env, finalId))) {
+    await deleteObject(env, finalId);
     return json({ error: "not a FileKey file" }, 422, origin);
   }
 
@@ -192,11 +233,14 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
     email = await unsealEmail(kemPriv, link.sealedEmail);
   } catch {
+    await deleteObject(env, finalId);
     return json({ error: "invalid link" }, 400, origin);
   }
 
-  await env.DROP_KV.put(notifiedKey, "1", { expirationTtl: OBJECT_TTL_SEC });
-  await sendDownloadEmail(env, email, `${origin}/d/${body.objectId}`, link.label);
+  await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label);
+  // Mark done only AFTER the email is sent, so a failed send stays retryable.
+  await env.DROP_KV.put(doneKey, finalId, { expirationTtl: OBJECT_TTL_SEC });
+  await deleteObject(env, body.objectId); // drop the staging object (best-effort)
   return json({ ok: true }, 200, origin);
 }
 
