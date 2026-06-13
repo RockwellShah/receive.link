@@ -9,7 +9,7 @@
 // chat, commit them, or leave them in scrollback. The repo .gitignore excludes
 // keys/ and *.private.jwk, but this script writes nothing to disk by design.
 
-import { base64urlDecode } from "../worker/src/codec";
+import { base64urlDecode } from "../shared/codec";
 
 function rawFromEcJwk(jwk: JsonWebKey): Uint8Array {
   const raw = new Uint8Array(65);

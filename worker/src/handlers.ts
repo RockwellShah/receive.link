@@ -18,14 +18,14 @@ import {
   signableBytes,
   splitSignature,
   type DropLink,
-} from "./codec";
-import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "./crypto";
+} from "../../shared/codec";
+import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
 import { sendConfirmEmail, sendDownloadEmail } from "./email";
 import { clientIp, json, readJson } from "./http";
 import { DAY, HOUR, rateLimit } from "./kv";
 import { hasFileKeyMagic, objectInfo, presignGet, presignPut } from "./r2";
 import type { Env } from "./types";
-import { hex, isEmail, isHex, randomBytes, sha256hex } from "./util";
+import { hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
 
 // Abuse limits (soft, KV fixed-window). Tune from real traffic. Exported so tests
 // assert against the source of truth.

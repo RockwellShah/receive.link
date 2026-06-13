@@ -1,6 +1,6 @@
 // In-memory fakes for the Cloudflare bindings, so handlers can be exercised
 // end-to-end under `bun test` with no account. Test-only.
-import { base64urlDecode } from "./codec";
+import { base64urlDecode } from "../../shared/codec";
 import type { Env, SendEmailBinding } from "./types";
 
 export class MemoryKV {

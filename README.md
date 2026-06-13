@@ -4,7 +4,7 @@ Give anyone a link. Whatever they drop arrives end-to-end encrypted to your pass
 
 Part of the FileKey family: **Vault** (the local/offline app), **Drop** (this — inbound file requests), **Send** (outbound links, later). One identity, one crypto core.
 
-> Status: **Phase 1 complete** — the register → confirm → upload → email protocol is implemented and tested (33 tests). The web client (Phase 2) is next. Local-only repo, no remote, until built and security-reviewed. This is a different product from FileKey with a server component, so it lives in its own repo.
+> Status: **Phase 2 in progress.** Phase 1 (the register → confirm → upload → email protocol) is implemented and tested. The crypto core is vendored and verified in-repo; the web UI is next. 34 tests. Local-only repo, no remote, until built and security-reviewed. This is a different product from FileKey with a server component, so it lives in its own repo.
 
 ## How it works (always-relay)
 
@@ -20,8 +20,9 @@ Full design + threat model + cost/pricing research: `../FileKey v1/HANDOFF-cloud
 ## Layout
 
 ```
-worker/src/codec.ts    Drop-link payload codec (zero-dep; shared with the web client)
-worker/src/crypto.ts   ECDSA link signatures + HPKE email sealing (@hpke/core)
+shared/codec.ts        Drop-link payload codec (zero-dep; used by Worker + web client)
+shared/crypto.ts       ECDSA link signatures + HPKE email seal/unseal (@hpke/core)
+shared/util.ts         small shared helpers
 worker/src/handlers.ts register / confirm / upload-init / upload-complete / fetch
 worker/src/r2.ts       presigned R2 PUT/GET (browser-direct) + FileKey-magic sniff
 worker/src/kv.ts       soft rate limiting + nonce/idempotency state
@@ -29,6 +30,7 @@ worker/src/email.ts    Cloudflare Email Service wrappers (confirm + delivery mai
 worker/src/worker.ts   request router
 worker/src/types.ts    Worker env bindings (EMAIL, R2, KV, secrets)
 worker/src/testing.ts  in-memory binding fakes for tests
+web/core/              vendored read-only copy of FileKey's crypto core (see its README)
 scripts/gen-keys.ts    generate per-env server keys (KEM + signing)
 wrangler.toml          send_email + R2 + KV bindings (fill REPLACE_ME at deploy)
 ```
@@ -51,7 +53,7 @@ bun run typecheck
 
 1. `bun run gen:keys` once per environment → set `SERVER_SIGN_PRIVATE_JWK` + `SERVER_KEM_PRIVATE_JWK` with `wrangler secret put`, paste the 2 public values into `wrangler.toml` / the client. Staging and prod use different keys.
 2. Create an R2 S3 API token (R2 > Manage API tokens) → set `R2_ACCESS_KEY_ID` + `R2_SECRET_ACCESS_KEY` secrets; fill `R2_ACCOUNT_ID` / `R2_BUCKET` vars.
-3. Onboard + DKIM-verify the `MAIL_FROM` sender domain (`send.filekey.app`) in the Cloudflare dashboard.
+3. Onboard + DKIM-verify the `MAIL_FROM` sender domain (`drop.filekey.app`) in the Cloudflare dashboard.
 4. Create the R2 bucket + a ~7-day lifecycle rule, the KV namespace (fill the `REPLACE_ME` ids), and a bucket **CORS** rule allowing PUT/GET from the Drop web origin (browser-direct upload/download).
 5. `wrangler deploy` (staging) → smoke-test → `wrangler deploy --env production`.
 

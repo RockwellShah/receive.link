@@ -14,5 +14,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["worker/src", "scripts"]
+  "include": ["shared", "worker/src", "scripts"],
+  "exclude": ["node_modules", "web/core"]
 }

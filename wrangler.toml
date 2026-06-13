@@ -24,7 +24,7 @@ id = "REPLACE_ME_KV_ID"
 
 [vars]
 ALLOWED_ORIGIN = "https://staging.drop.filekey.app"
-MAIL_FROM = "files@send.filekey.app"
+MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS"  # public half; paste gen-keys output
 R2_ACCOUNT_ID = "REPLACE_ME_ACCOUNT_ID"            # <id>.r2.cloudflarestorage.com
 R2_BUCKET = "filekey-drop-staging"                 # bucket name for S3 presigning
@@ -53,7 +53,7 @@ id = "REPLACE_ME_PROD_KV_ID"
 
 [env.production.vars]
 ALLOWED_ORIGIN = "https://drop.filekey.app"
-MAIL_FROM = "files@send.filekey.app"
+MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS_PROD"  # production keys differ from staging
 R2_ACCOUNT_ID = "REPLACE_ME_ACCOUNT_ID"
 R2_BUCKET = "filekey-drop"

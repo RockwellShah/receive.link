@@ -1,8 +1,8 @@
 // End-to-end handler tests: the full register -> confirm -> upload protocol run
 // through the real codec + crypto against in-memory bindings.
 import { expect, test } from "bun:test";
-import { base64urlDecode, base64urlEncode } from "./codec";
-import { importKemPublicKey, sealEmail } from "./crypto";
+import { base64urlDecode, base64urlEncode } from "../../shared/codec";
+import { importKemPublicKey, sealEmail } from "../../shared/crypto";
 import {
   REG_EMAIL_PER_DAY,
   confirm,
