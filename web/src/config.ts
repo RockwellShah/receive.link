@@ -26,6 +26,14 @@ const ENVS: Record<string, DropConfig> = {
     serverKemPublicHex: PLACEHOLDER,
     serverSignPublicJwk: null,
   },
+  // Staging on Cloudflare Pages → the workers.dev Worker. Keys pinned from
+  // keys/staging.json (gen-keys output); the matching privates are Wrangler secrets.
+  "filekey-drop-staging.pages.dev": {
+    apiBase: "https://filekey-drop-staging.rockwellshah.workers.dev",
+    serverKemPublicHex:
+      "043b235d0c8594a8dda07e5db3ce127f697a65037aa606135c4ba80316b850833a524f6f78b35f98959887323342bdb93f6b7cc92e2ae92b556ffc5807c116b2b2",
+    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E", y: "3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE" },
+  },
   // Local dev: the serve.ts dev server proxies /api to a local Worker (wrangler dev
   // or the mock). Keys get filled from a local gen-keys run.
   localhost: {

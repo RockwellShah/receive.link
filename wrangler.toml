@@ -4,7 +4,7 @@ name = "filekey-drop-staging"
 main = "worker/src/worker.ts"
 compatibility_date = "2026-06-01"
 
-account_id = "REPLACE_ME_ACCOUNT_ID"
+account_id = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 
 # Outbound transactional email (Cloudflare Email Service). The sender domain
 # (MAIL_FROM) must be onboarded + DKIM-verified in the dashboard first.
@@ -20,13 +20,13 @@ bucket_name = "filekey-drop-staging"
 # One-time confirm-token nonces + rate-limit counters.
 [[kv_namespaces]]
 binding = "DROP_KV"
-id = "REPLACE_ME_KV_ID"
+id = "c277258851044785971403e8d458b76d"
 
 [vars]
-ALLOWED_ORIGIN = "https://staging.drop.filekey.app"
+ALLOWED_ORIGIN = "https://filekey-drop-staging.pages.dev"
 MAIL_FROM = "files@drop.filekey.app"
-SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS"  # public half; paste gen-keys output
-R2_ACCOUNT_ID = "REPLACE_ME_ACCOUNT_ID"            # <id>.r2.cloudflarestorage.com
+SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E","y":"3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE"}'
+R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"            # <id>.r2.cloudflarestorage.com
 R2_BUCKET = "filekey-drop-staging"                 # bucket name for S3 presigning
 MAX_UPLOAD_BYTES = "2147483648"                    # 2 GiB cap
 
@@ -38,7 +38,7 @@ MAX_UPLOAD_BYTES = "2147483648"                    # 2 GiB cap
 
 [env.production]
 name = "filekey-drop"
-account_id = "REPLACE_ME_ACCOUNT_ID"
+account_id = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 
 [[env.production.send_email]]
 name = "EMAIL"
@@ -55,6 +55,6 @@ id = "REPLACE_ME_PROD_KV_ID"
 ALLOWED_ORIGIN = "https://drop.filekey.app"
 MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS_PROD"  # production keys differ from staging
-R2_ACCOUNT_ID = "REPLACE_ME_ACCOUNT_ID"
+R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "filekey-drop"
 MAX_UPLOAD_BYTES = "2147483648"
