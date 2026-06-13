@@ -1,6 +1,6 @@
-// FileKey Drop — web client. One bundle routes four surfaces by path + hash, each
-// played out as a FileKey-style chat conversation (typed messages with the lock
-// avatar, inline links, the bottom drop bar):
+// FileKey Drop — web client. Routes four surfaces by path + hash, each played out
+// as a FileKey chat conversation using FileKey's own UI machinery (web/fk/ui.ts,
+// vendored verbatim):
 //   /                  -> Setup (receiver creates a Drop link)
 //   /#<linkPayload>    -> Upload (anyone drops a file for the receiver)
 //   /confirm#<nonce>   -> Confirm (finish setup, reveal the permanent link)
@@ -8,8 +8,8 @@
 import { NamespaceSet, decrypt, deriveIdentityFromPrf, encodeShareKey, encryptToShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
+import { ERR, OK, StatusMsg, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
 import { DropApi, DropApiError } from "./api";
-import { appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, showDropBar, statusMsg } from "./chat";
 import { dropConfig, isConfigured } from "./config";
 import { getPrfSecret } from "./webauthn";
 
@@ -17,9 +17,6 @@ const NS = new NamespaceSet(["filekey.app"]);
 const ns = NS.namespaces[0]!;
 const cfg = dropConfig();
 const api = new DropApi(cfg.apiBase);
-
-const ERR = { speed: 4, dp: "failed_dp", icon: "failed_filekey_icon" };
-const OK = { dp: "ok_dp", icon: "ok_filekey_icon" };
 
 function hexToBytes(s: string): Uint8Array {
   const u = new Uint8Array(s.length / 2);
@@ -46,7 +43,7 @@ async function setupMode(): Promise<void> {
   await appMsg([
     { t: "Get files, end-to-end encrypted.", b: true },
     " Create a link people can use to send you files. Only your passkey can open them, and we never see your files or store your address.",
-  ]);
+  ], { speed: 12 });
   await appMsg(["First, what email should we deliver your files to?"]);
   const { email, label } = await inputPrompt([
     { key: "email", placeholder: "you@example.com", type: "email" },
@@ -57,7 +54,7 @@ async function setupMode(): Promise<void> {
     return;
   }
   if (!(await requireConfig())) return;
-  const st = statusMsg("Setting up");
+  const st = new StatusMsg("Setting up");
   try {
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
@@ -70,26 +67,25 @@ async function setupMode(): Promise<void> {
       shareKey: base64urlEncode(new TextEncoder().encode(shareKey)),
       label,
     });
-    st.remove();
+    st.fail();
     await appMsg([{ t: "Check your email.", b: true }, ` We sent a confirmation link to ${email}. Click it to finish and get your Drop link.`]);
     await appMsg(["You can close this tab. The link works on any device."]);
   } catch (e) {
-    st.remove();
+    st.fail();
     await appMsg([humanError(e)], ERR);
   }
 }
 
 // ---- Confirm ----
 async function confirmMode(nonce: string): Promise<void> {
-  const st = statusMsg("Finishing setup");
+  const st = new StatusMsg("Finishing setup");
   try {
     const { link } = await api.confirm(nonce);
-    st.remove();
-    await appMsg([{ t: "Your Drop link is ready.", b: true }, " Share it with anyone. Whatever they drop arrives encrypted to your passkey, in your inbox."]);
-    linkReveal(`${location.origin}/#${link}`);
+    st.fail();
+    await linkReveal("Your Drop link is ready. Share it with anyone, and whatever they drop arrives encrypted to your passkey, in your inbox:", `${location.origin}/#${link}`);
     await appMsg(["Save it somewhere. If you lose it, just set up again."]);
   } catch (e) {
-    st.remove();
+    st.fail();
     await appMsg([humanError(e)], ERR);
   }
 }
@@ -115,7 +111,8 @@ async function uploadMode(payload: string): Promise<void> {
 
 async function sendFile(payload: string, file: File): Promise<void> {
   hideDropBar();
-  const st = statusMsg(`Encrypting ${file.name}`);
+  uploadCard(file.name, "File");
+  const enc = new StatusMsg("Encrypting");
   try {
     const link = decodeDropLink(base64urlDecode(payload));
     const shareKey = new TextDecoder().decode(link.shareKey);
@@ -128,42 +125,37 @@ async function sendFile(payload: string, file: File): Promise<void> {
       plaintext,
       metadata: { filename: file.name, mimeType: file.type || "application/octet-stream", createdAtUnixMs: 0, extras: new Map() },
     });
-    st.done(`Uploading ${file.name}…`);
+    enc.done();
+    const up = new StatusMsg("Uploading");
     const { objectId, uploadUrl } = await api.uploadInit(payload, ciphertext.length);
     await api.putToR2(uploadUrl, ciphertext);
     await api.uploadComplete(payload, objectId);
-    st.remove();
+    up.done();
     await appMsg([{ t: "Sent.", b: true }, " They'll get an email with a link to open it. Thanks!"], OK);
   } catch (e) {
-    st.remove();
+    enc.fail();
     await appMsg([humanError(e)], ERR);
   }
 }
 
 // ---- Receive (/d/<id>) ----
 async function receiveMode(objectId: string): Promise<void> {
-  const st = statusMsg("Opening your file");
+  const st = new StatusMsg("Opening your file");
   try {
     const { url } = await api.fetchUrl(objectId);
     const resp = await fetch(url);
     if (!resp.ok) throw new Error("the file has expired or was already removed");
     const ciphertext = new Uint8Array(await resp.arrayBuffer());
-    st.done("Waiting for your passkey…");
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
     const res = await decrypt({ file: ciphertext, namespaces: NS, resolveIdentity: async () => identity });
-    st.remove();
+    st.done();
     const blob = new Blob([res.plaintext as BufferSource], { type: res.metadata.mimeType || "application/octet-stream" });
-    const msg = await appMsg([{ t: "Decrypted.", b: true }, ` ${res.metadata.filename} is ready, decrypted on your device. `]);
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = res.metadata.filename || "file";
-    a.className = "msg_clickable no_select";
-    a.textContent = "Save file";
-    msg.appendChild(a);
+    await appMsg([{ t: "Decrypted.", b: true }, " It opened on your device. Save it wherever you like."], OK);
+    saveCard(res.metadata.filename || "file", "Decrypted file", blob);
   } catch (e) {
-    st.remove();
+    st.fail();
     await appMsg([humanError(e)], ERR);
   }
 }
