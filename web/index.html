@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FileKey Drop</title>
 <meta name="description" content="Get files from anyone, end-to-end encrypted to your passkey.">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
 <script>
-  // Apply theme before paint (no flash). Light default; Auto follows the OS.
+  // Apply theme before paint (no flash). Light default; otherwise follow the OS.
   try {
     var t = localStorage.getItem("filekey-theme");
     if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
@@ -14,84 +16,23 @@
     }
   } catch (e) {}
 </script>
-<style>
-  @font-face {
-    font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
-    src: url("/fonts/inter.woff2") format("woff2");
-  }
-  :root {
-    --accent: #1377F9; --accent-hover: #0e63d6; --link: #1377F9;
-    --bg: #fff; --ink: #0d0d0d; --muted: #00000080;
-    --card: #fff; --hairline: #0000001a; --fill: #f4f4f4; --field: #fff;
-    --error: #F91313; --ok: #1f9d57;
-  }
-  html[data-theme="dark"] {
-    --link: #4d9bff; --bg: #0c0c0e; --ink: #f2f2f5; --muted: #ffffff66;
-    --card: #161618; --hairline: #ffffff1f; --fill: #1f1f23; --field: #161618;
-    --error: #ff5a52; --ok: #58c98a;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.55 "Inter", system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  header {
-    height: 64px; display: flex; align-items: center; gap: 9px;
-    padding: 0 22px; border-bottom: 1px solid var(--hairline);
-  }
-  .glyph { width: 22px; height: 22px; color: var(--accent); flex: none; }
-  .wordmark { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
-  .product { font-size: 19px; font-weight: 600; color: var(--accent); letter-spacing: -0.01em; }
-  main { max-width: 540px; margin: 0 auto; padding: 9vh 22px 12vh; }
-  .card { display: flex; flex-direction: column; gap: 16px; }
-  .step-title { font-size: 25px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
-  p { margin: 0; }
-  .muted { color: var(--muted); }
-  .small { font-size: 13.5px; }
-  .field { display: flex; flex-direction: column; gap: 6px; }
-  .field-label { font-size: 13px; font-weight: 600; color: var(--muted); }
-  .input {
-    font: inherit; color: var(--ink); background: var(--field);
-    border: 1px solid var(--hairline); border-radius: 11px; padding: 12px 14px; width: 100%;
-  }
-  .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #1377f922; }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .btn {
-    font: inherit; font-weight: 600; border-radius: 11px; padding: 12px 18px;
-    border: 1px solid transparent; cursor: pointer; transition: background .15s, border-color .15s;
-  }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: var(--accent-hover); }
-  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--hairline); }
-  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
-  a.btn { text-decoration: none; display: inline-block; }
-  .mono-box {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
-    background: var(--fill); border: 1px solid var(--hairline); border-radius: 11px;
-    padding: 13px 15px; word-break: break-all; user-select: all;
-  }
-  .note { border-radius: 11px; padding: 11px 14px; font-size: 14px; border: 1px solid var(--hairline); }
-  .note-info { background: var(--fill); color: var(--muted); }
-  .note-error { background: #f9131310; color: var(--error); border-color: #f9131333; }
-  .note-ok { background: #1f9d5710; color: var(--ok); border-color: #1f9d5733; }
-  .status { display: flex; align-items: center; gap: 9px; color: var(--muted); }
-  .dots { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
-  @keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .dots { animation: none; } }
-  footer { text-align: center; color: var(--muted); font-size: 12.5px; padding: 0 22px 28px; }
-  footer a { color: var(--link); text-decoration: none; }
-</style>
 </head>
 <body>
-<header>
-  <svg class="glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path fill="currentColor" d="M15.5 2a6.5 6.5 0 0 0-6.3 8.2L2 17.4V22h4.6l1.2-1.2V18h2.2l1.2-1.2v-2.2h1.6l1-1A6.5 6.5 0 1 0 15.5 2Zm1.8 5.2a1.6 1.6 0 1 1 0-3.2 1.6 1.6 0 0 1 0 3.2Z"/>
-  </svg>
-  <span class="wordmark">FileKey</span><span class="product">Drop</span>
-</header>
-<main id="app"></main>
-<footer>End-to-end encrypted. We never see your files. <a href="https://filekey.app">filekey.app</a></footer>
+<header class="hd"><div class="wrap hd-in">
+  <a class="brand" href="/">
+    <svg class="mk" width="17" height="21" viewBox="0 0 22 27" aria-hidden="true"><path fill="currentColor" d="M21.9873 8.81596C21.9827 8.75523 21.9678 8.69679 21.9506 8.63607C21.9334 8.57648 21.9174 8.51919 21.8899 8.46419C21.8807 8.44471 21.8796 8.42409 21.8693 8.40461C19.9924 5.27768 17.349 2.63298 14.2221 0.757408C14.2037 0.74595 14.182 0.74595 14.1625 0.735638C14.1086 0.708138 14.0525 0.692095 13.9929 0.674909C13.931 0.657721 13.8715 0.64168 13.8084 0.638242C13.7878 0.638242 13.7706 0.62793 13.75 0.62793H5.5C2.46693 0.62793 0 3.09492 0 6.12793V20.7946C0 23.8277 2.46699 26.2946 5.5 26.2946H16.5C19.5331 26.2946 22 23.8276 22 20.7946V8.87793C22 8.85616 21.9896 8.83773 21.9873 8.81596ZM19.3748 7.96116H18.3332C16.312 7.96116 14.6666 6.31573 14.6666 4.29449V3.25292C16.4793 4.55459 18.073 6.14839 19.3748 7.96116ZM16.4999 24.4612H5.49992C3.47867 24.4612 1.83325 22.8157 1.83325 20.7945V6.12783C1.83325 4.10658 3.47867 2.46116 5.49992 2.46116H12.8332V4.29449C12.8332 7.32756 15.3002 9.79449 18.3332 9.79449H20.1666V20.7945C20.1666 22.8157 18.5212 24.4612 16.4999 24.4612ZM14.6666 14.5462V12.5444C14.6666 10.5232 13.0212 8.87777 10.9999 8.87777C8.97867 8.87777 7.33325 10.5232 7.33325 12.5444V14.5462C6.26877 14.9266 5.49992 15.9338 5.49992 17.1278V19.8778C5.49992 21.3937 6.73397 22.6278 8.24992 22.6278H13.7499C15.2659 22.6278 16.4999 21.3937 16.4999 19.8778V17.1278C16.4999 15.9338 15.7311 14.9266 14.6666 14.5462ZM9.16658 12.5444C9.16658 11.5338 9.98929 10.7111 10.9999 10.7111C12.0105 10.7111 12.8332 11.5338 12.8332 12.5444V14.3778H9.16658V12.5444ZM14.6666 19.8778C14.6666 20.3831 14.2552 20.7944 13.7499 20.7944H8.24992C7.74459 20.7944 7.33325 20.3831 7.33325 19.8778V17.1278C7.33325 16.6224 7.74459 16.2111 8.24992 16.2111H13.7499C14.2552 16.2111 14.6666 16.6224 14.6666 17.1278V19.8778Z"/></svg>
+    <span class="wm">FileKey</span><span class="badge">Drop</span>
+  </a>
+  <div class="hd-right">
+    <button class="theme-btn" type="button" id="themeBtn" aria-label="Switch theme"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+    <a class="btn" href="https://filekey.app">Open FileKey</a>
+  </div>
+</div></header>
+<main class="wrap" id="app"></main>
+<footer class="ft"><div class="wrap ft-in">
+  <p class="ft-note">End-to-end encrypted. We never see your files.</p>
+  <nav class="ft-links"><a href="https://filekey.app">FileKey</a><a href="https://filekey.app/blog/">Blog</a><a href="https://filekey.app/privacy/">Privacy</a></nav>
+</div></footer>
 <script type="module" src="/dist/app.js"></script>
 </body>
 </html>

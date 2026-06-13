@@ -210,4 +210,17 @@ function route(): void {
   return setupMode();
 }
 
+// Light/Dark toggle (the header button); persists like the rest of FileKey.
+document.getElementById("themeBtn")?.addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const isDark = cur === "dark" || (cur === null && matchMedia("(prefers-color-scheme: dark)").matches);
+  const next = isDark ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try {
+    localStorage.setItem("filekey-theme", next);
+  } catch {
+    /* private mode */
+  }
+});
+
 route();

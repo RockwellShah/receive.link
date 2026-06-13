@@ -11,3 +11,4 @@ dist/
 keys/
 *.private.jwk
 *.secret
+.gstack/
