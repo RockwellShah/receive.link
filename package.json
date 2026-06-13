@@ -9,6 +9,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "gen:keys": "bun run scripts/gen-keys.ts",
+    "build:web": "bun run web/build.ts",
+    "dev:web": "bun run web/serve.ts",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },

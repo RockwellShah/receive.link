@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileKey Drop</title>
+<meta name="description" content="Get files from anyone, end-to-end encrypted to your passkey.">
+<script>
+  // Apply theme before paint (no flash). Light default; Auto follows the OS.
+  try {
+    var t = localStorage.getItem("filekey-theme");
+    if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  } catch (e) {}
+</script>
+<style>
+  @font-face {
+    font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
+    src: url("/fonts/inter.woff2") format("woff2");
+  }
+  :root {
+    --accent: #1377F9; --accent-hover: #0e63d6; --link: #1377F9;
+    --bg: #fff; --ink: #0d0d0d; --muted: #00000080;
+    --card: #fff; --hairline: #0000001a; --fill: #f4f4f4; --field: #fff;
+    --error: #F91313; --ok: #1f9d57;
+  }
+  html[data-theme="dark"] {
+    --link: #4d9bff; --bg: #0c0c0e; --ink: #f2f2f5; --muted: #ffffff66;
+    --card: #161618; --hairline: #ffffff1f; --fill: #1f1f23; --field: #161618;
+    --error: #ff5a52; --ok: #58c98a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 "Inter", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    height: 64px; display: flex; align-items: center; gap: 9px;
+    padding: 0 22px; border-bottom: 1px solid var(--hairline);
+  }
+  .glyph { width: 22px; height: 22px; color: var(--accent); flex: none; }
+  .wordmark { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  .product { font-size: 19px; font-weight: 600; color: var(--accent); letter-spacing: -0.01em; }
+  main { max-width: 540px; margin: 0 auto; padding: 9vh 22px 12vh; }
+  .card { display: flex; flex-direction: column; gap: 16px; }
+  .step-title { font-size: 25px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  p { margin: 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13.5px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .input {
+    font: inherit; color: var(--ink); background: var(--field);
+    border: 1px solid var(--hairline); border-radius: 11px; padding: 12px 14px; width: 100%;
+  }
+  .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #1377f922; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    font: inherit; font-weight: 600; border-radius: 11px; padding: 12px 18px;
+    border: 1px solid transparent; cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--hairline); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  a.btn { text-decoration: none; display: inline-block; }
+  .mono-box {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+    background: var(--fill); border: 1px solid var(--hairline); border-radius: 11px;
+    padding: 13px 15px; word-break: break-all; user-select: all;
+  }
+  .note { border-radius: 11px; padding: 11px 14px; font-size: 14px; border: 1px solid var(--hairline); }
+  .note-info { background: var(--fill); color: var(--muted); }
+  .note-error { background: #f9131310; color: var(--error); border-color: #f9131333; }
+  .note-ok { background: #1f9d5710; color: var(--ok); border-color: #1f9d5733; }
+  .status { display: flex; align-items: center; gap: 9px; color: var(--muted); }
+  .dots { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .dots { animation: none; } }
+  footer { text-align: center; color: var(--muted); font-size: 12.5px; padding: 0 22px 28px; }
+  footer a { color: var(--link); text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+  <svg class="glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path fill="currentColor" d="M15.5 2a6.5 6.5 0 0 0-6.3 8.2L2 17.4V22h4.6l1.2-1.2V18h2.2l1.2-1.2v-2.2h1.6l1-1A6.5 6.5 0 1 0 15.5 2Zm1.8 5.2a1.6 1.6 0 1 1 0-3.2 1.6 1.6 0 0 1 0 3.2Z"/>
+  </svg>
+  <span class="wordmark">FileKey</span><span class="product">Drop</span>
+</header>
+<main id="app"></main>
+<footer>End-to-end encrypted. We never see your files. <a href="https://filekey.app">filekey.app</a></footer>
+<script type="module" src="/dist/app.js"></script>
+</body>
+</html>
