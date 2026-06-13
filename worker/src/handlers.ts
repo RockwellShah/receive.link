@@ -202,18 +202,22 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     return json({ error: "object/link mismatch" }, 400, origin);
   }
 
-  // Revocation + per-link flood cap on the DELIVERY link — the email goes out
-  // here, so this is where the receiver link's controls must actually apply.
+  // Revocation on the DELIVERY link (the email goes out here).
   if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
-  if (!(await rateLimit(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
-    return json({ error: "link is over its daily limit" }, 429, origin);
-  }
 
+  // The staged object must exist + be within the cap. Checked BEFORE spending the
+  // link's delivery quota, so a missing or oversize upload can't burn a victim's
+  // quota.
   const staged = await objectInfo(env, body.objectId);
   if (!staged) return json({ error: "object not found" }, 404, origin);
   if (staged.size > maxUploadBytes(env)) {
     await deleteObject(env, body.objectId);
     return json({ error: "file too large" }, 413, origin);
+  }
+
+  // Per-link flood cap on the delivery link (gates the expensive copy below).
+  if (!(await rateLimit(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
+    return json({ error: "link is over its daily limit" }, 429, origin);
   }
 
   // Promote to an immutable, sender-unknown final key, then validate THAT copy.
@@ -237,8 +241,13 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     return json({ error: "invalid link" }, 400, origin);
   }
 
-  await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label);
-  // Mark done only AFTER the email is sent, so a failed send stays retryable.
+  try {
+    await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label);
+  } catch {
+    await deleteObject(env, finalId); // no orphaned final; the client can retry
+    return json({ error: "delivery failed, try again" }, 502, origin);
+  }
+  // Mark done only AFTER the email sends, so a failed send stays retryable.
   await env.DROP_KV.put(doneKey, finalId, { expirationTtl: OBJECT_TTL_SEC });
   await deleteObject(env, body.objectId); // drop the staging object (best-effort)
   return json({ ok: true }, 200, origin);

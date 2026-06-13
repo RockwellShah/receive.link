@@ -23,6 +23,11 @@ export function json(data: unknown, status: number, origin: string): Response {
 const MAX_JSON_BYTES = 64 * 1024;
 
 export async function readJson<T = Record<string, unknown>>(req: Request): Promise<T | null> {
+  // Reject before buffering when the client declares an oversized body. The
+  // post-read check is a backstop for chunked / Content-Length-absent requests
+  // (those are additionally bounded by Cloudflare's platform body limit).
+  const declared = parseInt(req.headers.get("content-length") || "0", 10);
+  if (Number.isFinite(declared) && declared > MAX_JSON_BYTES) return null;
   try {
     const text = await req.text();
     if (text.length > MAX_JSON_BYTES) return null;
