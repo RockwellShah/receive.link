@@ -10,13 +10,13 @@ import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, OK, StatusMsg, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
 import { DropApi, DropApiError } from "./api";
-import { dropConfig, isConfigured } from "./config";
+import { dropConfig, ensureConfig, isConfigured } from "./config";
 import { getPrfSecret } from "./webauthn";
 
 const NS = new NamespaceSet(["filekey.app"]);
 const ns = NS.namespaces[0]!;
-const cfg = dropConfig();
-const api = new DropApi(cfg.apiBase);
+let cfg = dropConfig();
+let api = new DropApi(cfg.apiBase);
 
 function hexToBytes(s: string): Uint8Array {
   const u = new Uint8Array(s.length / 2);
@@ -161,10 +161,14 @@ async function receiveMode(objectId: string): Promise<void> {
 }
 
 // ---- route ----
-initChrome();
-const path = location.pathname;
-const hash = location.hash.replace(/^#/, "");
-if (path === "/confirm") void confirmMode(hash);
-else if (path.startsWith("/d/")) void receiveMode(path.slice("/d/".length));
-else if (hash.length > 0) void uploadMode(hash);
-else void setupMode();
+void (async () => {
+  initChrome();
+  cfg = await ensureConfig(); // in dev, fetches the mock server's keys so they match
+  api = new DropApi(cfg.apiBase);
+  const path = location.pathname;
+  const hash = location.hash.replace(/^#/, "");
+  if (path === "/confirm") void confirmMode(hash);
+  else if (path.startsWith("/d/")) void receiveMode(path.slice("/d/".length));
+  else if (hash.length > 0) void uploadMode(hash);
+  else void setupMode();
+})();

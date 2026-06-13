@@ -15,5 +15,6 @@
     "noEmit": true
   },
   "include": ["shared", "worker/src", "scripts"],
-  "exclude": ["node_modules", "web/core"]
+  "//": "web/ (client + vendored core) is validated by bun build + bun test, not tsc. dev-link.ts imports the vendored core, so it's excluded here too.",
+  "exclude": ["node_modules", "web/core", "scripts/dev-link.ts"]
 }

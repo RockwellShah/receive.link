@@ -42,3 +42,26 @@ export function dropConfig(): DropConfig {
 export function isConfigured(c: DropConfig): boolean {
   return c.serverKemPublicHex !== PLACEHOLDER && !!c.serverSignPublicJwk;
 }
+
+/**
+ * Resolve the active config. In local dev the mock server (web/devserver.ts) holds
+ * the keys and serves them at /api/__config, so the client always matches whatever
+ * key the server generated this run. In prod the keys are pinned in ENVS above.
+ */
+export async function ensureConfig(): Promise<DropConfig> {
+  const c = dropConfig();
+  if (isConfigured(c)) return c;
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    try {
+      const r = await fetch(`${c.apiBase}/__config`);
+      if (r.ok) {
+        const j = (await r.json()) as { kemPublicHex: string; signPublicJwk: JsonWebKey };
+        c.serverKemPublicHex = j.kemPublicHex;
+        c.serverSignPublicJwk = j.signPublicJwk;
+      }
+    } catch {
+      /* dev server not running — stays unconfigured, flows show the hint */
+    }
+  }
+  return c;
+}
