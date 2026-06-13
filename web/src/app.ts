@@ -5,10 +5,11 @@
 //   /#<linkPayload>    -> Upload (anyone drops a file for the receiver)
 //   /confirm#<nonce>   -> Confirm (finish setup, reveal the permanent link)
 //   /d/<objectId>      -> Receive (receiver fetches + decrypts a delivered file)
-import { NamespaceSet, decrypt, deriveIdentityFromPrf, encodeShareKey, encryptToShareKey } from "../core/src/index.js";
+import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, OK, StatusMsg, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
+import { decryptCiphertextBlob, encryptFileToShareKey } from "../fk/stream";
 import { DropApi, DropApiError } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
 import { getPrfSecret } from "./webauthn";
@@ -117,17 +118,15 @@ async function sendFile(payload: string, file: File): Promise<void> {
     const link = decodeDropLink(base64urlDecode(payload));
     const shareKey = new TextDecoder().decode(link.shareKey);
     const sender = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns); // throwaway
-    const plaintext = new Uint8Array(await file.arrayBuffer());
-    const ciphertext = await encryptToShareKey({
-      senderIdentity: sender,
-      recipientShareKey: shareKey,
-      namespaces: NS,
-      plaintext,
-      metadata: { filename: file.name, mimeType: file.type || "application/octet-stream", createdAtUnixMs: 0, extras: new Map() },
+    // Streams: a big file is read in slices and the ciphertext is a Blob-of-Blobs,
+    // never fully in RAM (>=64MB runs off-thread in web/fk/worker.ts).
+    const ciphertext = await encryptFileToShareKey(file, shareKey, NS, sender, {
+      onProgress: (d, t) => enc.progress(d, t),
+      onCancel: (cancel) => enc.enableCancel(cancel),
     });
     enc.done();
     const up = new StatusMsg("Uploading");
-    const { objectId, uploadUrl } = await api.uploadInit(payload, ciphertext.length);
+    const { objectId, uploadUrl } = await api.uploadInit(payload, ciphertext.size);
     await api.putToR2(uploadUrl, ciphertext);
     await api.uploadComplete(payload, objectId);
     up.done();
@@ -145,15 +144,14 @@ async function receiveMode(objectId: string): Promise<void> {
     const { url } = await api.fetchUrl(objectId);
     const resp = await fetch(url);
     if (!resp.ok) throw new Error("the file has expired or was already removed");
-    const ciphertext = new Uint8Array(await resp.arrayBuffer());
+    const ciphertext = await resp.blob(); // disk-backed; not held whole in RAM
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
-    const res = await decrypt({ file: ciphertext, namespaces: NS, resolveIdentity: async () => identity });
+    const { blob, metadata } = await decryptCiphertextBlob(ciphertext, identity, NS, { onProgress: (d, t) => st.progress(d, t) });
     st.done();
-    const blob = new Blob([res.plaintext as BufferSource], { type: res.metadata.mimeType || "application/octet-stream" });
     await appMsg([{ t: "Decrypted.", b: true }, " It opened on your device. Save it wherever you like."], OK);
-    saveCard(res.metadata.filename || "file", "Decrypted file", blob);
+    saveCard(metadata.filename || "file", "Decrypted file", blob);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);
