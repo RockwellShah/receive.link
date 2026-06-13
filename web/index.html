@@ -3,36 +3,54 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FileKey Drop</title>
-<meta name="description" content="Get files from anyone, end-to-end encrypted to your passkey.">
+<title>FileKey Drop: get files, end-to-end encrypted</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Give anyone a link. Whatever they drop arrives end-to-end encrypted to your passkey.">
 <link rel="stylesheet" href="/style.css">
-<script>
-  // Apply theme before paint (no flash). Light default; otherwise follow the OS.
-  try {
-    var t = localStorage.getItem("filekey-theme");
-    if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
-      document.documentElement.setAttribute("data-theme", "dark");
-    }
-  } catch (e) {}
-</script>
+<script>/* apply saved theme before paint (default light; "auto" follows the OS) */try{var t=localStorage.getItem('filekey-theme');if(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.dataset.theme='dark';var m=document.querySelector('meta[name="theme-color"]');if(m)m.content='#0c0c0e';}}catch(e){}</script>
 </head>
 <body>
-<header class="hd"><div class="wrap hd-in">
-  <a class="brand" href="/">
-    <svg class="mk" width="17" height="21" viewBox="0 0 22 27" aria-hidden="true"><path fill="currentColor" d="M21.9873 8.81596C21.9827 8.75523 21.9678 8.69679 21.9506 8.63607C21.9334 8.57648 21.9174 8.51919 21.8899 8.46419C21.8807 8.44471 21.8796 8.42409 21.8693 8.40461C19.9924 5.27768 17.349 2.63298 14.2221 0.757408C14.2037 0.74595 14.182 0.74595 14.1625 0.735638C14.1086 0.708138 14.0525 0.692095 13.9929 0.674909C13.931 0.657721 13.8715 0.64168 13.8084 0.638242C13.7878 0.638242 13.7706 0.62793 13.75 0.62793H5.5C2.46693 0.62793 0 3.09492 0 6.12793V20.7946C0 23.8277 2.46699 26.2946 5.5 26.2946H16.5C19.5331 26.2946 22 23.8276 22 20.7946V8.87793C22 8.85616 21.9896 8.83773 21.9873 8.81596ZM19.3748 7.96116H18.3332C16.312 7.96116 14.6666 6.31573 14.6666 4.29449V3.25292C16.4793 4.55459 18.073 6.14839 19.3748 7.96116ZM16.4999 24.4612H5.49992C3.47867 24.4612 1.83325 22.8157 1.83325 20.7945V6.12783C1.83325 4.10658 3.47867 2.46116 5.49992 2.46116H12.8332V4.29449C12.8332 7.32756 15.3002 9.79449 18.3332 9.79449H20.1666V20.7945C20.1666 22.8157 18.5212 24.4612 16.4999 24.4612ZM14.6666 14.5462V12.5444C14.6666 10.5232 13.0212 8.87777 10.9999 8.87777C8.97867 8.87777 7.33325 10.5232 7.33325 12.5444V14.5462C6.26877 14.9266 5.49992 15.9338 5.49992 17.1278V19.8778C5.49992 21.3937 6.73397 22.6278 8.24992 22.6278H13.7499C15.2659 22.6278 16.4999 21.3937 16.4999 19.8778V17.1278C16.4999 15.9338 15.7311 14.9266 14.6666 14.5462ZM9.16658 12.5444C9.16658 11.5338 9.98929 10.7111 10.9999 10.7111C12.0105 10.7111 12.8332 11.5338 12.8332 12.5444V14.3778H9.16658V12.5444ZM14.6666 19.8778C14.6666 20.3831 14.2552 20.7944 13.7499 20.7944H8.24992C7.74459 20.7944 7.33325 20.3831 7.33325 19.8778V17.1278C7.33325 16.6224 7.74459 16.2111 8.24992 16.2111H13.7499C14.2552 16.2111 14.6666 16.6224 14.6666 17.1278V19.8778Z"/></svg>
-    <span class="wm">FileKey</span><span class="badge">Drop</span>
-  </a>
-  <div class="hd-right">
-    <button class="theme-btn" type="button" id="themeBtn" aria-label="Switch theme"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
-    <a class="btn" href="https://filekey.app">Open FileKey</a>
+<div id=main_window>
+  <div id=logo_container><div id=logo_bar></div></div>
+  <div id=chiz_container>
+    <div id=chiz_hidden_click_container></div>
+    <div id=chiz_icon_container role="button" tabindex="0" aria-label="Menu" aria-expanded="false">
+      <span class="chiz_bar chiz_bar_top"></span><span class="chiz_bar chiz_bar_mid"></span><span class="chiz_bar chiz_bar_bot"></span>
+    </div>
+    <div id=chiz_menu_container>
+      <div id=chiz_menu_inner>
+        <div id=chiz_list>
+          <span class="chiz_heading top_menu_heading">FILEKEY</span>
+          <a class="chiz_item plain_menu_link no_select" href="https://filekey.app"><span class="plain_menu_label">Open FileKey</span></a>
+          <a class="chiz_item plain_menu_link no_select" href="https://filekey.app/blog/" target=_blank rel="noopener"><span class="plain_menu_label">Blog</span></a>
+          <a class="chiz_item plain_menu_link no_select" href="https://github.com/RockwellShah/filekey" target=_blank rel="noopener noreferrer"><span class="plain_menu_label">GitHub</span></a>
+          <span class=chiz_heading>APPEARANCE</span>
+          <div class="theme_row no_select" id="theme_row" role="radiogroup" aria-label="Appearance">
+            <span class="theme_opt" data-mode="light" role="radio" tabindex="0">Light</span>
+            <span class="theme_sep" aria-hidden="true">·</span>
+            <span class="theme_opt" data-mode="dark" role="radio" tabindex="0">Dark</span>
+            <span class="theme_sep" aria-hidden="true">·</span>
+            <span class="theme_opt" data-mode="auto" role="radio" tabindex="0">Auto</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-</div></header>
-<main class="wrap" id="app"></main>
-<footer class="ft"><div class="wrap ft-in">
-  <p class="ft-note">End-to-end encrypted. We never see your files.</p>
-  <nav class="ft-links"><a href="https://filekey.app">FileKey</a><a href="https://filekey.app/blog/">Blog</a><a href="https://filekey.app/privacy/">Privacy</a></nav>
-</div></footer>
+  <div id=main_container>
+    <div id=main_inner></div>
+    <div id=outer_drop_container>
+      <div id=drop_container>
+        <input type="file" id="file_input">
+        <div class=dc_icon_container></div>
+        <div class=dc_txt_container><span class=file_title>Drop a file to send</span></div>
+        <div class=dc_buttons>
+          <button id=choose_file class="dc_btn dc_btn_primary no_select">Choose File</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <script type="module" src="/dist/app.js"></script>
 </body>
 </html>
