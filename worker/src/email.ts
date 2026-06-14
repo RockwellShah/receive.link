@@ -18,7 +18,11 @@ export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string,
 
 /** Delivery email: someone dropped a file; here is the link to open it. */
 export async function sendDownloadEmail(env: Env, to: string, downloadUrl: string, label: string, manageUrl?: string): Promise<void> {
-  const subject = `A file was sent to your FileKey Drop${label ? ` · ${label}` : ""}`;
+  // Append a short code from the download id so every delivery has a unique subject;
+  // otherwise mail clients thread same-subject messages into one conversation. The
+  // code is the start of the /d/<id> link, so it lines up with the download URL below.
+  const ref = downloadUrl.split("/").pop()?.slice(0, 6) ?? "";
+  const subject = `A file was sent to your FileKey Drop${label ? ` · ${label}` : ""}${ref ? ` · #${ref}` : ""}`;
   const text =
     `Someone dropped a file or folder for you${label ? ` ("${label}")` : ""}.\n\n` +
     `Open it in FileKey (you'll need your passkey):\n${downloadUrl}\n\n` +

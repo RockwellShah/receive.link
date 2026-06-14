@@ -46,6 +46,13 @@ function maxUploadBytes(env: Env): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_UPLOAD_BYTES;
 }
 
+// Per-day abuse caps are overridable per environment: staging runs them high so
+// testing isn't throttled; prod omits the vars and gets the strict defaults above.
+function envInt(v: string | undefined, dflt: number): number {
+  const n = v ? parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : dflt;
+}
+
 // Strip CR/LF + C0/DEL controls so a sender-chosen label can't inject email
 // headers or smuggle control bytes. Applied before signing, so the signed label
 // is already clean everywhere it's later shown.
@@ -78,7 +85,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
 
   // Hash the IP so KV only ever holds a digest, never a raw address (it's only a rate-limit key).
   const ipHash = await sha256hex(clientIp(req));
-  if (!(await rateLimit(env.DROP_KV, `reg:ip:${ipHash}`, REG_IP_PER_DAY, DAY))) {
+  if (!(await rateLimit(env.DROP_KV, `reg:ip:${ipHash}`, envInt(env.REG_IP_PER_DAY, REG_IP_PER_DAY), DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
 
@@ -113,7 +120,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
   // Anti-bombing: silently succeed once an address is over its daily quota, so
   // register can't be used to probe or flood a victim. No existence oracle.
   const emailHash = await sha256hex(canonEmail(email));
-  if (!(await rateLimit(env.DROP_KV, `reg:em:${emailHash}`, REG_EMAIL_PER_DAY, DAY))) {
+  if (!(await rateLimit(env.DROP_KV, `reg:em:${emailHash}`, envInt(env.REG_EMAIL_PER_DAY, REG_EMAIL_PER_DAY), DAY))) {
     return json({ ok: true }, 202, origin);
   }
 

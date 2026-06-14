@@ -395,6 +395,18 @@ html[data-theme="dark"] #copy_pub,
 html[data-theme="dark"] .contact_act,
 html[data-theme="dark"] .contacts_add,
 html[data-theme="dark"] .nickname_btn{color:#4d9bff;}
+/* Dark-mode hover lift: the base dark link color (#4d9bff) equals the light-mode hover
+   color, so without this the in-app clickables (Confirm, Copy, etc.) show no hover change. */
+html[data-theme="dark"] .msg_clickable:hover,
+html[data-theme="dark"] .msg_link:hover,
+html[data-theme="dark"] .dl_action:hover,
+html[data-theme="dark"] .copy_button:hover,
+html[data-theme="dark"] .confirm_pub_key:hover,
+html[data-theme="dark"] .edit_pub_key:hover,
+html[data-theme="dark"] .nickname_btn:hover,
+html[data-theme="dark"] .contacts_add:hover,
+html[data-theme="dark"] .contact_act:hover,
+html[data-theme="dark"] #copy_pub:hover{color:#80b8ff;}
 html[data-theme="dark"] .pub_key_textarea,
 html[data-theme="dark"] .nickname_input{background:#161618;color:#f2f2f5;border-color:#ffffff1f;}
 html[data-theme="dark"] .contact_chip{background:#1f1f23;border-color:#ffffff1f;color:#f2f2f5;}

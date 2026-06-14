@@ -179,7 +179,7 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
 
 // ---- Receive (/d/<id>) ----
 async function receiveMode(objectId: string): Promise<void> {
-  const st = new StatusMsg("Opening your file");
+  const st = new StatusMsg("Decrypting your file");
   try {
     const { url } = await api.fetchUrl(objectId);
     const resp = await fetch(url);
@@ -190,7 +190,7 @@ async function receiveMode(objectId: string): Promise<void> {
     prf.fill(0);
     const { blob, metadata } = await decryptCiphertextBlob(ciphertext, identity, NS, { onProgress: (d, t) => st.progress(d, t) });
     st.done();
-    await appMsg([{ t: "Decrypted.", b: true }, " It opened on your device. Save it wherever you like."], OK);
+    await appMsg([{ t: "Decrypted.", b: true }, " Save it wherever you like."], OK);
     saveCard(metadata.filename || "file", "Decrypted file", blob);
   } catch (e) {
     st.fail();

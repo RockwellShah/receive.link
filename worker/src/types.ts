@@ -31,4 +31,6 @@ export interface Env {
   R2_ACCOUNT_ID: string; // <id>.r2.cloudflarestorage.com
   R2_BUCKET: string; // bucket name for S3 presigning
   MAX_UPLOAD_BYTES?: string; // optional cap override (default 2 GiB)
+  REG_IP_PER_DAY?: string; // optional per-day abuse-cap overrides (staging runs these high)
+  REG_EMAIL_PER_DAY?: string;
 }

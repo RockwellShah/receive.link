@@ -29,6 +29,10 @@ SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"            # <id>.r2.cloudflarestorage.com
 R2_BUCKET = "filekey-drop-staging"                 # bucket name for S3 presigning
 MAX_UPLOAD_BYTES = "2147483648"                    # 2 GiB cap
+# Staging runs the per-day abuse caps high so testing isn't throttled. Prod omits
+# these (its [env.production.vars]) and falls back to the strict defaults in handlers.ts.
+REG_EMAIL_PER_DAY = "1000"
+REG_IP_PER_DAY = "1000"
 
 # Secrets (DO NOT put here) — set with:
 #   wrangler secret put SERVER_KEM_PRIVATE_JWK    # from gen-keys
