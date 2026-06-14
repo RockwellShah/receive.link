@@ -30,18 +30,19 @@ body{margin:0;}
 
 .std_msg{border-radius:10px;margin:0;color:#000;width:100%;}
 .std_status{margin:0;color:#00000080;font-variant-numeric:tabular-nums;}
-.std_uploaded, .std_download{border:1px solid #0000001a;padding:16px;border-radius:10px;margin:10px 0;color:#000;display: flex;flex-direction: row;overflow:hidden;}
+.std_uploaded, .std_download{border:1px solid #0000001a;padding:16px;border-radius:10px;margin:0;color:#000;display: flex;flex-direction: row;overflow:hidden;}
 
 
-.std_outer, .std_dl_outer, .std_upload_outer, .std_status_outer{display:flex;width:50%;margin-left: 50px;}
+/* Every chat row carries ONE uniform vertical margin here; per-type margins below are zeroed.
+   Flex columns don't collapse margins, so this is the single source of inter-message spacing. */
+.std_outer, .std_dl_outer, .std_upload_outer, .std_status_outer{display:flex;width:50%;margin:22px 0 22px 50px;}
 .std_upload_outer{justify-content:flex-end;align-self:flex-end}
 .std_uploaded{background-color: #f4f4f4;border:none;max-width:100%;}
 
-.std_outer{margin-top:22px;margin-bottom:22px;line-height:145%}
+.std_outer{line-height:145%}
 .std_inner_flex{display:flex;align-items: center;max-width:100%;}
 .std_msg_inner, .std_status_inner{position:relative;display:flex;width:100%}
 
-.std_status_outer{margin-top:20px;}
 
 .pub_key_textarea{width:100%;resize:none;outline:none;border: 1px solid #0000001a;border-radius: 10px;margin:10px 0;padding:16px;overflow:hidden;line-height:1.5;font-size:16px;color:#0d0d0d;font-family: 'Inter';word-break:break-all;}
 .pub_key_textarea:focus{outline:none;}
@@ -78,7 +79,7 @@ body{margin:0;}
 #logo_bar{display:flex;cursor:pointer;}
 #logo_txt{color:#000;font-size:26px;font-family:'Inter', system-ui;margin-left:8px;}
 
-#outer_drop_container{position:fixed;bottom:0;left:0;width:100%;background-color:#fff;display:flex;justify-content:center;}
+#outer_drop_container{position:fixed;bottom:0;left:0;width:100%;background-color:#fff;display:flex;justify-content:center;z-index:900;}
 #drop_container{
 	background-color:#eaf2fe;
 	display: none;
@@ -134,7 +135,7 @@ body{margin:0;}
 .bolded_text{font-weight:700;}
 
 
-.std_dp, .failed_dp, .warning_dp{position:absolute;left:-48px;top:-5px;border-radius:20px;padding:7px 8.5px; border-radius:70px;line-height:0;}
+.std_dp, .failed_dp, .warning_dp, .ok_dp{position:absolute;left:-48px;top:-5px;border-radius:20px;padding:7px 8.5px; border-radius:70px;line-height:0;}
 .std_dp{border:1px #1377F921 solid;}
 .failed_dp{border:1px #F9131321 solid;}
 .warning_dp{border:1px #e99a3221 solid;}
@@ -319,7 +320,7 @@ body.fk-authed #acct_control{display:flex;}
 	#drop_container{flex-wrap:wrap;gap:10px;padding:16px;width:90%;}
 	#drop_container .dc_icon_container{display:none;}
 	.dc_txt_container{flex-basis:100%;text-align:center;}
-	.dc_txt_container .file_title{white-space:nowrap;font-size:clamp(11px,3.6vw,15px);}
+	.dc_txt_container .file_title{font-size:clamp(12px,3.6vw,15px);}
 	.dc_buttons{flex-basis:100%;gap:10px;}
 	.dc_btn{flex:1;}
 }
@@ -422,6 +423,7 @@ html[data-theme="dark"] .failed_filekey_icon{fill:#ff5a52;}
 html[data-theme="dark"] .warning_filekey_icon{fill:#f0b86a;}
 html[data-theme="dark"] .failed_dp{border-color:#ff5a5255;}
 html[data-theme="dark"] .warning_dp{border-color:#f0b86a55;}
+html[data-theme="dark"] .ok_dp{border-color:#58c98a55;}
 
 /* ---- FileKey Drop additions ---- */
 /* Product badge pill next to the wordmark (same pattern as the site's "Blog" pill). */
@@ -431,6 +433,8 @@ html[data-theme="dark"] .badge{color:#4d9bff;background:rgba(77,155,255,0.14);}
 /* Single-line email/label prompt inputs reuse the recipient-textarea look. */
 .fk_input{width:100%;outline:none;border:1px solid #0000001a;border-radius:10px;margin:10px 0;padding:14px 16px;line-height:1.4;font-size:16px;color:#0d0d0d;font-family:'Inter';background:#fff;}
 .fk_input:focus{border-color:#1377f955;}
+.fk_input_err{color:#F91313;font-size:13px;line-height:1.4;margin:0 0 6px 2px;}
+html[data-theme="dark"] .fk_input_err{color:#ff5a52;}
 html[data-theme="dark"] .fk_input{background:#161618;color:#f2f2f5;border-color:#ffffff1f;}
 /* Browser autofill (notably the email field) forces its own light background + dark text via the UA stylesheet. Paint over it with an inset box-shadow so autofilled inputs keep their theme colors instead of flashing white. */
 .fk_input:-webkit-autofill,.fk_input:-webkit-autofill:hover,.fk_input:-webkit-autofill:focus{-webkit-text-fill-color:#0d0d0d;-webkit-box-shadow:0 0 0 1000px #fff inset;caret-color:#0d0d0d;transition:background-color 9999s ease-in-out 0s;}
@@ -440,6 +444,6 @@ html[data-theme="dark"] .fk_input:-webkit-autofill,html[data-theme="dark"] .fk_i
 /* Option 5: the setup input sits left (under the question) while you fill it; on Confirm each answer becomes its own right-aligned sent bubble (no avatar). */
 .fk_setup_cont{align-self:flex-start;margin-left:50px;}
 @media screen and (max-width:1080px){.fk_setup_cont{width:calc(100% - 70px);}}
-.sent_msg{background:#f4f4f4;border-radius:10px;padding:12px 16px;color:#0d0d0d;max-width:100%;word-break:break-word;line-height:1.4;margin:5px 0;}
+.sent_msg{background:#f4f4f4;border-radius:10px;padding:12px 16px;color:#0d0d0d;max-width:100%;word-break:break-word;line-height:1.4;margin:0;}
 html[data-theme="dark"] .sent_msg{background:#1f1f23;color:#f2f2f5;}
 html[data-theme="dark"] .ok_filekey_icon{fill:#58c98a;}

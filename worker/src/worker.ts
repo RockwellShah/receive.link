@@ -6,12 +6,13 @@
 // Endpoints (always-relay: every share goes through R2, the email carries a link):
 //   GET  /healthz          liveness
 //   POST /register         unseal email, send confirm mail, 202
-//   POST /confirm          consume one-time nonce, return the signed link
+//   POST /confirm          consume one-time nonce, return the signed link + revoke token
+//   POST /revoke           turn a link off using the receiver's revoke token
 //   POST /upload-init      verify + limit, presigned R2 PUT (browser uploads direct)
 //   POST /upload-complete  verify the object is real FileKey ciphertext, email the receiver
 //   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
 
-import { confirm, fetchObject, register, uploadComplete, uploadInit } from "./handlers";
+import { confirm, fetchObject, register, revoke, uploadComplete, uploadInit } from "./handlers";
 import { cors, json } from "./http";
 import type { Env } from "./types";
 
@@ -30,6 +31,8 @@ export default {
         return register(req, env);
       case "POST /confirm":
         return confirm(req, env);
+      case "POST /revoke":
+        return revoke(req, env);
       case "POST /upload-init":
         return uploadInit(req, env);
       case "POST /upload-complete":

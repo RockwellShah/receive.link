@@ -8,7 +8,7 @@
 import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
-import { ERR, OK, StatusMsg, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
+import { ERR, OK, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
 import { decryptCiphertextBlob, encryptFileToShareKey } from "../fk/stream";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError } from "./api";
@@ -27,7 +27,16 @@ function hexToBytes(s: string): Uint8Array {
 }
 
 function humanError(e: unknown): string {
-  if (e instanceof DropApiError) return e.message;
+  if (e instanceof DropApiError) {
+    const m = e.message;
+    if (/revoked/i.test(m)) return "This Drop link has been turned off. Ask the recipient for a new one.";
+    if (/invalid or expired/i.test(m)) return "This confirmation link expired or was already used. Set up again.";
+    if (/too large|maxBytes/i.test(m)) return "That file is over the upload limit.";
+    if (/rate limited|daily limit|over its daily/i.test(m)) return "Too many requests right now. Please try again later.";
+    if (/invalid link|bad signature|not a FileKey/i.test(m)) return "This link isn't valid. Ask the recipient for a fresh one.";
+    if (/invalid token|bad token|missing token/i.test(m)) return "This manage link isn't valid. Use the most recent one from a delivery email or your confirmation page.";
+    return m;
+  }
   const m = e instanceof Error ? e.message : String(e);
   if (/no PRF|passkey|assertion/i.test(m)) return "Couldn't use your passkey. Make sure you have a FileKey passkey on this device, then reload.";
   if (/auth_failed|wrong_namespace/i.test(m)) return "This file couldn't be decrypted. It may be corrupted, or not encrypted for you.";
@@ -47,14 +56,13 @@ async function setupMode(): Promise<void> {
     " Only your passkey can open them, and we never see your files or store your email address.",
   ], { speed: 12 });
   await appMsg(["First, what email should we send your file links to? We email a link to each file, never the file itself."]);
-  const { email, label } = await inputPrompt([
-    { key: "email", placeholder: "you@example.com", type: "email" },
-    { key: "label", placeholder: "A label senders will see (optional)" },
-  ]);
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    await appMsg(["That email doesn't look right. Reload the page to try again."], ERR);
-    return;
-  }
+  const { email, label } = await inputPrompt(
+    [
+      { key: "email", placeholder: "you@example.com", type: "email" },
+      { key: "label", placeholder: "A label senders will see (optional)" },
+    ],
+    (v) => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email) ? null : "Enter an email address like you@example.com."),
+  );
   if (!(await requireConfig())) return;
   const st = new StatusMsg("Setting up");
   try {
@@ -71,7 +79,7 @@ async function setupMode(): Promise<void> {
     });
     st.fail();
     await appMsg([{ t: "Check your email.", b: true }, ` We sent a confirmation link to ${email}. Click it to finish and get your Drop link.`]);
-    await appMsg(["You can close this tab. The link works on any device."]);
+    await appMsg(["You can close this tab. After you confirm, your Drop link can be shared from any device."]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);
@@ -84,7 +92,10 @@ async function confirmMode(nonce: string): Promise<void> {
   try {
     const { link } = await api.confirm(nonce);
     st.fail();
-    await linkReveal("Your Drop link is ready. Share it with anyone, and whatever they drop arrives encrypted to your passkey, in your inbox:", `${location.origin}/#${link}`);
+    await linkReveal(
+      "Your Drop link is ready. Share it with anyone, and we'll email you a download link whenever someone sends a file. The file stays encrypted until you open it with your passkey:",
+      `${location.origin}/#${link}`,
+    );
     await appMsg(["Save it somewhere. If you lose it, just set up again."]);
   } catch (e) {
     st.fail();
@@ -107,53 +118,62 @@ async function uploadMode(payload: string): Promise<void> {
     return;
   }
   const who = label ? `"${label}"` : "this FileKey user";
-  await appMsg([`Send a file to ${who}.`, " It's encrypted to their key in your browser before it leaves. Only they can open it."]);
-  showDropBar("Drop files or a folder to send", (items) => void sendFiles(payload, items));
+  await appMsg([`Send files to ${who}.`, " The contents are encrypted so only they can open them."]);
+  showDropBar("Drop files to send", (items) => void sendFiles(payload, items));
 }
 
 async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
   if (!items.length) return;
   hideDropBar();
-  const single = items.length === 1 && !items[0]!.fromFolder;
-  let file: File;
-  if (single) {
-    file = items[0]!.file;
-  } else {
-    // Multiple files / a folder: stream them into one zip (disk-backed, never whole in RAM), then
-    // encrypt that archive as a single .filekey. Decrypt yields the .zip (matches the main app 1:1).
-    const total = items.reduce((n, it) => n + it.file.size, 0);
-    const zip = new StatusMsg("Bundling");
-    try {
-      const zipBlob = await zipBundleToBlob(items, (b) => zip.progress(b, total));
-      file = new File([zipBlob], `${bundleName(items)}.zip`, { type: "application/zip" });
-    } catch (e) {
-      zip.fail();
-      await appMsg([humanError(e)], ERR);
-      return;
-    }
-    zip.done();
-  }
-  uploadCard(file.name, single ? "File" : "Bundle");
-  const enc = new StatusMsg("Encrypting");
   try {
-    const link = decodeDropLink(base64urlDecode(payload));
-    const shareKey = new TextDecoder().decode(link.shareKey);
-    const sender = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns); // throwaway
-    // Streams: read in slices, ciphertext is a Blob-of-Blobs, never fully in RAM (>=64MB off-thread).
-    const ciphertext = await encryptFileToShareKey(file, shareKey, NS, sender, {
-      onProgress: (d, t) => enc.progress(d, t),
-      onCancel: (cancel) => enc.enableCancel(cancel),
-    });
-    enc.done();
-    const up = new StatusMsg("Uploading");
-    const { objectId, uploadUrl } = await api.uploadInit(payload, ciphertext.size);
-    await api.putToR2(uploadUrl, ciphertext);
-    await api.uploadComplete(payload, objectId);
-    up.done();
-    await appMsg([{ t: "Sent.", b: true }, " They'll get an email with a link to open it. Thanks!"], OK);
-  } catch (e) {
-    enc.fail();
-    await appMsg([humanError(e)], ERR);
+    const single = items.length === 1 && !items[0]!.fromFolder;
+    let file: File;
+    if (single) {
+      file = items[0]!.file;
+    } else {
+      // Multiple files / a folder: stream them into one zip (disk-backed, never whole in RAM), then
+      // encrypt that archive as a single .filekey. Decrypt yields the .zip (matches the main app 1:1).
+      const total = items.reduce((n, it) => n + it.file.size, 0);
+      const zip = new StatusMsg("Bundling");
+      try {
+        const zipBlob = await zipBundleToBlob(items, (b) => zip.progress(b, total));
+        file = new File([zipBlob], `${bundleName(items)}.zip`, { type: "application/zip" });
+      } catch (e) {
+        zip.fail();
+        await appMsg([humanError(e)], ERR);
+        return;
+      }
+      zip.done();
+    }
+    uploadCard(file.name, single ? "File" : "Bundle");
+    // One status row at a time; `active` always points at the live phase, so a failure
+    // (or cancel) acts on the right row instead of leaving a stale "Uploading…" spinner.
+    let active = new StatusMsg("Encrypting");
+    try {
+      const link = decodeDropLink(base64urlDecode(payload));
+      const shareKey = new TextDecoder().decode(link.shareKey);
+      const sender = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns); // throwaway
+      // Streams: read in slices, ciphertext is a Blob-of-Blobs, never fully in RAM (>=64MB off-thread).
+      const ciphertext = await encryptFileToShareKey(file, shareKey, NS, sender, {
+        onProgress: (d, t) => active.progress(d, t),
+        onCancel: (cancel) => active.enableCancel(cancel),
+      });
+      active.done();
+      active = new StatusMsg("Uploading");
+      const { objectId, uploadUrl } = await api.uploadInit(payload, ciphertext.size);
+      await api.putToR2(uploadUrl, ciphertext);
+      await api.uploadComplete(payload, objectId);
+      active.done();
+      await appMsg([{ t: "Sent!", b: true }, " We emailed them a download link. If you're done, you can close this tab now."], OK);
+    } catch (e) {
+      if (active.cancelled) { await appMsg(["Upload cancelled."]); return; }
+      active.fail();
+      await appMsg([humanError(e)], ERR);
+    }
+  } finally {
+    // Re-show the drop bar so they can keep sending without reloading — the Drop link
+    // stays valid (capped per day by the Worker). Runs on success, error, and cancel.
+    showDropBar("Drop files to send", (next) => void sendFiles(payload, next));
   }
 }
 
@@ -178,6 +198,36 @@ async function receiveMode(objectId: string): Promise<void> {
   }
 }
 
+// ---- Revoke (/revoke#<token>) ----
+async function revokeMode(token: string): Promise<void> {
+  if (!token) {
+    await appMsg([{ t: "This manage link isn't valid.", b: true }, " Use the link from your confirmation page or a delivery email."], ERR);
+    return;
+  }
+  let revoking = false;
+  const host = await appMsg([
+    { t: "Turn off this Drop link?", b: true },
+    " People with the old link won't be able to send you files anymore. Download links already emailed to you still work until they expire.",
+  ]);
+  actionRow(host, [
+    { label: "Turn off this link", onClick: () => { if (revoking) return; revoking = true; void doRevoke(token); } },
+    { label: "Keep it", muted: true, onClick: () => void (location.href = "/") },
+  ]);
+}
+
+async function doRevoke(token: string): Promise<void> {
+  const st = new StatusMsg("Turning off your link");
+  try {
+    await api.revoke(token);
+    st.fail();
+    const host = await appMsg([{ t: "This Drop link is off.", b: true }, " People can no longer send files to it. You can create a new one anytime."], OK);
+    actionRow(host, [{ label: "Create a new Drop link", onClick: () => void (location.href = "/") }]);
+  } catch (e) {
+    st.fail();
+    await appMsg([humanError(e)], ERR);
+  }
+}
+
 // ---- route ----
 void (async () => {
   initChrome();
@@ -186,6 +236,7 @@ void (async () => {
   const path = location.pathname;
   const hash = location.hash.replace(/^#/, "");
   if (path === "/confirm") void confirmMode(hash);
+  else if (path === "/revoke") void revokeMode(hash);
   else if (path.startsWith("/d/")) void receiveMode(path.slice("/d/".length));
   else if (hash.length > 0) void uploadMode(hash);
   else void setupMode();

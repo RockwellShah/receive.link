@@ -1,0 +1,9 @@
+# Files that live in web/ but must NOT publish to the CDN. The browser only needs
+# index.html, /dist/app.js, /style.css, /fonts/*, /logo.svg, and _redirects.
+# Everything below is TypeScript source, tests, or local dev/build scripts.
+*.ts
+src/
+fk/
+core/
+dist/worker.js
+og-card.html

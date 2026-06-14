@@ -5,7 +5,7 @@
 // mail at /__mail so you can click the confirm + download links. Run: bun run web/devserver.ts
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
-import { confirm, fetchObject, register, uploadComplete, uploadInit } from "../worker/src/handlers";
+import { confirm, fetchObject, register, revoke, uploadComplete, uploadInit } from "../worker/src/handlers";
 import { CapturingEmail, MemoryKV, MemoryR2 } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
@@ -55,6 +55,7 @@ async function handleApi(req: Request, sub: string): Promise<Response> {
   if (req.method === "GET" && sub === "/__lastmail") return Response.json(mail.sent.at(-1) ?? null);
   if (req.method === "POST" && sub === "/register") return register(req, env);
   if (req.method === "POST" && sub === "/confirm") return confirm(req, env);
+  if (req.method === "POST" && sub === "/revoke") return revoke(req, env);
   if (req.method === "POST" && sub === "/upload-init") {
     const res = await uploadInit(req, env);
     const peek = res.clone();

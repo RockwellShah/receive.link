@@ -33,11 +33,13 @@ export const REG_IP_PER_DAY = 20; // confirmation emails one IP can trigger
 export const REG_EMAIL_PER_DAY = 5; // confirmation emails one address can receive (anti-bombing)
 export const UPLOAD_LINK_PER_DAY = 25; // files one Drop link accepts (anti-flood of the inbox)
 export const UPLOAD_IP_PER_DAY = 100; // files one IP can push across all links
+export const REVOKE_IP_PER_DAY = 60; // revoke calls one IP can make (tokens are unguessable; this just caps probing)
 const CONFIRM_TTL_SEC = HOUR; // pending registration lifetime
 const PRESIGN_TTL_SEC = HOUR; // presigned PUT/GET lifetime
 const OBJECT_TTL_SEC = 7 * DAY; // matches the R2 bucket lifecycle rule
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 const OBJECT_ID_BYTES = 16;
+const REVOKE_TOKEN_BYTES = 16; // receiver-only secret that maps to a link_id for revocation
 
 function maxUploadBytes(env: Env): number {
   const n = env.MAX_UPLOAD_BYTES ? parseInt(env.MAX_UPLOAD_BYTES, 10) : NaN;
@@ -137,7 +139,36 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
   const full = new Uint8Array(region.length + sig.length);
   full.set(region, 0);
   full.set(sig, region.length);
-  return json({ link: base64urlEncode(full) }, 200, origin);
+
+  // Mint a receiver-only revoke token so they can turn this link off later. It maps
+  // to the link_id both ways: revtok->id powers POST /revoke; id->revtok lets each
+  // delivery email carry the manage link. Neither entry ever touches the email address.
+  const linkIdHex = hex(region.slice(1, 1 + LINK_ID_LEN));
+  const revokeToken = hex(randomBytes(REVOKE_TOKEN_BYTES));
+  await env.DROP_KV.put(`revtok:${revokeToken}`, linkIdHex);
+  await env.DROP_KV.put(`linkrev:${linkIdHex}`, revokeToken);
+
+  return json({ link: base64urlEncode(full), revokeToken }, 200, origin);
+}
+
+// POST /revoke { token } -> { ok } — the receiver turns their own Drop link off.
+// The token is the secret minted at confirm; it resolves to the link_id we flag.
+export async function revoke(req: Request, env: Env): Promise<Response> {
+  const origin = env.ALLOWED_ORIGIN || "*";
+  const body = await readJson<{ token: string }>(req);
+  if (!body || typeof body.token !== "string") return json({ error: "missing token" }, 400, origin);
+  if (!isHex(body.token, REVOKE_TOKEN_BYTES)) return json({ error: "bad token" }, 400, origin);
+
+  const ipHash = await sha256hex(clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `rev:ip:${ipHash}`, REVOKE_IP_PER_DAY, DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
+
+  const linkIdHex = await env.DROP_KV.get(`revtok:${body.token}`);
+  if (!linkIdHex) return json({ error: "invalid token" }, 404, origin);
+  // Permanent flag (links are permanent); enforced at upload-init + upload-complete.
+  await env.DROP_KV.put(`revoked:${linkIdHex}`, "1");
+  return json({ ok: true }, 200, origin);
 }
 
 // POST /upload-init { payload, size } -> { objectId, uploadUrl, expiresInSec }
@@ -244,8 +275,12 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     return json({ error: "invalid link" }, 400, origin);
   }
 
+  // Carry the receiver's manage/revoke link in the delivery email (best-effort:
+  // links minted before revoke existed simply won't have one).
+  const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
+  const manageUrl = revokeToken ? `${origin}/revoke#${revokeToken}` : undefined;
   try {
-    await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label);
+    await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label, manageUrl);
   } catch {
     await deleteObject(env, finalId); // no orphaned final; the client can retry
     return json({ error: "delivery failed, try again" }, 502, origin);

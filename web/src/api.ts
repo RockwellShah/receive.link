@@ -37,8 +37,13 @@ export class DropApi {
   }
 
   /** Confirm: exchange the one-time nonce for the finished signed Drop link. */
-  confirm(nonce: string): Promise<{ link: string }> {
+  confirm(nonce: string): Promise<{ link: string; revokeToken: string }> {
     return this.postJson("/confirm", { nonce });
+  }
+
+  /** Turn off a Drop link using the receiver's private revoke token. */
+  revoke(token: string): Promise<{ ok: true }> {
+    return this.postJson("/revoke", { token });
   }
 
   /** Upload step 1: verify the link + get a presigned R2 PUT URL. */
