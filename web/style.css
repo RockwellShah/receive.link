@@ -76,7 +76,7 @@ body{margin:0;}
 #chiz_hidden_click_container{width:100vw;right:0;}
 
 #logo_bar{display:flex;cursor:pointer;}
-#logo_txt{color:#000;font-size:26px;font-family:sans-serif;margin-left:8px;}
+#logo_txt{color:#000;font-size:26px;font-family:'Inter', system-ui;margin-left:8px;}
 
 #outer_drop_container{position:fixed;bottom:0;left:0;width:100%;background-color:#fff;display:flex;justify-content:center;}
 #drop_container{
@@ -96,7 +96,7 @@ body{margin:0;}
 .dc_txt_container{display: flex;flex-direction: column;justify-content: center;flex-grow:1;}
 .dc_txt_container .file_title{font-weight:600;}
 .dc_buttons{display:flex;align-items:center;gap:10px;flex-shrink:0;}
-.dc_btn{font-family:'Inter';font-size:15px;font-weight:600;line-height:1;padding:11px 18px;border-radius:10px;cursor:pointer;border:1px solid transparent;white-space:nowrap;}
+.dc_btn{font-family:'Inter';font-size:15px;font-weight:600;line-height:1;padding:11px 18px;border-radius:10px;cursor:pointer;border:1px solid transparent;white-space:nowrap;transition:background .18s ease,transform .18s cubic-bezier(.4,0,.2,1),box-shadow .18s ease;}
 .dc_btn_primary{background:#1377F9;color:#fff;}
 .dc_btn_primary:hover{background:#0e63d6;}
 .dc_btn_ghost{background:#fff;color:#0d0d0d;border-color:#0000001f;font-weight:500;}
@@ -148,12 +148,12 @@ body{margin:0;}
 .file_icon{fill:#1377F9;width:25px;height:30px}
 .plus_icon{width:28px;height:27px;fill:#1377F9;}
 .import_icon{width:28px;height:28px;fill:none;stroke:#c8c8ce;stroke-width:1.8;}
-.dl_icon{width:19px;height:19px;fill:#1377F9;margin-right:4px;}
-.confirm_icon, .edit_icon, .copy_icon{width:18px;height:19px;fill:#1377F9;margin-right:4px;}
+.dl_icon{width:19px;height:19px;fill:currentColor;margin-right:4px;}
+.confirm_icon, .edit_icon, .copy_icon{width:18px;height:19px;fill:currentColor;margin-right:4px;}
 .confirm_icon{padding:2px;}
 .copy_icon{padding:1px;}
 .edit_icon{padding:0;}
-.save_icon{width:18px;height:19px;fill:#1377F9;margin-right:4px;padding:2px;}
+.save_icon{width:18px;height:19px;fill:currentColor;margin-right:4px;padding:2px;}
 
 
 #chiz_icon_container{cursor:pointer;opacity:0.6;z-index:10001;margin:15px 0;position:relative;width:28px;height:18px;color:#000;transition:transform .5s cubic-bezier(.45,0,.25,1);transform-origin:18px 7px;}
@@ -214,6 +214,11 @@ body.fk-authed #acct_control{display:flex;}
 
 /* All in-app clickables are plain blue text — no underline (blue = tappable). External links keep the ↗ icon. */
 .msg_clickable, .msg_link{color:#1377F9;cursor:pointer;font-weight: 450;}
+/* Smooth hover for inline actions; icons follow via currentColor (matches filekey v1). */
+.msg_clickable, .msg_link, .dl_action, .copy_button, .confirm_pub_key, .edit_pub_key, .cancel_pub_key, .nickname_btn, .nickname_skip, .contacts_add, .contact_act, #copy_pub{transition:color .12s ease;}
+.dl_action svg{fill:currentColor;}
+.msg_clickable:hover, .msg_link:hover, .dl_action:hover, .copy_button:hover, .confirm_pub_key:hover, .edit_pub_key:hover, .nickname_btn:hover, .contacts_add:hover, .contact_act:hover, #copy_pub:hover{color:#4d9bff;}
+.cancel_pub_key:hover, .nickname_skip:hover{color:#0d0d0d;}
 .borderless{border:none;}
 
 .msg_menu_heading{margin:0;font-size:17px;font-weight:600}
@@ -427,6 +432,14 @@ html[data-theme="dark"] .badge{color:#4d9bff;background:rgba(77,155,255,0.14);}
 .fk_input{width:100%;outline:none;border:1px solid #0000001a;border-radius:10px;margin:10px 0;padding:14px 16px;line-height:1.4;font-size:16px;color:#0d0d0d;font-family:'Inter';background:#fff;}
 .fk_input:focus{border-color:#1377f955;}
 html[data-theme="dark"] .fk_input{background:#161618;color:#f2f2f5;border-color:#ffffff1f;}
+/* Browser autofill (notably the email field) forces its own light background + dark text via the UA stylesheet. Paint over it with an inset box-shadow so autofilled inputs keep their theme colors instead of flashing white. */
+.fk_input:-webkit-autofill,.fk_input:-webkit-autofill:hover,.fk_input:-webkit-autofill:focus{-webkit-text-fill-color:#0d0d0d;-webkit-box-shadow:0 0 0 1000px #fff inset;caret-color:#0d0d0d;transition:background-color 9999s ease-in-out 0s;}
+html[data-theme="dark"] .fk_input:-webkit-autofill,html[data-theme="dark"] .fk_input:-webkit-autofill:hover,html[data-theme="dark"] .fk_input:-webkit-autofill:focus{-webkit-text-fill-color:#f2f2f5;-webkit-box-shadow:0 0 0 1000px #161618 inset;caret-color:#f2f2f5;}
 .ok_dp{border:1px #1f9d5721 solid;}
 .ok_filekey_icon{fill:#1f9d57;height:16px;width:13px;}
+/* Option 5: the setup input sits left (under the question) while you fill it; on Confirm each answer becomes its own right-aligned sent bubble (no avatar). */
+.fk_setup_cont{align-self:flex-start;margin-left:50px;}
+@media screen and (max-width:1080px){.fk_setup_cont{width:calc(100% - 70px);}}
+.sent_msg{background:#f4f4f4;border-radius:10px;padding:12px 16px;color:#0d0d0d;max-width:100%;word-break:break-word;line-height:1.4;margin:5px 0;}
+html[data-theme="dark"] .sent_msg{background:#1f1f23;color:#f2f2f5;}
 html[data-theme="dark"] .ok_filekey_icon{fill:#58c98a;}

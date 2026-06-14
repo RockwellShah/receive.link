@@ -21,7 +21,8 @@
     "@noble/hashes": "^2.2.0",
     "@scure/base": "^2.2.0",
     "@scure/bip39": "^2.2.0",
-    "aws4fetch": "^1.0.20"
+    "aws4fetch": "^1.0.20",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240000.0",

@@ -41,11 +41,13 @@
     <div id=main_inner></div>
     <div id=outer_drop_container>
       <div id=drop_container>
-        <input type="file" id="file_input">
+        <input type="file" id="file_input" multiple>
+        <input type="file" id="folder_input" webkitdirectory hidden>
         <div class=dc_icon_container></div>
-        <div class=dc_txt_container><span class=file_title>Drop a file to send</span></div>
+        <div class=dc_txt_container><span class=file_title>Drop files or a folder to send</span></div>
         <div class=dc_buttons>
-          <button id=choose_file class="dc_btn dc_btn_primary no_select">Choose File</button>
+          <button id=choose_folder class="dc_btn dc_btn_ghost no_select">Choose Folder</button>
+          <button id=choose_file class="dc_btn dc_btn_primary no_select">Choose Files</button>
         </div>
       </div>
     </div>

@@ -74,7 +74,9 @@ export async function register(req: Request, env: Env): Promise<Response> {
     return json({ error: "missing fields" }, 400, origin);
   }
 
-  if (!(await rateLimit(env.DROP_KV, `reg:ip:${clientIp(req)}`, REG_IP_PER_DAY, DAY))) {
+  // Hash the IP so KV only ever holds a digest, never a raw address (it's only a rate-limit key).
+  const ipHash = await sha256hex(clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `reg:ip:${ipHash}`, REG_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
 
@@ -161,7 +163,8 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (!(await rateLimit(env.DROP_KV, `up:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
     return json({ error: "link is over its daily limit" }, 429, origin);
   }
-  if (!(await rateLimit(env.DROP_KV, `up:ip:${clientIp(req)}`, UPLOAD_IP_PER_DAY, DAY))) {
+  const ipHash = await sha256hex(clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
 

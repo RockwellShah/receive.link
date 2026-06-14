@@ -21,10 +21,11 @@ const ENVS: Record<string, DropConfig> = {
     serverKemPublicHex: PLACEHOLDER,
     serverSignPublicJwk: null,
   },
-  "staging.drop.filekey.app": {
-    apiBase: "https://api-staging.drop.filekey.app",
-    serverKemPublicHex: PLACEHOLDER,
-    serverSignPublicJwk: null,
+  "drop-staging.filekey.app": {
+    apiBase: "https://filekey-drop-staging.rockwellshah.workers.dev",
+    serverKemPublicHex:
+      "043b235d0c8594a8dda07e5db3ce127f697a65037aa606135c4ba80316b850833a524f6f78b35f98959887323342bdb93f6b7cc92e2ae92b556ffc5807c116b2b2",
+    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E", y: "3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE" },
   },
   // Staging on Cloudflare Pages → the workers.dev Worker. Keys pinned from
   // keys/staging.json (gen-keys output); the matching privates are Wrangler secrets.

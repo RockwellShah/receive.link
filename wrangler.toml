@@ -23,7 +23,7 @@ binding = "DROP_KV"
 id = "c277258851044785971403e8d458b76d"
 
 [vars]
-ALLOWED_ORIGIN = "https://filekey-drop-staging.pages.dev"
+ALLOWED_ORIGIN = "https://drop-staging.filekey.app"
 MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E","y":"3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE"}'
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"            # <id>.r2.cloudflarestorage.com

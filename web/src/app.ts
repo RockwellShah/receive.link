@@ -10,6 +10,7 @@ import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, OK, StatusMsg, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
 import { decryptCiphertextBlob, encryptFileToShareKey } from "../fk/stream";
+import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
 import { getPrfSecret } from "./webauthn";
@@ -42,10 +43,10 @@ async function requireConfig(): Promise<boolean> {
 // ---- Setup ----
 async function setupMode(): Promise<void> {
   await appMsg([
-    { t: "Get files, end-to-end encrypted.", b: true },
-    " Create a link people can use to send you files. Only your passkey can open them, and we never see your files or store your address.",
+    { t: "Create a link people can use to send you files.", b: true },
+    " Only your passkey can open them, and we never see your files or store your email address.",
   ], { speed: 12 });
-  await appMsg(["First, what email should we deliver your files to?"]);
+  await appMsg(["First, what email should we send your file links to? We email a link to each file, never the file itself."]);
   const { email, label } = await inputPrompt([
     { key: "email", placeholder: "you@example.com", type: "email" },
     { key: "label", placeholder: "A label senders will see (optional)" },
@@ -107,19 +108,38 @@ async function uploadMode(payload: string): Promise<void> {
   }
   const who = label ? `"${label}"` : "this FileKey user";
   await appMsg([`Send a file to ${who}.`, " It's encrypted to their key in your browser before it leaves. Only they can open it."]);
-  showDropBar("Drop a file to send", (f) => void sendFile(payload, f));
+  showDropBar("Drop files or a folder to send", (items) => void sendFiles(payload, items));
 }
 
-async function sendFile(payload: string, file: File): Promise<void> {
+async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
+  if (!items.length) return;
   hideDropBar();
-  uploadCard(file.name, "File");
+  const single = items.length === 1 && !items[0]!.fromFolder;
+  let file: File;
+  if (single) {
+    file = items[0]!.file;
+  } else {
+    // Multiple files / a folder: stream them into one zip (disk-backed, never whole in RAM), then
+    // encrypt that archive as a single .filekey. Decrypt yields the .zip (matches the main app 1:1).
+    const total = items.reduce((n, it) => n + it.file.size, 0);
+    const zip = new StatusMsg("Bundling");
+    try {
+      const zipBlob = await zipBundleToBlob(items, (b) => zip.progress(b, total));
+      file = new File([zipBlob], `${bundleName(items)}.zip`, { type: "application/zip" });
+    } catch (e) {
+      zip.fail();
+      await appMsg([humanError(e)], ERR);
+      return;
+    }
+    zip.done();
+  }
+  uploadCard(file.name, single ? "File" : "Bundle");
   const enc = new StatusMsg("Encrypting");
   try {
     const link = decodeDropLink(base64urlDecode(payload));
     const shareKey = new TextDecoder().decode(link.shareKey);
     const sender = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns); // throwaway
-    // Streams: a big file is read in slices and the ciphertext is a Blob-of-Blobs,
-    // never fully in RAM (>=64MB runs off-thread in web/fk/worker.ts).
+    // Streams: read in slices, ciphertext is a Blob-of-Blobs, never fully in RAM (>=64MB off-thread).
     const ciphertext = await encryptFileToShareKey(file, shareKey, NS, sender, {
       onProgress: (d, t) => enc.progress(d, t),
       onCancel: (cancel) => enc.enableCancel(cancel),
