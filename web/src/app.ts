@@ -10,6 +10,7 @@ import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, OK, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCardWith, saveDecryptedStream, showDropBar, uploadCard } from "../fk/ui";
 import { ciphertextLength, encryptFileToParts, encryptFileToShareKey, openCiphertext } from "../fk/stream";
+import { uploadPartsPool } from "../fk/pool";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError, type UploadInit } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
@@ -159,7 +160,6 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
         active = new StatusMsg("Encrypting");
         const ciphertext = await encryptFileToShareKey(file, shareKey, NS, sender, {
           onProgress: (d, t) => active!.progress(d, t),
-          onCancel: (cancel) => active!.enableCancel(cancel),
         });
         active.done();
         active = new StatusMsg("Uploading");
@@ -186,9 +186,18 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
   }
 }
 
-// Stream-encrypt + multipart-upload a file one part at a time (constant memory). Per-part retry
-// re-presigns the URL (covers a part URL expiring mid long upload); a failure aborts the multipart
-// so R2 keeps no orphaned parts.
+// Largest amount of part-buffer RAM we hold across all in-flight uploads. Concurrency scales down
+// for very large parts (multi-TB files reach ~582 MiB parts) so peak memory stays ~ C x partSize.
+const UPLOAD_RAM_BUDGET = 1024 * 1024 * 1024; // 1 GiB
+function uploadConcurrency(partSize: number): number {
+  return Math.max(1, Math.min(4, Math.floor(UPLOAD_RAM_BUDGET / partSize)));
+}
+
+// Stream-encrypt + multipart-upload with up to C parts in flight (C = RAM budget / partSize, max 4).
+// Encryption is sequential (the stream is forward-only) but uploads overlap, so the network isn't idle
+// while we encrypt and the CPU isn't idle while we upload. The pool (web/fk/pool.ts) holds each part's
+// buffer until its ETag (uploadPart retries + re-presigns an expired URL) and caps buffered parts at C
+// (memory ~ C x partSize). The first failure aborts the multipart so R2 keeps no orphaned parts.
 async function uploadMultipart(
   payload: string,
   file: File,
@@ -199,17 +208,17 @@ async function uploadMultipart(
   status: StatusMsg,
 ): Promise<{ partNumber: number; etag: string }[]> {
   const urls = new Map<number, string>(init.partUrls.map((p) => [p.partNumber, p.url] as const));
-  const parts: { partNumber: number; etag: string }[] = [];
-  let uploaded = 0;
-  let partNumber = 1;
+  let confirmed = 0;
   try {
-    for await (const partBytes of encryptFileToParts(file, shareKey, NS, sender, init.partSize)) {
-      parts.push({ partNumber, etag: await uploadPart(payload, init, partNumber, partBytes, urls) });
-      uploaded += partBytes.length;
-      status.progress(uploaded, ctLen);
-      partNumber++;
-    }
-    return parts;
+    return await uploadPartsPool(
+      encryptFileToParts(file, shareKey, NS, sender, init.partSize),
+      uploadConcurrency(init.partSize),
+      (n, bytes) => uploadPart(payload, init, n, bytes, urls),
+      (bytes) => {
+        confirmed += bytes;
+        status.progress(confirmed, ctLen);
+      },
+    );
   } catch (e) {
     await api.uploadAbort(payload, init.objectId).catch(() => {});
     throw e;
