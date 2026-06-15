@@ -264,17 +264,29 @@ async function receiveMode(objectId: string): Promise<void> {
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
-    // Reads the head + metadata (small, authenticated); the payload stays lazy until Save, so it
-    // streams straight to disk instead of staging the whole plaintext (1x disk for huge files).
-    const { metadata, chunks } = await openCiphertext(ciphertext, identity, NS);
+    // Open once just for metadata (to render the card). Each Save RE-OPENS a fresh decrypt stream:
+    // the chunk generator is single-use, so a failed, cancelled, or double-clicked save must start
+    // clean, not resume a half-consumed generator (which would silently write a truncated file and
+    // still report success). `saving` blocks concurrent saves.
+    const { metadata } = await openCiphertext(ciphertext, identity, NS);
     st.done();
     await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you and decrypts on your device as you save it."], OK);
     if (!(window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker && metadata.originalSize > 2 * 1024 * 1024 * 1024) {
       await appMsg(["For a file this large, Chrome or Edge can save it more reliably than this browser."]);
     }
-    saveCardWith(metadata.filename || "file", "Decrypted file", () =>
-      void saveDecryptedStream(metadata.filename || "file", metadata.mimeType, metadata.originalSize, chunks),
-    );
+    let saving = false;
+    saveCardWith(metadata.filename || "file", "Decrypted file", async () => {
+      if (saving) return; // one save at a time; ignore double-clicks
+      saving = true;
+      try {
+        const { chunks } = await openCiphertext(ciphertext, identity, NS); // fresh stream per click
+        await saveDecryptedStream(metadata.filename || "file", metadata.mimeType, metadata.originalSize, chunks);
+      } catch (e) {
+        await appMsg([humanError(e)], ERR);
+      } finally {
+        saving = false;
+      }
+    });
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);

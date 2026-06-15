@@ -14,7 +14,7 @@ import {
   uploadInit,
   uploadParts,
 } from "./handlers";
-import { makeTestEnv, type TestHarness } from "./testing";
+import { CapturingEmail, makeTestEnv, type TestHarness } from "./testing";
 
 function post(path: string, body: unknown, ip = "1.2.3.4"): Request {
   return new Request(`https://api.drop.test${path}`, {
@@ -148,6 +148,47 @@ test("multipart: a large upload splits into parts, assembles, and delivers", asy
   // The assembled final object is the full 50 bytes (parts concatenated in order).
   const finalId = delivery.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
   expect((await h.r2.head(finalId))!.size).toBe(50);
+});
+
+// A delivery email that throws the first time it is called, then succeeds. Installed AFTER setup so
+// register/confirm go through the harness's default email and only the first delivery fails.
+class FailOnce extends CapturingEmail {
+  failed = false;
+  async send(message: Parameters<CapturingEmail["send"]>[0]): Promise<{ messageId: string }> {
+    if (!this.failed) {
+      this.failed = true;
+      throw new Error("smtp down");
+    }
+    return super.send(message);
+  }
+}
+
+test("multipart: delivery failure after assembly is retry-safe (retry skips the consumed uploadId)", async () => {
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "10" });
+  const link = await setupLink(h);
+  const init = await uploadInit(post("/upload-init", { payload: link, size: 50 }), h.env);
+  const mp = (await init.json()) as { objectId: string; uploadId: string; partCount: number };
+  const parts: { partNumber: number; etag: string }[] = [];
+  for (let n = 1; n <= mp.partCount; n++) {
+    const chunk = n === 1 ? fkeyCiphertext(10) : new Uint8Array(10);
+    parts.push({ partNumber: n, etag: h.r2.putPartRaw(mp.uploadId, n, chunk) });
+  }
+
+  // Swap in a one-shot-failing email for the delivery (setup already used the default one).
+  const failEmail = new FailOnce();
+  h.env.EMAIL = failEmail;
+
+  // First complete: the MPU assembles, but the delivery email throws -> retryable 502, staging kept.
+  const first = await uploadComplete(post("/upload-complete", { payload: link, objectId: mp.objectId, parts }), h.env);
+  expect(first.status).toBe(502);
+  expect((await h.r2.head(mp.objectId))!.size).toBe(50); // assembled object survived for the retry
+  expect(failEmail.sent.length).toBe(0); // delivery threw; nothing recorded
+
+  // Retry: the uploadId is already consumed (CompleteMultipartUpload is one-shot). The fix must detect
+  // the assembled object and skip re-completing — otherwise this 502s (or 500s) forever.
+  const second = await uploadComplete(post("/upload-complete", { payload: link, objectId: mp.objectId, parts }), h.env);
+  expect(second.status).toBe(200);
+  expect(failEmail.sent.at(-1)!.text).toContain("/d/"); // delivered on the retry
 });
 
 test("multipart: a wrong part count is rejected (no partial assembly, no email)", async () => {

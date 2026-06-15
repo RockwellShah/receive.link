@@ -411,16 +411,21 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
   // Revocation on the DELIVERY link (the email goes out here).
   if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
 
-  // Best-effort concurrency guard (the done flag is the permanent one): blocks a
-  // second concurrent complete while this one runs. Held only during the work; the
-  // finally frees it so a failed attempt can be retried.
+  // Concurrency guard (the done flag is the permanent one): if another complete for this object is
+  // mid-flight, tell the caller to RETRY rather than claim success. That earlier attempt might still
+  // fail (e.g. email), and a false success here would silently drop delivery. Held only during the
+  // work; the finally frees it so a failed attempt can be retried.
   const completingKey = `completing:${body.objectId}`;
-  if (await env.DROP_KV.get(completingKey)) return json({ ok: true, already: true }, 200, origin);
+  if (await env.DROP_KV.get(completingKey)) return json({ error: "completion already in progress, try again" }, 409, origin);
   await env.DROP_KV.put(completingKey, "1", { expirationTtl: 120 });
   try {
     // Multipart: validate the part set strictly, then assemble. After this the
     // object exists at objectId exactly like a single PUT did.
-    if (bind.mp) {
+    // Assemble only if a prior attempt hasn't already completed the MPU. CompleteMultipartUpload
+    // consumes the uploadId, so re-completing fails forever; if an earlier attempt completed but then
+    // failed downstream (e.g. email), the assembled object already exists at objectId — skip straight
+    // to delivery below instead of re-completing a consumed upload.
+    if (bind.mp && !(await objectInfo(env, body.objectId))) {
       const parts = validateParts(body.parts, bind.mp.partCount);
       if (!parts) {
         // Terminal: the part set is wrong/incomplete. Discard the upload.

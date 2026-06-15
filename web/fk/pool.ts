@@ -32,15 +32,21 @@ export async function uploadPartsPool(
       .finally(() => inFlight.delete(task));
     inFlight.add(task);
   };
+  // Drive the generator manually so we check `failure` BEFORE pulling (encrypting) the next part — a
+  // for-await would encrypt one extra part past a failure before the loop could break.
+  const iter = parts[Symbol.asyncIterator]();
   try {
-    for await (const bytes of parts) {
-      if (failure) break;
-      launch(partNumber++, bytes);
+    while (!failure) {
+      const next = await iter.next();
+      if (next.done) break;
+      launch(partNumber++, next.value);
       // Backpressure: don't pull (encrypt) the next part until a slot frees.
       while (inFlight.size >= concurrency && !failure) await Promise.race(inFlight);
     }
   } catch (e) {
     failure ??= e; // the generator (encryption) threw
+  } finally {
+    await iter.return?.(undefined).catch(() => {}); // stop encryption promptly on failure/abort
   }
   await Promise.allSettled(inFlight); // let every in-flight upload settle (each captures its own error)
   if (failure) throw failure;
