@@ -48,6 +48,61 @@ export class MemoryR2 {
   async delete(key: string): Promise<void> {
     this.store.delete(key);
   }
+
+  // ---- multipart: mirrors the R2 binding surface r2.ts uses (create/resume +
+  // the handle's uploadPart/complete/abort), plus putPartRaw to stand in for the
+  // browser's presigned UploadPart PUT (the dev server calls it). ----
+  multipart = new Map<string, { key: string; parts: Map<number, Uint8Array> }>();
+  mpuSeq = 0;
+  private mpuHandle(key: string, uploadId: string) {
+    const r2 = this;
+    return {
+      key,
+      uploadId,
+      async uploadPart(partNumber: number, value: Uint8Array): Promise<{ partNumber: number; etag: string }> {
+        return { partNumber, etag: r2.putPartRaw(uploadId, partNumber, value) };
+      },
+      async complete(parts: { partNumber: number; etag: string }[]): Promise<{ size: number }> {
+        const mpu = r2.multipart.get(uploadId);
+        if (!mpu) throw new Error("no such multipart upload");
+        const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+        const pieces: Uint8Array[] = [];
+        for (const p of ordered) {
+          const b = mpu.parts.get(p.partNumber);
+          if (!b) throw new Error(`missing part ${p.partNumber}`);
+          pieces.push(b);
+        }
+        const size = pieces.reduce((n, c) => n + c.length, 0);
+        const out = new Uint8Array(size);
+        let o = 0;
+        for (const c of pieces) {
+          out.set(c, o);
+          o += c.length;
+        }
+        r2.store.set(mpu.key, out);
+        r2.multipart.delete(uploadId);
+        return { size };
+      },
+      async abort(): Promise<void> {
+        r2.multipart.delete(uploadId);
+      },
+    };
+  }
+  async createMultipartUpload(key: string) {
+    const uploadId = `mpu-${++this.mpuSeq}`;
+    this.multipart.set(uploadId, { key, parts: new Map() });
+    return this.mpuHandle(key, uploadId);
+  }
+  resumeMultipartUpload(key: string, uploadId: string) {
+    return this.mpuHandle(key, uploadId);
+  }
+  /** Stand in for the browser's presigned UploadPart PUT; returns a quoted ETag like S3. */
+  putPartRaw(uploadId: string, partNumber: number, value: Uint8Array): string {
+    const mpu = this.multipart.get(uploadId);
+    if (!mpu) throw new Error("no such multipart upload");
+    mpu.parts.set(partNumber, value.slice());
+    return `"etag-${partNumber}-${value.length}"`;
+  }
 }
 
 export interface SentMail {

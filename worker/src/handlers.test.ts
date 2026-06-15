@@ -12,6 +12,7 @@ import {
   register,
   uploadComplete,
   uploadInit,
+  uploadParts,
 } from "./handlers";
 import { makeTestEnv, type TestHarness } from "./testing";
 
@@ -59,7 +60,7 @@ test("full flow: register -> confirm -> upload-init -> upload-complete emails th
   expect(reg.status).toBe(202);
   expect(h.email.sent.length).toBe(1);
   expect(h.email.sent[0]!.to).toBe("receiver@example.com");
-  expect(h.email.sent[0]!.from).toBe("files@send.test");
+  expect(h.email.sent[0]!.from).toBe("FileKey Drop <files@send.test>");
 
   const conf = await confirm(post("/confirm", { nonce: nonceFrom(h.email.sent[0]!.text!) }), h.env);
   expect(conf.status).toBe(200);
@@ -75,12 +76,13 @@ test("full flow: register -> confirm -> upload-init -> upload-complete emails th
 
   const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
   expect(comp.status).toBe(200);
-  expect(h.email.sent.length).toBe(2);
-  expect(h.email.sent[1]!.to).toBe("receiver@example.com"); // unseal worked end-to-end
-  expect(h.email.sent[1]!.text).toContain("/d/");
+  expect(h.email.sent.length).toBe(3); // register (confirm) + confirm (drop-link) + this delivery
+  const delivery = h.email.sent.at(-1)!;
+  expect(delivery.to).toBe("receiver@example.com"); // unseal worked end-to-end
+  expect(delivery.text).toContain("/d/");
   // Delivered under a fresh, sender-unknown final key (not the staging objectId),
   // and the staging object is cleaned up.
-  const finalId = h.email.sent[1]!.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
+  const finalId = delivery.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
   expect(finalId).not.toBe(objectId);
   expect(await h.r2.head(finalId)).not.toBeNull();
   expect(await h.r2.head(objectId)).toBeNull();
@@ -95,7 +97,7 @@ test("upload-complete rejects bytes that aren't FileKey ciphertext (no open mail
   h.r2.putRaw(objectId, new Uint8Array([1, 2, 3, 4, 5, 6])); // no FKEY magic
   const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
   expect(comp.status).toBe(422);
-  expect(h.email.sent.length).toBe(1); // only the confirm email
+  expect(h.email.sent.length).toBe(2); // only the two setup emails (confirm + drop link); no delivery
 });
 
 test("upload-complete is idempotent: one upload, one delivery email", async () => {
@@ -107,7 +109,71 @@ test("upload-complete is idempotent: one upload, one delivery email", async () =
   h.r2.putRaw(objectId, fkeyCiphertext(50));
   await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
   await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
-  expect(h.email.sent.length).toBe(2); // 1 confirm + 1 delivery
+  expect(h.email.sent.length).toBe(3); // 2 setup emails + 1 delivery (idempotent: not 2 deliveries)
+});
+
+// MULTIPART_THRESHOLD/MIN_PART are forced tiny so a 50-byte file exercises the real
+// multipart path (5 parts) without moving 100+ MiB through the test.
+test("multipart: a large upload splits into parts, assembles, and delivers", async () => {
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "10" });
+  const link = await setupLink(h);
+  const init = await uploadInit(post("/upload-init", { payload: link, size: 50 }), h.env);
+  expect(init.status).toBe(200);
+  const mp = (await init.json()) as {
+    mode: string;
+    objectId: string;
+    uploadId: string;
+    partSize: number;
+    partCount: number;
+    partUrls: { partNumber: number; url: string }[];
+  };
+  expect(mp.mode).toBe("multipart");
+  expect(mp.partSize).toBe(10);
+  expect(mp.partCount).toBe(5);
+  expect(mp.partUrls.length).toBe(5);
+  expect(mp.partUrls[0]!.url).toContain("partNumber=1");
+  expect(mp.partUrls[0]!.url).toContain("X-Amz-Signature=");
+
+  // Simulate the browser's direct UploadPart PUTs (part 1 carries the FKEY magic).
+  const parts: { partNumber: number; etag: string }[] = [];
+  for (let n = 1; n <= mp.partCount; n++) {
+    const chunk = n === 1 ? fkeyCiphertext(10) : new Uint8Array(10);
+    parts.push({ partNumber: n, etag: h.r2.putPartRaw(mp.uploadId, n, chunk) });
+  }
+
+  const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId: mp.objectId, parts }), h.env);
+  expect(comp.status).toBe(200);
+  const delivery = h.email.sent.at(-1)!;
+  expect(delivery.text).toContain("/d/");
+  // The assembled final object is the full 50 bytes (parts concatenated in order).
+  const finalId = delivery.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
+  expect((await h.r2.head(finalId))!.size).toBe(50);
+});
+
+test("multipart: a wrong part count is rejected (no partial assembly, no email)", async () => {
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "10" });
+  const link = await setupLink(h);
+  const init = await uploadInit(post("/upload-init", { payload: link, size: 50 }), h.env);
+  const mp = (await init.json()) as { objectId: string; uploadId: string };
+  // Upload + claim only 3 of the required 5 parts.
+  const parts: { partNumber: number; etag: string }[] = [];
+  for (let n = 1; n <= 3; n++) parts.push({ partNumber: n, etag: h.r2.putPartRaw(mp.uploadId, n, n === 1 ? fkeyCiphertext(10) : new Uint8Array(10)) });
+  const before = h.email.sent.length;
+  const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId: mp.objectId, parts }), h.env);
+  expect(comp.status).toBe(400);
+  expect(h.email.sent.length).toBe(before); // no delivery
+});
+
+test("upload-parts re-presigns the next batch on demand", async () => {
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "10" });
+  const link = await setupLink(h);
+  const init = await uploadInit(post("/upload-init", { payload: link, size: 50 }), h.env);
+  const mp = (await init.json()) as { objectId: string };
+  const res = await uploadParts(post("/upload-parts", { payload: link, objectId: mp.objectId, from: 3, count: 2 }), h.env);
+  expect(res.status).toBe(200);
+  const { partUrls } = (await res.json()) as { partUrls: { partNumber: number; url: string }[] };
+  expect(partUrls.map((p) => p.partNumber)).toEqual([3, 4]);
+  expect(partUrls[0]!.url).toContain("partNumber=3");
 });
 
 test("upload-complete rejects an object paired with a different link than minted it", async () => {

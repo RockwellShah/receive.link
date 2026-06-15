@@ -80,3 +80,55 @@ export async function hasFileKeyMagic(env: Env, objectId: string): Promise<boole
   const head = new Uint8Array(await obj.arrayBuffer());
   return head.length >= FILEKEY_MAGIC.length && FILEKEY_MAGIC.every((b, i) => head[i] === b);
 }
+
+// ---- Multipart (large uploads) -----------------------------------------------
+// Parts upload browser->R2 via presigned UploadPart URLs (bytes never transit the
+// Worker). The Worker only starts, completes, and aborts the upload. Create/
+// complete/abort go through the R2 *binding* so the in-memory dev/test double can
+// model them; only the per-part PUT is presigned. NOTE: pairing a binding-created
+// uploadId with S3-presigned UploadPart + binding complete() relies on R2's
+// binding<->S3 multipart interop — verified by scripts/smoke-multipart against
+// real R2 before we depend on it. If that ever breaks, swap these three to the S3
+// XML API; callers (handlers.ts) don't change.
+
+/** Start a multipart upload; returns the R2 uploadId. */
+export async function createMultipart(env: Env, objectId: string): Promise<string> {
+  const mpu = await env.DROP_BUCKET.createMultipartUpload(objectId);
+  return mpu.uploadId;
+}
+
+/** Presign one UploadPart URL (the browser PUTs the part body straight to R2). */
+export async function presignUploadPart(env: Env, objectId: string, uploadId: string, partNumber: number, expiresSec: number): Promise<string> {
+  const url = `${objectUrl(env, objectId)}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}&X-Amz-Expires=${expiresSec}`;
+  const signed = await client(env).sign(url, { method: "PUT", aws: { signQuery: true } });
+  return signed.url;
+}
+
+/** Assemble the object from its parts. Returns false if R2 rejects the set. */
+export async function completeMultipart(
+  env: Env,
+  objectId: string,
+  uploadId: string,
+  parts: { partNumber: number; etag: string }[],
+): Promise<boolean> {
+  try {
+    const mpu = env.DROP_BUCKET.resumeMultipartUpload(objectId, uploadId);
+    await mpu.complete(parts.map((p) => ({ partNumber: p.partNumber, etag: normalizeEtag(p.etag) })));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Discard an in-progress multipart upload (cancel / cleanup). Best-effort. */
+export async function abortMultipart(env: Env, objectId: string, uploadId: string): Promise<void> {
+  try {
+    await env.DROP_BUCKET.resumeMultipartUpload(objectId, uploadId).abort();
+  } catch {
+    /* already gone / never existed */
+  }
+}
+
+// R2's S3 UploadPart returns a quoted ETag (e.g. `"<md5>"`); the binding's
+// complete() wants the raw value. Strip surrounding quotes defensively.
+const normalizeEtag = (e: string): string => e.trim().replace(/^"+|"+$/g, "");
