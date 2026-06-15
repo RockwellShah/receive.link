@@ -12,3 +12,6 @@ keys/
 *.private.jwk
 *.secret
 .gstack/
+
+# Internal design docs — never ship in the public app repo.
+/SPEC-*.md

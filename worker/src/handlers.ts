@@ -20,7 +20,7 @@ import {
   type DropLink,
 } from "../../shared/codec";
 import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
-import { sendConfirmEmail, sendDownloadEmail } from "./email";
+import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
 import { clientIp, json, readJson } from "./http";
 import { DAY, HOUR, rateLimit } from "./kv";
 import { copyObject, deleteObject, hasFileKeyMagic, objectInfo, presignGet, presignPut } from "./r2";
@@ -146,6 +146,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
   const full = new Uint8Array(region.length + sig.length);
   full.set(region, 0);
   full.set(sig, region.length);
+  const linkB64 = base64urlEncode(full);
 
   // Mint a receiver-only revoke token so they can turn this link off later. It maps
   // to the link_id both ways: revtok->id powers POST /revoke; id->revtok lets each
@@ -155,7 +156,19 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
   await env.DROP_KV.put(`revtok:${revokeToken}`, linkIdHex);
   await env.DROP_KV.put(`linkrev:${linkIdHex}`, revokeToken);
 
-  return json({ link: base64urlEncode(full), revokeToken }, 200, origin);
+  // Best-effort: email the receiver a durable copy of their Drop link + manage link.
+  // The page reveals both immediately; this just survives a closed tab. A failure
+  // here must not fail the confirm (the nonce is already spent and the page has them).
+  try {
+    const decoded = decodeDropLink(full);
+    const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
+    const email = await unsealEmail(kemPriv, decoded.sealedEmail);
+    await sendDropLinkEmail(env, email, `${origin}/#${linkB64}`, `${origin}/revoke#${revokeToken}`, decoded.label);
+  } catch {
+    /* page already showed both links */
+  }
+
+  return json({ link: linkB64, revokeToken }, 200, origin);
 }
 
 // POST /revoke { token } -> { ok } — the receiver turns their own Drop link off.

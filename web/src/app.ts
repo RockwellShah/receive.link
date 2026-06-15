@@ -8,7 +8,7 @@
 import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
-import { ERR, OK, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
+import { ERR, OK, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
 import { decryptCiphertextBlob, encryptFileToShareKey } from "../fk/stream";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError } from "./api";
@@ -210,8 +210,8 @@ async function revokeMode(token: string): Promise<void> {
     " People with the old link won't be able to send you files anymore. Download links already emailed to you still work until they expire.",
   ]);
   actionRow(host, [
-    { label: "Turn off this link", onClick: () => { if (revoking) return; revoking = true; void doRevoke(token); } },
-    { label: "Keep it", muted: true, onClick: () => void (location.href = "/") },
+    { label: "Turn off this link", icon: SVG.trash.replace("<svg", '<svg class="act_icon"'), onClick: () => { if (revoking) return; revoking = true; void doRevoke(token); } },
+    { label: "Keep it", muted: true, icon: SVG.close.replace("<svg", '<svg class="act_icon"'), onClick: () => void (location.href = "/") },
   ]);
 }
 
@@ -221,7 +221,7 @@ async function doRevoke(token: string): Promise<void> {
     await api.revoke(token);
     st.fail();
     const host = await appMsg([{ t: "This Drop link is off.", b: true }, " People can no longer send files to it. You can create a new one anytime."], OK);
-    actionRow(host, [{ label: "Create a new Drop link", onClick: () => void (location.href = "/") }]);
+    actionRow(host, [{ label: "Create a new Drop link", icon: SVG.plus.replace("<svg", '<svg class="act_icon act_fill"'), onClick: () => void (location.href = "/") }]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);

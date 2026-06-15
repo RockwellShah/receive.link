@@ -13,7 +13,7 @@
 	src:url('/fonts/inter.woff2') format('woff2');
 }
 
-html{background-color:#fff;color:#000;height:100vh;box-sizing: border-box;font-family:'Inter', system-ui;}
+html{background-color:#fff;color:#000;height:100vh;box-sizing: border-box;font-family:'Inter', system-ui;color-scheme:light;}
 body{margin:0;}
 *, *:before, *:after {box-sizing: inherit;}
 
@@ -25,7 +25,10 @@ body{margin:0;}
 
 
 #main_container{width:100%;display:flex;background-color:#fff;height:100vh;flex-grow:1;padding:15vh 25% 0;flex-direction: column;}
-#main_inner{display:flex;flex-direction: column;flex-direction: column;flex-grow:1;padding-bottom:22vh;}
+/* Small default bottom pad; the upload page's fixed drop bar gets its real clearance
+   from showDropBar() (measured). 22vh here would over-inflate the no-drop-bar pages
+   (setup/confirm/receive) and make the chat auto-scroll clip the top on load. */
+#main_inner{display:flex;flex-direction: column;flex-direction: column;flex-grow:1;padding-bottom:6vh;}
 
 
 .std_msg{border-radius:10px;margin:0;color:#000;width:100%;}
@@ -155,6 +158,10 @@ body{margin:0;}
 .copy_icon{padding:1px;}
 .edit_icon{padding:0;}
 .save_icon{width:18px;height:19px;fill:currentColor;margin-right:4px;padding:2px;}
+/* Leading icons inside chat-action rows (actionRow). Stroke icons (trash, close) carry their own
+   stroke=currentColor; add .act_fill for fill-based icons (plus) so they inherit the action color. */
+.act_icon{width:17px;height:17px;margin-right:5px;flex-shrink:0;}
+.act_icon.act_fill{fill:currentColor;}
 
 
 #chiz_icon_container{cursor:pointer;opacity:0.6;z-index:10001;margin:15px 0;position:relative;width:28px;height:18px;color:#000;transition:transform .5s cubic-bezier(.45,0,.25,1);transform-origin:18px 7px;}
@@ -355,7 +362,7 @@ body.fk-authed #acct_control{display:flex;}
 html[data-theme="dark"]{
 	--fk-fill:#1f1f23; --fk-surface:#161618; --fk-ink-soft:#f2f2f5;
 	--fk-muted-2:#ffffff80; --fk-faint:#ffffff3a; --fk-link:#4d9bff; --fk-error:#ff5a52;
-	background:#0c0c0e; color:#f2f2f5;
+	background:#0c0c0e; color:#f2f2f5; color-scheme:dark;
 }
 html[data-theme="dark"] #main_container,
 html[data-theme="dark"] #outer_drop_container,
