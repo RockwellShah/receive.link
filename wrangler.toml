@@ -28,7 +28,7 @@ MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E","y":"3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE"}'
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"            # <id>.r2.cloudflarestorage.com
 R2_BUCKET = "filekey-drop-staging"                 # bucket name for S3 presigning
-MAX_UPLOAD_BYTES = "2147483648"                    # 2 GiB cap (raised later, once client + receive-side are done)
+MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB. Caps the ciphertext (= the R2 object). R2's hard object ceiling is 4.995 TiB (~5.49 TB); 5 TB sits safely under it with room for ciphertext overhead. At this size computePartSize keeps partCount ~9000, under R2's 10k-part limit.
 # Staging exercises multipart on small files: anything over 1 MiB splits into >=5 MiB
 # parts (5 MiB is R2's real minimum for non-last parts). Prod will use the higher default.
 MULTIPART_THRESHOLD = "1048576"                     # 1 MiB
@@ -65,4 +65,4 @@ MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = "REPLACE_AFTER_GEN_KEYS_PROD"  # production keys differ from staging
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "filekey-drop"
-MAX_UPLOAD_BYTES = "2147483648"
+MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (see staging note above)

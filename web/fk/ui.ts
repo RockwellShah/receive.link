@@ -169,16 +169,20 @@ export function uploadCard(filename: string, typeLabel: string): void {
   mainInner.appendChild(outer);
   scrollToBottom();
 }
-/** Download card (Drop is Save-only; no re-share). */
-export function saveCard(filename: string, typeLabel: string, dataBlob: Blob): void {
+/** Download card (Drop is Save-only; no re-share). `onSave` runs on the Save click (a user gesture). */
+export function saveCardWith(filename: string, typeLabel: string, onSave: () => void): void {
   const outer = document.createElement("div");
   outer.className = "std_dl_outer";
   outer.innerHTML = `<div class="std_download"><div class="std_inner_flex"><div class="icon_container some_background">${SVG.file}</div><div class="std_file_container">${fnameHtml(filename)}<span class="file_status">${esc(typeLabel)}</span><div class="download_icon_container"><span class="dl_action save_act">${SVG.save} Save</span></div></div></div></div>`;
   setIcon(outer.querySelector(".icon_container")!, "file_icon");
   setIcon(outer.querySelector(".save_act")!, "save_icon");
-  (outer.querySelector(".save_act") as HTMLElement).addEventListener("click", () => void saveBlob(dataBlob, filename));
+  (outer.querySelector(".save_act") as HTMLElement).addEventListener("click", onSave);
   mainInner.appendChild(outer);
   scrollToBottom();
+}
+/** Convenience: a Save card backed by a ready Blob (the small/single path). */
+export function saveCard(filename: string, typeLabel: string, dataBlob: Blob): void {
+  saveCardWith(filename, typeLabel, () => void saveBlob(dataBlob, filename));
 }
 function sanitizeName(name: string) { return (stripBidi(name).replace(/[\/\\]/g, "_").replace(/[\x00-\x1f]/g, "").trim() || "filekey-output").slice(0, 200); }
 async function saveBlob(blob: Blob, filename: string) {
@@ -203,6 +207,74 @@ async function saveBlob(blob: Blob, filename: string) {
   void appMsg([big ? "Your download is in progress. Keep this tab open until it finishes." : "Saved to your downloads."], { speed: 6 });
   const ttl = Math.min(600_000, Math.max(60_000, Math.ceil(blob.size / (1024 * 1024)) * 1000));
   setTimeout(() => URL.revokeObjectURL(a.href), ttl);
+}
+
+/**
+ * Stream decrypted chunks straight to the user's chosen file (1x disk, never staging the whole
+ * plaintext). On browsers without the File System Access API (Safari) it falls back to assembling a
+ * disk-backed Blob and downloading it. Must be called from the Save click (showSaveFilePicker needs
+ * the gesture). `totalSize` is the plaintext size, for progress.
+ */
+export async function saveDecryptedStream(
+  filename: string,
+  mimeType: string,
+  totalSize: number,
+  chunks: AsyncGenerator<Uint8Array>,
+): Promise<void> {
+  const name = sanitizeName(filename);
+  const w = window as unknown as {
+    showSaveFilePicker?: (o: unknown) => Promise<{
+      createWritable: () => Promise<{ write: (b: Uint8Array) => Promise<void>; close: () => Promise<void>; abort?: () => Promise<void> }>;
+    }>;
+  };
+  if (w.showSaveFilePicker) {
+    let st: StatusMsg | null = null;
+    let ws: { write: (b: Uint8Array) => Promise<void>; close: () => Promise<void>; abort?: () => Promise<void> } | null = null;
+    try {
+      const h = await w.showSaveFilePicker({ suggestedName: name });
+      ws = await h.createWritable();
+      st = new StatusMsg("Saving");
+      let written = 0;
+      for await (const chunk of chunks) {
+        await ws.write(chunk);
+        written += chunk.length;
+        st.progress(written, totalSize);
+      }
+      await ws.close();
+      st.finish("Saved ✓");
+    } catch (e) {
+      await ws?.abort?.().catch(() => {});
+      if ((e as Error).name === "AbortError") {
+        st?.fail();
+        return; // user dismissed the picker — leave the Save action in place to retry
+      }
+      st?.fail();
+      void appMsg(["Couldn't finish saving — the file may be corrupted or the transfer was interrupted."], ERR);
+    }
+    return;
+  }
+  // No File System Access API (Safari): assemble a disk-backed Blob, then download via object URL.
+  const st = new StatusMsg("Decrypting");
+  try {
+    const parts: Blob[] = [];
+    let written = 0;
+    for await (const chunk of chunks) {
+      parts.push(new Blob([chunk as unknown as BlobPart]));
+      written += chunk.length;
+      st.progress(written, totalSize);
+    }
+    const blob = new Blob(parts, { type: mimeType || "application/octet-stream" });
+    st.done();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    void appMsg(["Saved to your downloads."], { speed: 6 });
+    setTimeout(() => URL.revokeObjectURL(a.href), Math.min(600_000, Math.max(60_000, Math.ceil(blob.size / (1024 * 1024)) * 1000)));
+  } catch (e) {
+    st.fail();
+    void appMsg(["Couldn't finish saving — the file may be corrupted or the transfer was interrupted."], ERR);
+  }
 }
 
 // ---- marching-ants dashed border on the drop zone (v1 createAnimatedBorder) ----
@@ -249,10 +321,10 @@ function appSent(text: string): void {
   mainInner.appendChild(outer);
   scrollToBottom();
 }
-export function inputPrompt(
-  fields: { key: string; placeholder: string; type?: string }[],
-  validate?: (values: Record<string, string>) => string | null,
-): Promise<Record<string, string>> {
+export function inputPrompt<K extends string>(
+  fields: { key: K; placeholder: string; type?: string }[],
+  validate?: (values: Record<K, string>) => string | null,
+): Promise<Record<K, string>> {
   return new Promise((resolve) => {
     const cont = document.createElement("div");
     cont.className = "pub_key_textarea_cont fk_setup_cont";

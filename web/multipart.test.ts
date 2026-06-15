@@ -3,8 +3,8 @@
 // back to the original. (Codex review: don't compare to a re-encryption — fresh HPKE
 // makes that differ; compare assembly of the SAME run + round-trip.)
 import { expect, test } from "bun:test";
-import { NamespaceSet, decryptStream, deriveIdentityFromPrf, encodeShareKey } from "./core/src/index.js";
-import { blobSource, ciphertextLength, encryptFileToParts } from "./fk/stream";
+import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "./core/src/index.js";
+import { ciphertextLength, encryptFileToParts, openCiphertext } from "./fk/stream";
 
 test("encryptFileToParts: parts concatenate to a ciphertext of the predicted size that decrypts to the original", async () => {
   const NS = new NamespaceSet(["filekey.app"]);
@@ -34,9 +34,9 @@ test("encryptFileToParts: parts concatenate to a ciphertext of the predicted siz
     ct.set(p, off);
     off += p.length;
   }
-  const res = await decryptStream({ file: blobSource(new Blob([ct])), namespaces: NS, resolveIdentity: async () => receiver });
+  const { chunks } = await openCiphertext(new Blob([ct]), receiver, NS);
   const out: Uint8Array[] = [];
-  for await (const chunk of res.chunks) out.push(chunk);
+  for await (const chunk of chunks) out.push(chunk);
   const dec = new Uint8Array(out.reduce((n, c) => n + c.length, 0));
   let o = 0;
   for (const c of out) {

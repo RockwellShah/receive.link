@@ -8,8 +8,8 @@
 import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
-import { ERR, OK, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
-import { ciphertextLength, decryptCiphertextBlob, encryptFileToParts, encryptFileToShareKey } from "../fk/stream";
+import { ERR, OK, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCardWith, saveDecryptedStream, showDropBar, uploadCard } from "../fk/ui";
+import { ciphertextLength, encryptFileToParts, encryptFileToShareKey, openCiphertext } from "../fk/stream";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError, type UploadInit } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
@@ -246,7 +246,7 @@ async function uploadPart(
 
 // ---- Receive (/d/<id>) ----
 async function receiveMode(objectId: string): Promise<void> {
-  const st = new StatusMsg("Decrypting your file");
+  const st = new StatusMsg("Opening your file");
   try {
     const { url } = await api.fetchUrl(objectId);
     const resp = await fetch(url);
@@ -255,10 +255,17 @@ async function receiveMode(objectId: string): Promise<void> {
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
-    const { blob, metadata } = await decryptCiphertextBlob(ciphertext, identity, NS, { onProgress: (d, t) => st.progress(d, t) });
+    // Reads the head + metadata (small, authenticated); the payload stays lazy until Save, so it
+    // streams straight to disk instead of staging the whole plaintext (1x disk for huge files).
+    const { metadata, chunks } = await openCiphertext(ciphertext, identity, NS);
     st.done();
-    await appMsg([{ t: "Decrypted.", b: true }, " Save it wherever you like."], OK);
-    saveCard(metadata.filename || "file", "Decrypted file", blob);
+    await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you and decrypts on your device as you save it."], OK);
+    if (!(window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker && metadata.originalSize > 2 * 1024 * 1024 * 1024) {
+      await appMsg(["For a file this large, Chrome or Edge can save it more reliably than this browser."]);
+    }
+    saveCardWith(metadata.filename || "file", "Decrypted file", () =>
+      void saveDecryptedStream(metadata.filename || "file", metadata.mimeType, metadata.originalSize, chunks),
+    );
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);

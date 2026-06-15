@@ -76,13 +76,13 @@ export class DropApi {
 
   /** Upload step 2 (single): PUT the ciphertext straight to R2 (bytes never touch the Worker). */
   async putToR2(uploadUrl: string, body: Blob | Uint8Array): Promise<void> {
-    const res = await fetch(uploadUrl, { method: "PUT", body });
+    const res = await fetch(uploadUrl, { method: "PUT", body: body as BodyInit });
     if (!res.ok) throw new DropApiError(`upload to storage failed (${res.status})`, res.status);
   }
 
   /** Upload step 2 (multipart): PUT one part to R2; returns its ETag (needed to complete). */
   async putPart(url: string, body: Blob | Uint8Array): Promise<string> {
-    const res = await fetch(url, { method: "PUT", body });
+    const res = await fetch(url, { method: "PUT", body: body as BodyInit });
     if (!res.ok) throw new DropApiError(`part upload failed (${res.status})`, res.status);
     const etag = res.headers.get("ETag") ?? res.headers.get("etag");
     if (!etag) throw new DropApiError("storage returned no ETag (CORS must expose ETag)", res.status);

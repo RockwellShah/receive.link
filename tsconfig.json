@@ -15,6 +15,6 @@
     "noEmit": true
   },
   "include": ["shared", "worker/src", "scripts"],
-  "//": "web/ (client + vendored core) is validated by bun build + bun test, not tsc. dev-link.ts imports the vendored core, so it's excluded here too.",
-  "exclude": ["node_modules", "web/core", "scripts/dev-link.ts"]
+  "//": "web/ (client + vendored core) is validated by bun build + bun test, not tsc. Scripts that import the vendored core are excluded here too — tsc follows the import into web/core, which is vendored for bun's looser type-import rules and trips verbatimModuleSyntax.",
+  "exclude": ["node_modules", "web/core", "scripts/dev-link.ts", "scripts/mint-link.ts", "scripts/smoke-live.ts", "scripts/smoke-multipart.ts"]
 }

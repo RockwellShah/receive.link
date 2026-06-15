@@ -1,0 +1,12 @@
+{
+  "//": "Typechecks the WEB CLIENT (web/src + web/fk + vendored core). Separate from the root tsconfig because the vendored core is written for bun's looser type-import rules, so this config turns OFF verbatimModuleSyntax (the root keeps it on for worker/shared). Run: bun run typecheck:web. This is what catches client-only mistakes like an unimported UI helper — the root tsconfig never sees web/src.",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "verbatimModuleSyntax": false,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["src", "fk", "core/src"],
+  "exclude": ["node_modules", "**/*.test.ts", "fk/worker.ts", "serve.ts", "devserver.ts", "build.ts"]
+}

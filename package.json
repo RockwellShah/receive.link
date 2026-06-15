@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
+    "typecheck:web": "tsc --noEmit -p web/tsconfig.json",
     "gen:keys": "bun run scripts/gen-keys.ts",
     "build:web": "bun run web/build.ts",
     "dev:web": "bun run web/serve.ts",

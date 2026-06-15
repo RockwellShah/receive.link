@@ -166,6 +166,21 @@ function concatBytes(pending: Uint8Array[]): Uint8Array {
   return out;
 }
 
+/**
+ * Open a ciphertext for streaming decryption: reads the head + metadata (small, authenticated; this
+ * is where the identity is resolved) and returns a generator of authenticated plaintext chunks. The
+ * caller writes chunks straight to disk (constant memory). Policy B: a truncated/corrupt file can
+ * surface an authenticated prefix before the generator throws at the end.
+ */
+export async function openCiphertext(
+  ciphertext: Blob,
+  identity: Identity,
+  namespaces: NamespaceSet,
+): Promise<{ metadata: Metadata; chunks: AsyncGenerator<Uint8Array> }> {
+  const res = await decryptStream({ file: blobSource(ciphertext), namespaces, resolveIdentity: async () => identity });
+  return { metadata: res.metadata, chunks: res.chunks };
+}
+
 /** Decrypt a ciphertext Blob with the receiver's identity. Streams; returns a plaintext Blob + metadata. */
 export async function decryptCiphertextBlob(
   ciphertext: Blob,
