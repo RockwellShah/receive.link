@@ -1,0 +1,49 @@
+// The load-bearing multipart invariant: stream-encrypting a file into parts and
+// concatenating them yields EXACTLY the ciphertext (predicted size), and it decrypts
+// back to the original. (Codex review: don't compare to a re-encryption — fresh HPKE
+// makes that differ; compare assembly of the SAME run + round-trip.)
+import { expect, test } from "bun:test";
+import { NamespaceSet, decryptStream, deriveIdentityFromPrf, encodeShareKey } from "./core/src/index.js";
+import { blobSource, ciphertextLength, encryptFileToParts } from "./fk/stream";
+
+test("encryptFileToParts: parts concatenate to a ciphertext of the predicted size that decrypts to the original", async () => {
+  const NS = new NamespaceSet(["filekey.app"]);
+  const ns = NS.namespaces[0]!;
+  const receiver = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns);
+  const shareKey = encodeShareKey(receiver.staticPkRaw, receiver.namespace);
+  const sender = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns);
+
+  const plaintext = crypto.getRandomValues(new Uint8Array(300_000)); // spans several 64 KiB chunks
+  const file = new File([plaintext], "blob.bin", { type: "application/octet-stream" });
+
+  const partSize = 64 * 1024; // small parts → multiple parts, last one a remainder
+  const parts: Uint8Array[] = [];
+  for await (const p of encryptFileToParts(file, shareKey, NS, sender, partSize)) parts.push(p);
+
+  expect(parts.length).toBeGreaterThan(1);
+  for (let i = 0; i < parts.length - 1; i++) expect(parts[i]!.length).toBe(partSize); // all but last exact
+  expect(parts[parts.length - 1]!.length).toBeLessThanOrEqual(partSize);
+
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  expect(total).toBe(ciphertextLength(file)); // up-front size estimate is exact
+
+  // Concatenate the parts (what R2 does) and decrypt — must recover the original bytes.
+  const ct = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) {
+    ct.set(p, off);
+    off += p.length;
+  }
+  const res = await decryptStream({ file: blobSource(new Blob([ct])), namespaces: NS, resolveIdentity: async () => receiver });
+  const out: Uint8Array[] = [];
+  for await (const chunk of res.chunks) out.push(chunk);
+  const dec = new Uint8Array(out.reduce((n, c) => n + c.length, 0));
+  let o = 0;
+  for (const c of out) {
+    dec.set(c, o);
+    o += c.length;
+  }
+  expect(dec.length).toBe(plaintext.length);
+  expect([...dec.slice(0, 64)]).toEqual([...plaintext.slice(0, 64)]);
+  expect([...dec.slice(-64)]).toEqual([...plaintext.slice(-64)]);
+});

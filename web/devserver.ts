@@ -5,7 +5,7 @@
 // mail at /__mail so you can click the confirm + download links. Run: bun run web/devserver.ts
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
-import { confirm, fetchObject, register, revoke, uploadComplete, uploadInit } from "../worker/src/handlers";
+import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
 import { CapturingEmail, MemoryKV, MemoryR2 } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
@@ -41,6 +41,10 @@ const env: Env = {
   R2_ACCESS_KEY_ID: "dev",
   R2_SECRET_ACCESS_KEY: "dev",
   MAX_UPLOAD_BYTES: String(2 * 1024 * 1024 * 1024),
+  // Low so the browser exercises multipart on small dev files. The in-memory R2 double
+  // doesn't enforce R2's real 5 MiB minimum, so tiny parts are fine here.
+  MULTIPART_THRESHOLD: String(256 * 1024),
+  MULTIPART_MIN_PART: String(256 * 1024),
 };
 
 // Rewrite a handler's presigned-R2 URL to the local /__r2 stand-in.
@@ -48,6 +52,12 @@ async function localizeUrl(res: Response, field: "uploadUrl" | "url", objectId: 
   const body = (await res.json()) as Record<string, unknown>;
   if (body[field]) body[field] = `${ORIGIN}/__r2/${objectId}`;
   return Response.json(body, { status: res.status });
+}
+
+// Rewrite presigned multipart UploadPart URLs to the local /__r2 stand-in (carrying
+// partNumber + uploadId so the mock can route the part to the right upload).
+function localizeParts(partUrls: { partNumber: number }[], objectId: string, uploadId: string): { partNumber: number; url: string }[] {
+  return partUrls.map((p) => ({ partNumber: p.partNumber, url: `${ORIGIN}/__r2/${objectId}?partNumber=${p.partNumber}&uploadId=${encodeURIComponent(uploadId)}` }));
 }
 
 async function handleApi(req: Request, sub: string): Promise<Response> {
@@ -58,11 +68,27 @@ async function handleApi(req: Request, sub: string): Promise<Response> {
   if (req.method === "POST" && sub === "/revoke") return revoke(req, env);
   if (req.method === "POST" && sub === "/upload-init") {
     const res = await uploadInit(req, env);
-    const peek = res.clone();
-    const { objectId } = (await peek.json()) as { objectId?: string };
-    return objectId ? localizeUrl(res, "uploadUrl", objectId) : res;
+    const body = (await res.json()) as Record<string, unknown>;
+    if (body.mode === "single" && body.uploadUrl) body.uploadUrl = `${ORIGIN}/__r2/${body.objectId as string}`;
+    else if (body.mode === "multipart" && Array.isArray(body.partUrls)) {
+      body.partUrls = localizeParts(body.partUrls as { partNumber: number }[], body.objectId as string, body.uploadId as string);
+    }
+    return Response.json(body, { status: res.status });
+  }
+  if (req.method === "POST" && sub === "/upload-parts") {
+    const rc = req.clone();
+    const res = await uploadParts(req, env);
+    const body = (await res.json()) as Record<string, unknown>;
+    if (Array.isArray(body.partUrls)) {
+      const { objectId } = (await rc.json()) as { objectId: string };
+      const bindRaw = await kv.get(`upload:${objectId}`);
+      const uploadId = bindRaw ? ((JSON.parse(bindRaw) as { mp?: { uploadId?: string } }).mp?.uploadId ?? "") : "";
+      body.partUrls = localizeParts(body.partUrls as { partNumber: number }[], objectId, uploadId);
+    }
+    return Response.json(body, { status: res.status });
   }
   if (req.method === "POST" && sub === "/upload-complete") return uploadComplete(req, env);
+  if (req.method === "POST" && sub === "/upload-abort") return uploadAbort(req, env);
   if (req.method === "GET" && sub.startsWith("/fetch/")) {
     const id = sub.slice("/fetch/".length);
     return localizeUrl(await fetchObject(req, env, id), "url", id);
@@ -92,7 +118,15 @@ Bun.serve({
     if (path.startsWith("/__r2/")) {
       const id = path.slice("/__r2/".length);
       if (req.method === "PUT") {
-        r2.putRaw(id, new Uint8Array(await req.arrayBuffer()));
+        const q = new URL(req.url).searchParams;
+        const partNumber = q.get("partNumber");
+        const uploadId = q.get("uploadId");
+        const bytes = new Uint8Array(await req.arrayBuffer());
+        if (partNumber && uploadId) {
+          const etag = r2.putPartRaw(uploadId, Number(partNumber), bytes);
+          return new Response(null, { status: 200, headers: { ETag: etag } });
+        }
+        r2.putRaw(id, bytes);
         return new Response(null, { status: 200 });
       }
       const obj = await r2.get(id);

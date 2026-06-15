@@ -9,9 +9,9 @@ import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, OK, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCard, showDropBar, uploadCard } from "../fk/ui";
-import { decryptCiphertextBlob, encryptFileToShareKey } from "../fk/stream";
+import { ciphertextLength, decryptCiphertextBlob, encryptFileToParts, encryptFileToShareKey } from "../fk/stream";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
-import { DropApi, DropApiError } from "./api";
+import { DropApi, DropApiError, type UploadInit } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
 import { getPrfSecret } from "./webauthn";
 
@@ -145,29 +145,38 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
       }
       zip.done();
     }
-    uploadCard(file.name, single ? "File" : "Bundle");
-    // One status row at a time; `active` always points at the live phase, so a failure
-    // (or cancel) acts on the right row instead of leaving a stale "Uploading…" spinner.
-    let active = new StatusMsg("Encrypting");
+    // `active` tracks the live phase so a failure (or cancel) acts on the right status row.
+    let active: StatusMsg | undefined;
     try {
       const link = decodeDropLink(base64urlDecode(payload));
       const shareKey = new TextDecoder().decode(link.shareKey);
       const sender = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns); // throwaway
-      // Streams: read in slices, ciphertext is a Blob-of-Blobs, never fully in RAM (>=64MB off-thread).
-      const ciphertext = await encryptFileToShareKey(file, shareKey, NS, sender, {
-        onProgress: (d, t) => active.progress(d, t),
-        onCancel: (cancel) => active.enableCancel(cancel),
-      });
-      active.done();
-      active = new StatusMsg("Uploading");
-      const { objectId, uploadUrl } = await api.uploadInit(payload, ciphertext.size);
-      await api.putToR2(uploadUrl, ciphertext);
-      await api.uploadComplete(payload, objectId);
-      active.done();
+      const ctLen = ciphertextLength(file);
+      const init = await api.uploadInit(payload, ctLen);
+      uploadCard(file.name, single ? "File" : "Bundle");
+      if (init.mode === "single") {
+        // Small file: encrypt to a (disk-backed) ciphertext Blob, then one PUT.
+        active = new StatusMsg("Encrypting");
+        const ciphertext = await encryptFileToShareKey(file, shareKey, NS, sender, {
+          onProgress: (d, t) => active!.progress(d, t),
+          onCancel: (cancel) => active!.enableCancel(cancel),
+        });
+        active.done();
+        active = new StatusMsg("Uploading");
+        await api.putToR2(init.uploadUrl, ciphertext);
+        await api.uploadComplete(payload, init.objectId);
+        active.done();
+      } else {
+        // Large file: stream-encrypt straight into parts and upload them (constant memory).
+        active = new StatusMsg("Uploading");
+        const parts = await uploadMultipart(payload, file, shareKey, sender, init, ctLen, active);
+        active.done();
+        await api.uploadComplete(payload, init.objectId, parts);
+      }
       await appMsg([{ t: "Sent!", b: true }, " We emailed them a download link. If you're done, you can close this tab now."], OK);
     } catch (e) {
-      if (active.cancelled) { await appMsg(["Upload cancelled."]); return; }
-      active.fail();
+      if (active?.cancelled) { await appMsg(["Upload cancelled."]); return; }
+      active?.fail();
       await appMsg([humanError(e)], ERR);
     }
   } finally {
@@ -175,6 +184,64 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
     // stays valid (capped per day by the Worker). Runs on success, error, and cancel.
     showDropBar("Drop files to send", (next) => void sendFiles(payload, next));
   }
+}
+
+// Stream-encrypt + multipart-upload a file one part at a time (constant memory). Per-part retry
+// re-presigns the URL (covers a part URL expiring mid long upload); a failure aborts the multipart
+// so R2 keeps no orphaned parts.
+async function uploadMultipart(
+  payload: string,
+  file: File,
+  shareKey: string,
+  sender: Awaited<ReturnType<typeof deriveIdentityFromPrf>>,
+  init: Extract<UploadInit, { mode: "multipart" }>,
+  ctLen: number,
+  status: StatusMsg,
+): Promise<{ partNumber: number; etag: string }[]> {
+  const urls = new Map<number, string>(init.partUrls.map((p) => [p.partNumber, p.url] as const));
+  const parts: { partNumber: number; etag: string }[] = [];
+  let uploaded = 0;
+  let partNumber = 1;
+  try {
+    for await (const partBytes of encryptFileToParts(file, shareKey, NS, sender, init.partSize)) {
+      parts.push({ partNumber, etag: await uploadPart(payload, init, partNumber, partBytes, urls) });
+      uploaded += partBytes.length;
+      status.progress(uploaded, ctLen);
+      partNumber++;
+    }
+    return parts;
+  } catch (e) {
+    await api.uploadAbort(payload, init.objectId).catch(() => {});
+    throw e;
+  }
+}
+
+async function uploadPart(
+  payload: string,
+  init: Extract<UploadInit, { mode: "multipart" }>,
+  partNumber: number,
+  bytes: Uint8Array,
+  urls: Map<number, string>,
+): Promise<string> {
+  let delay = 500;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let url = urls.get(partNumber);
+    if (!url) {
+      const batch = await api.uploadParts(payload, init.objectId, partNumber, init.batchSize);
+      for (const p of batch.partUrls) urls.set(p.partNumber, p.url);
+      url = urls.get(partNumber);
+    }
+    if (!url) throw new Error(`no upload URL for part ${partNumber}`);
+    try {
+      return await api.putPart(url, bytes);
+    } catch (e) {
+      urls.delete(partNumber); // force a fresh presign on retry (covers an expired URL)
+      if (attempt === 4) throw e;
+      await new Promise((r) => setTimeout(r, delay));
+      delay *= 2;
+    }
+  }
+  throw new Error("unreachable");
 }
 
 // ---- Receive (/d/<id>) ----

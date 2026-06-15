@@ -18,6 +18,24 @@ async function asError(res: Response): Promise<DropApiError> {
   return new DropApiError(msg, res.status);
 }
 
+export interface PartUrl {
+  partNumber: number;
+  url: string;
+}
+/** upload-init response: small files get one PUT URL; large files get a multipart plan. */
+export type UploadInit =
+  | { mode: "single"; objectId: string; uploadUrl: string; expiresInSec: number }
+  | {
+      mode: "multipart";
+      objectId: string;
+      uploadId: string;
+      partSize: number;
+      partCount: number;
+      partUrls: PartUrl[];
+      batchSize: number;
+      expiresInSec: number;
+    };
+
 export class DropApi {
   constructor(private readonly base: string) {}
 
@@ -46,20 +64,39 @@ export class DropApi {
     return this.postJson("/revoke", { token });
   }
 
-  /** Upload step 1: verify the link + get a presigned R2 PUT URL. */
-  uploadInit(payload: string, size: number): Promise<{ objectId: string; uploadUrl: string; expiresInSec: number }> {
+  /** Upload step 1: verify the link + get an upload descriptor (single PUT or multipart). */
+  uploadInit(payload: string, size: number): Promise<UploadInit> {
     return this.postJson("/upload-init", { payload, size });
   }
 
-  /** Upload step 2: PUT the ciphertext straight to R2 (bytes never touch the Worker). */
+  /** Multipart: presign the next batch of UploadPart URLs on demand. */
+  uploadParts(payload: string, objectId: string, from: number, count: number): Promise<{ partUrls: PartUrl[] }> {
+    return this.postJson("/upload-parts", { payload, objectId, from, count });
+  }
+
+  /** Upload step 2 (single): PUT the ciphertext straight to R2 (bytes never touch the Worker). */
   async putToR2(uploadUrl: string, body: Blob | Uint8Array): Promise<void> {
     const res = await fetch(uploadUrl, { method: "PUT", body });
     if (!res.ok) throw new DropApiError(`upload to storage failed (${res.status})`, res.status);
   }
 
-  /** Upload step 3: confirm the object + trigger the delivery email. */
-  uploadComplete(payload: string, objectId: string): Promise<{ ok: true }> {
-    return this.postJson("/upload-complete", { payload, objectId });
+  /** Upload step 2 (multipart): PUT one part to R2; returns its ETag (needed to complete). */
+  async putPart(url: string, body: Blob | Uint8Array): Promise<string> {
+    const res = await fetch(url, { method: "PUT", body });
+    if (!res.ok) throw new DropApiError(`part upload failed (${res.status})`, res.status);
+    const etag = res.headers.get("ETag") ?? res.headers.get("etag");
+    if (!etag) throw new DropApiError("storage returned no ETag (CORS must expose ETag)", res.status);
+    return etag;
+  }
+
+  /** Upload step 3: confirm the object + trigger the delivery email. `parts` for multipart. */
+  uploadComplete(payload: string, objectId: string, parts?: { partNumber: number; etag: string }[]): Promise<{ ok: true }> {
+    return this.postJson("/upload-complete", parts ? { payload, objectId, parts } : { payload, objectId });
+  }
+
+  /** Cancel an in-progress multipart upload (frees the staged parts on R2). */
+  uploadAbort(payload: string, objectId: string): Promise<{ ok: true }> {
+    return this.postJson("/upload-abort", { payload, objectId });
   }
 
   /** Receive: get a presigned R2 GET URL for an object id. */
