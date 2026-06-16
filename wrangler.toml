@@ -22,6 +22,15 @@ bucket_name = "filekey-drop-staging"
 binding = "DROP_KV"
 id = "c277258851044785971403e8d458b76d"
 
+# Atomic per-object completion guard (exactly-once delivery). SQLite-backed Durable Object.
+[[durable_objects.bindings]]
+name = "COMPLETION"
+class_name = "CompletionGuard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CompletionGuard"]
+
 [vars]
 ALLOWED_ORIGIN = "https://drop-staging.filekey.app"
 MAIL_FROM = "files@drop.filekey.app"
@@ -62,6 +71,14 @@ bucket_name = "filekey-drop"
 [[env.production.kv_namespaces]]
 binding = "DROP_KV"
 id = "REPLACE_ME_PROD_KV_ID"
+
+[[env.production.durable_objects.bindings]]
+name = "COMPLETION"
+class_name = "CompletionGuard"
+
+[[env.production.migrations]]
+tag = "v1"
+new_sqlite_classes = ["CompletionGuard"]
 
 [env.production.vars]
 ALLOWED_ORIGIN = "https://drop.filekey.app"

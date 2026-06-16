@@ -40,7 +40,6 @@ const UPLOAD_BYTES_IP_FACTOR = 10; // per-IP daily byte budget defaults to 10x t
 const DEFAULT_SIGN_KEY_ID = 1; // key id stamped into links when SERVER_SIGN_KEY_ID is unset
 const CONFIRM_TTL_SEC = HOUR; // pending registration lifetime
 const PRESIGN_TTL_SEC = HOUR; // presigned PUT/GET lifetime
-const OBJECT_TTL_SEC = 7 * DAY; // matches the R2 bucket lifecycle rule
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 const OBJECT_ID_BYTES = 16;
 const REVOKE_TOKEN_BYTES = 16; // receiver-only secret that maps to a link_id for revocation
@@ -433,35 +432,32 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
   }
   const linkIdHex = hex(link.linkId);
 
-  // Idempotent: a re-issued complete for an already-delivered object is a no-op,
-  // so a client can't amplify one upload into many emails.
-  const doneKey = `done:${body.objectId}`;
-  if (await env.DROP_KV.get(doneKey)) return json({ ok: true, already: true }, 200, origin);
+  // Atomic completion guard (a per-object Durable Object): claim the right to complete this object, or
+  // learn it's already delivered (idempotent 200) or that a concurrent attempt holds it (409, retry).
+  // Replaces the soft KV done/completing flags, whose get-then-put could race two completes into two
+  // delivery emails. The finally releases the claim on any non-success path so a retry can re-claim.
+  const guard = env.COMPLETION.get(env.COMPLETION.idFromName(body.objectId));
+  const claim = await guard.claim();
+  if (claim === "done") return json({ ok: true, already: true }, 200, origin);
+  if (claim === "running") return json({ error: "completion already in progress, try again" }, 409, origin);
 
-  // The object must have been minted for THIS link (bound at upload-init). Stops
-  // an attacker pairing a victim's link with an object uploaded under their own
-  // link to bypass the victim link's flood cap + revocation.
-  const bindRaw = await env.DROP_KV.get(`upload:${body.objectId}`);
-  if (!bindRaw) return json({ error: "object/link mismatch" }, 400, origin);
-  let bind: UploadBinding;
+  let finished = false;
   try {
-    bind = JSON.parse(bindRaw) as UploadBinding;
-  } catch {
-    return json({ error: "object/link mismatch" }, 400, origin);
-  }
-  if (bind.link !== linkIdHex) return json({ error: "object/link mismatch" }, 400, origin);
+    // The object must have been minted for THIS link (bound at upload-init). Stops an attacker pairing
+    // a victim's link with an object uploaded under their own link to bypass the victim's caps.
+    const bindRaw = await env.DROP_KV.get(`upload:${body.objectId}`);
+    if (!bindRaw) return json({ error: "object/link mismatch" }, 400, origin);
+    let bind: UploadBinding;
+    try {
+      bind = JSON.parse(bindRaw) as UploadBinding;
+    } catch {
+      return json({ error: "object/link mismatch" }, 400, origin);
+    }
+    if (bind.link !== linkIdHex) return json({ error: "object/link mismatch" }, 400, origin);
 
-  // Revocation on the DELIVERY link (the email goes out here).
-  if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
+    // Revocation on the DELIVERY link (the email goes out here).
+    if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
 
-  // Concurrency guard (the done flag is the permanent one): if another complete for this object is
-  // mid-flight, tell the caller to RETRY rather than claim success. That earlier attempt might still
-  // fail (e.g. email), and a false success here would silently drop delivery. Held only during the
-  // work; the finally frees it so a failed attempt can be retried.
-  const completingKey = `completing:${body.objectId}`;
-  if (await env.DROP_KV.get(completingKey)) return json({ error: "completion already in progress, try again" }, 409, origin);
-  await env.DROP_KV.put(completingKey, "1", { expirationTtl: 120 });
-  try {
     // Multipart: validate the part set strictly, then assemble. After this the
     // object exists at objectId exactly like a single PUT did.
     // Assemble only if a prior attempt hasn't already completed the MPU. CompleteMultipartUpload
@@ -528,12 +524,13 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
     // Mark done only AFTER the email sends, so a failed send stays retryable.
-    await env.DROP_KV.put(doneKey, finalId, { expirationTtl: OBJECT_TTL_SEC });
+    await guard.finish();
+    finished = true;
     await deleteObject(env, body.objectId); // drop the staging/assembled object (best-effort)
     await env.DROP_KV.delete(`upload:${body.objectId}`);
     return json({ ok: true }, 200, origin);
   } finally {
-    await env.DROP_KV.delete(completingKey);
+    if (!finished) await guard.release(); // free the claim for a retry (no-op once finished)
   }
 }
 

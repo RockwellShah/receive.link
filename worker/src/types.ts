@@ -1,5 +1,6 @@
 // Worker environment bindings. R2Bucket / KVNamespace / ExportedHandler come
 // from @cloudflare/workers-types.
+import type { CompletionGuard } from "./completion";
 
 /** Minimal shape of the Cloudflare `send_email` Worker binding. */
 export interface SendEmailBinding {
@@ -16,7 +17,8 @@ export interface Env {
   // Bindings
   EMAIL: SendEmailBinding; // [[send_email]] name = "EMAIL"
   DROP_BUCKET: R2Bucket; // ciphertext relay (lifecycle TTL ~7 days)
-  DROP_KV: KVNamespace; // confirm-nonce store + rate-limit counters + idempotency flags
+  DROP_KV: KVNamespace; // confirm-nonce store + rate-limit counters
+  COMPLETION: DurableObjectNamespace<CompletionGuard>; // atomic per-object completion guard (exactly-once delivery)
 
   // Secrets (wrangler secret put) — never in wrangler.toml
   SERVER_KEM_PRIVATE_JWK: string; // unseal recipient emails (HPKE)

@@ -121,6 +121,34 @@ export class CapturingEmail implements SendEmailBinding {
   }
 }
 
+// In-memory stand-in for the CompletionGuard Durable Object namespace. Bun tests are single-threaded,
+// so the atomic claim()/finish()/release() semantics hold without modeling the running-TTL or alarm.
+export class MemoryCompletion {
+  private state = new Map<string, "running" | "done">();
+  idFromName(name: string): DurableObjectId {
+    return { toString: () => name } as unknown as DurableObjectId;
+  }
+  get(id: DurableObjectId) {
+    const name = id.toString();
+    const state = this.state;
+    return {
+      async claim(): Promise<"claimed" | "running" | "done"> {
+        const s = state.get(name);
+        if (s === "done") return "done";
+        if (s === "running") return "running";
+        state.set(name, "running");
+        return "claimed";
+      },
+      async finish(): Promise<void> {
+        state.set(name, "done");
+      },
+      async release(): Promise<void> {
+        if (state.get(name) === "running") state.delete(name);
+      },
+    };
+  }
+}
+
 function rawFromEcJwk(jwk: JsonWebKey): Uint8Array {
   const raw = new Uint8Array(65);
   raw[0] = 0x04;
@@ -145,11 +173,13 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
   const kv = new MemoryKV();
   const r2 = new MemoryR2();
   const email = new CapturingEmail();
+  const completion = new MemoryCompletion();
 
   const env: Env = {
     EMAIL: email,
     DROP_BUCKET: r2 as unknown as R2Bucket,
     DROP_KV: kv as unknown as KVNamespace,
+    COMPLETION: completion as unknown as Env["COMPLETION"],
     SERVER_SIGN_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.privateKey)),
     SERVER_SIGN_PUBLIC_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.publicKey)),
     SERVER_KEM_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", kem.privateKey)),
