@@ -144,6 +144,10 @@ export class MemoryCompletion {
         state.set(name, { phase: "running", owner: token });
         return { ok: true, token };
       },
+      async heldBy(token: string): Promise<boolean> {
+        const s = state.get(name);
+        return s?.phase === "running" && s.owner === token;
+      },
       async finish(token: string): Promise<boolean> {
         const s = state.get(name);
         if (s?.phase === "done") return true;

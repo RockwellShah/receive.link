@@ -483,19 +483,6 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "file too large" }, 413, origin);
     }
 
-    // Byte budgets charged on the ACTUAL object size (not the spoofable declared size from
-    // upload-init): per-link + per-IP daily caps so a multi-TB per-file cap can't become PB/day.
-    const ipHash = await sha256hex(clientIp(req));
-    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, staged.size, bytesPerLinkDay(env), DAY))) {
-      logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: staged.size });
-      await deleteObject(env, body.objectId);
-      return json({ error: "link is over its daily transfer limit" }, 429, origin);
-    }
-    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:ip:${ipHash}`, staged.size, bytesPerIpDay(env), DAY))) {
-      await deleteObject(env, body.objectId);
-      return json({ error: "rate limited" }, 429, origin);
-    }
-
     // Per-link flood cap on the delivery link (gates the expensive copy below).
     if (!(await rateLimit(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
       return json({ error: "link is over its daily limit" }, 429, origin);
@@ -507,7 +494,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     if (!(await copyObject(env, body.objectId, finalId))) return json({ error: "object not found" }, 404, origin);
     const finalInfo = await objectInfo(env, finalId);
     if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await validateFileKeyHeader(env, finalId, finalInfo.size))) {
-      logEvent("invalid_ciphertext", { objectId: body.objectId, size: finalInfo?.size ?? null });
+      logEvent("invalid_ciphertext", { link: linkIdHex, size: finalInfo?.size ?? null });
       await deleteObject(env, finalId);
       return json({ error: "not a FileKey file" }, 422, origin);
     }
@@ -521,13 +508,34 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "invalid link" }, 400, origin);
     }
 
+    // If a stalled attempt was reclaimed while we worked, the reclaimer now owns delivery — abort
+    // before the email rather than send a duplicate (fences the side effect, not just the state).
+    if (!(await guard.heldBy(claim.token))) return json({ error: "completion was retried elsewhere, try again" }, 409, origin);
+
+    // Byte budgets, charged on the ACTUAL object size and AFTER every other gate, so an invalid or
+    // over-limit upload never burns the quota. Per-link + per-IP daily caps keep a multi-TB per-file
+    // cap from becoming petabytes/day.
+    const ipHash = await sha256hex(clientIp(req));
+    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, finalInfo.size, bytesPerLinkDay(env), DAY))) {
+      logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: finalInfo.size });
+      await deleteObject(env, finalId);
+      await deleteObject(env, body.objectId);
+      return json({ error: "link is over its daily transfer limit" }, 429, origin);
+    }
+    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:ip:${ipHash}`, finalInfo.size, bytesPerIpDay(env), DAY))) {
+      logEvent("byte_budget_exceeded", { scope: "ip", link: linkIdHex, size: finalInfo.size });
+      await deleteObject(env, finalId);
+      await deleteObject(env, body.objectId);
+      return json({ error: "rate limited" }, 429, origin);
+    }
+
     // Carry the receiver's manage/revoke link in the delivery email (best-effort).
     const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
     const manageUrl = revokeToken ? `${origin}/revoke#${revokeToken}` : undefined;
     try {
       await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label, manageUrl);
     } catch {
-      logEvent("delivery_failed", { link: linkIdHex, finalId });
+      logEvent("delivery_failed", { link: linkIdHex });
       await deleteObject(env, finalId); // no orphaned final; the client can retry
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
@@ -536,7 +544,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // after a successful delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
     await guard.finish(claim.token);
-    logEvent("delivered", { link: linkIdHex, finalId, size: staged.size });
+    logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {
       await deleteObject(env, body.objectId);
       await env.DROP_KV.delete(`upload:${body.objectId}`);

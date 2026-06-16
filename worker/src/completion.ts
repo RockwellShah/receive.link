@@ -40,6 +40,15 @@ export class CompletionGuard extends DurableObject {
     return { ok: true, token };
   }
 
+  /** True only if THIS token still owns a NON-STALE running lock. Checked right before the irreversible
+   *  email so a stalled, about-to-be-reclaimed attempt aborts instead of sending a duplicate — fences the
+   *  side effect, not just the state. (Residual: a stall landing exactly on the TTL boundary with a slow
+   *  email is still possible, but that's a duplicate email, not data loss.) */
+  async heldBy(token: string): Promise<boolean> {
+    const s = await this.ctx.storage.get<Stored>("s");
+    return s?.phase === "running" && s.owner === token && s.runAt !== undefined && Date.now() - s.runAt < RUNNING_TTL_MS;
+  }
+
   /** Mark delivered — only the current owner may. Returns false if the lock was reclaimed by someone
    *  else (already-done counts as success/idempotent). */
   async finish(token: string): Promise<boolean> {

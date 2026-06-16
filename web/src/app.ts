@@ -257,6 +257,37 @@ async function uploadPart(
 // Enough of the ciphertext to cover the fixed head + the metadata (<= ~1 MiB), fetched as a Range
 // request so we can show the filename without downloading the whole file.
 const METADATA_PREFIX = 1_200_000;
+
+// Read at most `max` bytes from a response body, then cancel the rest — so opening a link to read just
+// the metadata never downloads the whole file, even if the server ignored our Range request (200).
+async function readPrefix(resp: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
+  if (!resp.body) return new Uint8Array(await resp.arrayBuffer()).subarray(0, max);
+  const reader = resp.body.getReader();
+  const parts: Uint8Array[] = [];
+  let len = 0;
+  try {
+    while (len < max) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value && value.length) {
+        parts.push(value);
+        len += value.length;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const out = new Uint8Array(Math.min(len, max));
+  let off = 0;
+  for (const p of parts) {
+    if (off >= out.length) break;
+    const take = p.subarray(0, out.length - off);
+    out.set(take, off);
+    off += take.length;
+  }
+  return out;
+}
+
 async function receiveMode(objectId: string): Promise<void> {
   const st = new StatusMsg("Opening your file");
   try {
@@ -269,7 +300,9 @@ async function receiveMode(objectId: string): Promise<void> {
     // buffered — true 1x disk, which is what makes receiving a multi-TB file feasible.
     const headResp = await fetch(url, { headers: { Range: `bytes=0-${METADATA_PREFIX - 1}` } });
     if (!headResp.ok) throw new Error("the file has expired or was already removed"); // 200 or 206 are ok
-    const { metadata } = await openCiphertext(await headResp.blob(), identity, NS);
+    // Read only the prefix + cancel: even if the server ignored Range (200), we never download the
+    // whole ciphertext just to read the filename.
+    const { metadata } = await openCiphertext(new Blob([await readPrefix(headResp, METADATA_PREFIX)]), identity, NS);
     st.done();
     await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you and decrypts on your device as you save it."], OK);
     if (!(window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker && metadata.originalSize > 2 * 1024 * 1024 * 1024) {
@@ -338,29 +371,28 @@ void (async () => {
   cfg = await ensureConfig(); // in dev, fetches the mock server's keys so they match
   api = new DropApi(cfg.apiBase);
 
-  // Browser support gate: every flow needs a passkey (WebAuthn PRF) over HTTPS. Fail loudly up front
-  // instead of cryptically mid-flow on an unsupported browser.
-  const support = checkSupport();
-  if (!support.secureContext || !support.webauthn) {
-    await appMsg(
-      [{ t: "This browser can't run FileKey Drop.", b: true }, " It needs passkeys (WebAuthn) over HTTPS — try a recent Chrome, Edge, Safari, or Firefox."],
-      ERR,
-    );
-    return;
-  }
-  if ((await prfBrowserSupport()) === false) {
-    await appMsg(
-      [{ t: "This browser is missing a passkey feature FileKey needs (PRF).", b: true }, " Try the latest Chrome, Edge, or Safari."],
-      ERR,
-    );
-    return;
-  }
+  // Only the receiver's flows need a passkey (WebAuthn PRF): creating a Drop link (setup) and
+  // decrypting a delivered file (receive). SENDERS use a throwaway identity, and confirm/revoke are
+  // nonce/token based — so we gate ONLY those two flows, and fail loudly there instead of cryptically.
+  // (Gating everything would wrongly block senders on browsers that can encrypt but lack PRF.)
+  const gated = async (fn: () => void): Promise<void> => {
+    const s = checkSupport();
+    if (!s.secureContext || !s.webauthn) {
+      await appMsg([{ t: "This browser can't open FileKey links.", b: true }, " It needs passkeys (WebAuthn) over HTTPS — try a recent Chrome, Edge, or Safari."], ERR);
+      return;
+    }
+    if ((await prfBrowserSupport()) === false) {
+      await appMsg([{ t: "This browser is missing a passkey feature FileKey needs (PRF).", b: true }, " Try the latest Chrome, Edge, or Safari."], ERR);
+      return;
+    }
+    fn();
+  };
 
   const path = location.pathname;
   const hash = location.hash.replace(/^#/, "");
-  if (path === "/confirm") void confirmMode(hash);
-  else if (path === "/revoke") void revokeMode(hash);
-  else if (path.startsWith("/d/")) void receiveMode(path.slice("/d/".length));
-  else if (hash.length > 0) void uploadMode(hash);
-  else void setupMode();
+  if (path === "/confirm") void confirmMode(hash); // nonce exchange — no passkey
+  else if (path === "/revoke") void revokeMode(hash); // token — no passkey
+  else if (path.startsWith("/d/")) void gated(() => void receiveMode(path.slice("/d/".length))); // decrypt — needs PRF
+  else if (hash.length > 0) void uploadMode(hash); // sender — throwaway identity, no passkey
+  else void gated(() => void setupMode()); // create a link — needs PRF
 })();
