@@ -124,7 +124,7 @@ export class CapturingEmail implements SendEmailBinding {
 // In-memory stand-in for the CompletionGuard Durable Object namespace. Bun tests are single-threaded,
 // so the atomic claim()/finish()/release() semantics hold without modeling the running-TTL or alarm.
 export class MemoryCompletion {
-  private state = new Map<string, "running" | "done">();
+  private state = new Map<string, { phase: "running" | "done"; owner?: string }>();
   idFromName(name: string): DurableObjectId {
     return { toString: () => name } as unknown as DurableObjectId;
   }
@@ -132,18 +132,30 @@ export class MemoryCompletion {
     const name = id.toString();
     const state = this.state;
     return {
-      async claim(): Promise<"claimed" | "running" | "done"> {
+      async peek(): Promise<"fresh" | "running" | "done"> {
         const s = state.get(name);
-        if (s === "done") return "done";
-        if (s === "running") return "running";
-        state.set(name, "running");
-        return "claimed";
+        return s?.phase === "done" ? "done" : s?.phase === "running" ? "running" : "fresh";
       },
-      async finish(): Promise<void> {
-        state.set(name, "done");
+      async claim(): Promise<{ ok: true; token: string } | { ok: false; reason: "running" | "done" }> {
+        const s = state.get(name);
+        if (s?.phase === "done") return { ok: false, reason: "done" };
+        if (s?.phase === "running") return { ok: false, reason: "running" };
+        const token = crypto.randomUUID();
+        state.set(name, { phase: "running", owner: token });
+        return { ok: true, token };
       },
-      async release(): Promise<void> {
-        if (state.get(name) === "running") state.delete(name);
+      async finish(token: string): Promise<boolean> {
+        const s = state.get(name);
+        if (s?.phase === "done") return true;
+        if (s?.phase === "running" && s.owner === token) {
+          state.set(name, { phase: "done" });
+          return true;
+        }
+        return false;
+      },
+      async release(token: string): Promise<void> {
+        const s = state.get(name);
+        if (s?.phase === "running" && s.owner === token) state.delete(name);
       },
     };
   }

@@ -75,16 +75,17 @@ const FK_SUITE = 0x01; // SUITE_ID
 const FK_META_LEN_OFFSET = 12 + 65 + 65; // HEADER_LEN(12) + PK_LEN(65) + ENC_LEN(65) = 142; u32be metadata length follows
 const FK_META_CT_MIN = 17; // 1-byte metadata version + 16-byte tag
 const FK_META_CT_MAX = 1_048_592; // 1 MiB + 16-byte tag
+const FK_GCM_TAG = 16; // a payload chunk's GCM tag — even a 0-byte file has one chunk
 const FK_MIN_PREFIX = FK_META_LEN_OFFSET + 4; // 146: smallest prefix we read + validate
 
 /**
  * Validate the FileKey container's fixed (unencrypted) header via a ranged GET of the first ~146
  * bytes — not just the 4-byte magic: magic + format version + suite id + a sane metadata-length
- * field, and that the object is at least a full header long. This is the server's only structural
- * gate (it can't authenticate the E2E ciphertext), so it stays strict on what it CAN check; it's
- * what stops Drop being an open mailer for arbitrary bytes.
+ * field, and (using the known object size) that the object is actually large enough to contain that
+ * metadata plus a payload tag. This is the server's only structural gate (it can't authenticate the
+ * E2E ciphertext), so it stays strict on what it CAN check; it's what stops Drop being an open mailer.
  */
-export async function validateFileKeyHeader(env: Env, objectId: string): Promise<boolean> {
+export async function validateFileKeyHeader(env: Env, objectId: string, totalSize: number): Promise<boolean> {
   const obj = await env.DROP_BUCKET.get(objectId, { range: { offset: 0, length: FK_MIN_PREFIX } });
   if (!obj) return false;
   const h = new Uint8Array(await obj.arrayBuffer());
@@ -92,7 +93,10 @@ export async function validateFileKeyHeader(env: Env, objectId: string): Promise
   if (!FILEKEY_MAGIC.every((b, i) => h[i] === b)) return false;
   if (h[4] !== FK_VERSION || h[5] !== FK_SUITE) return false;
   const metaLen = ((h[FK_META_LEN_OFFSET]! << 24) | (h[FK_META_LEN_OFFSET + 1]! << 16) | (h[FK_META_LEN_OFFSET + 2]! << 8) | h[FK_META_LEN_OFFSET + 3]!) >>> 0;
-  return metaLen >= FK_META_CT_MIN && metaLen <= FK_META_CT_MAX;
+  if (metaLen < FK_META_CT_MIN || metaLen > FK_META_CT_MAX) return false;
+  // The object must actually hold the declared metadata + at least one payload chunk tag — rejects
+  // header-shaped-but-truncated junk that passes the field checks.
+  return totalSize >= FK_META_LEN_OFFSET + 4 + metaLen + FK_GCM_TAG;
 }
 
 // ---- Multipart (large uploads) -----------------------------------------------

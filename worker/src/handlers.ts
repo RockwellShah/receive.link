@@ -292,7 +292,7 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
     return json({ error: "missing fields" }, 400, origin);
   }
   const cap = maxUploadBytes(env);
-  if (body.size <= 0 || body.size > cap) {
+  if (!Number.isInteger(body.size) || body.size <= 0 || body.size > cap) {
     return json({ error: "file too large", maxBytes: cap }, 413, origin);
   }
 
@@ -312,14 +312,8 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
-  // Byte budgets on top of the file-count caps: at a multi-TB per-file cap, counts alone would allow
-  // petabytes/day. Charge the declared ciphertext size to the link + IP daily byte budgets.
-  if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, body.size, bytesPerLinkDay(env), DAY))) {
-    return json({ error: "link is over its daily transfer limit" }, 429, origin);
-  }
-  if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:ip:${ipHash}`, body.size, bytesPerIpDay(env), DAY))) {
-    return json({ error: "rate limited" }, 429, origin);
-  }
+  // NOTE: byte budgets are charged at upload-COMPLETE on the actual object size, not here — the
+  // declared `size` is client-controlled and no presigned PUT enforces it (see uploadComplete).
 
   // Bind the object to the link that minted it, so completion can't pair another
   // (e.g. a victim's) link with this object.
@@ -432,38 +426,40 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
   }
   const linkIdHex = hex(link.linkId);
 
-  // Atomic completion guard (a per-object Durable Object): claim the right to complete this object, or
-  // learn it's already delivered (idempotent 200) or that a concurrent attempt holds it (409, retry).
-  // Replaces the soft KV done/completing flags, whose get-then-put could race two completes into two
-  // delivery emails. The finally releases the claim on any non-success path so a retry can re-claim.
+  // Atomic completion guard (a per-object Durable Object) for exactly-once delivery. peek() is
+  // read-only, so the early idempotency check spawns NO persistent DO state for a bogus object id;
+  // claim() (which writes state + an alarm) runs only after the object is proven bound to this link.
   const guard = env.COMPLETION.get(env.COMPLETION.idFromName(body.objectId));
-  const claim = await guard.claim();
-  if (claim === "done") return json({ ok: true, already: true }, 200, origin);
-  if (claim === "running") return json({ error: "completion already in progress, try again" }, 409, origin);
+  if ((await guard.peek()) === "done") return json({ ok: true, already: true }, 200, origin);
 
+  // The object must have been minted for THIS link (bound at upload-init). Stops an attacker pairing a
+  // victim's link with an object uploaded under their own link to bypass the victim's caps.
+  const bindRaw = await env.DROP_KV.get(`upload:${body.objectId}`);
+  if (!bindRaw) return json({ error: "object/link mismatch" }, 400, origin);
+  let bind: UploadBinding;
+  try {
+    bind = JSON.parse(bindRaw) as UploadBinding;
+  } catch {
+    return json({ error: "object/link mismatch" }, 400, origin);
+  }
+  if (bind.link !== linkIdHex) return json({ error: "object/link mismatch" }, 400, origin);
+
+  // Revocation on the DELIVERY link (the email goes out here).
+  if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
+
+  // Take the completion lock (writes DO state only now, for a real bound object). The fencing token
+  // guards finish()/release() so a stale, reclaimed attempt can't clobber a newer owner's lock.
+  const claim = await guard.claim();
+  if (!claim.ok) {
+    return claim.reason === "done"
+      ? json({ ok: true, already: true }, 200, origin)
+      : json({ error: "completion already in progress, try again" }, 409, origin);
+  }
   let finished = false;
   try {
-    // The object must have been minted for THIS link (bound at upload-init). Stops an attacker pairing
-    // a victim's link with an object uploaded under their own link to bypass the victim's caps.
-    const bindRaw = await env.DROP_KV.get(`upload:${body.objectId}`);
-    if (!bindRaw) return json({ error: "object/link mismatch" }, 400, origin);
-    let bind: UploadBinding;
-    try {
-      bind = JSON.parse(bindRaw) as UploadBinding;
-    } catch {
-      return json({ error: "object/link mismatch" }, 400, origin);
-    }
-    if (bind.link !== linkIdHex) return json({ error: "object/link mismatch" }, 400, origin);
-
-    // Revocation on the DELIVERY link (the email goes out here).
-    if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
-
-    // Multipart: validate the part set strictly, then assemble. After this the
-    // object exists at objectId exactly like a single PUT did.
-    // Assemble only if a prior attempt hasn't already completed the MPU. CompleteMultipartUpload
-    // consumes the uploadId, so re-completing fails forever; if an earlier attempt completed but then
-    // failed downstream (e.g. email), the assembled object already exists at objectId — skip straight
-    // to delivery below instead of re-completing a consumed upload.
+    // Multipart: validate the part set strictly, then assemble — but only if a prior attempt hasn't
+    // already completed the MPU (CompleteMultipartUpload consumes the uploadId; if an earlier attempt
+    // completed but failed downstream, the assembled object already exists — skip straight to delivery).
     if (bind.mp && !(await objectInfo(env, body.objectId))) {
       const parts = validateParts(body.parts, bind.mp.partCount);
       if (!parts) {
@@ -479,7 +475,6 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
 
     // The object (single-PUT or multipart-assembled) must exist + be within the cap.
-    // Checked BEFORE spending the link's delivery quota.
     const staged = await objectInfo(env, body.objectId);
     if (!staged) return json({ error: "object not found" }, 404, origin);
     if (staged.size > maxUploadBytes(env)) {
@@ -487,19 +482,29 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "file too large" }, 413, origin);
     }
 
+    // Byte budgets charged on the ACTUAL object size (not the spoofable declared size from
+    // upload-init): per-link + per-IP daily caps so a multi-TB per-file cap can't become PB/day.
+    const ipHash = await sha256hex(clientIp(req));
+    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, staged.size, bytesPerLinkDay(env), DAY))) {
+      await deleteObject(env, body.objectId);
+      return json({ error: "link is over its daily transfer limit" }, 429, origin);
+    }
+    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:ip:${ipHash}`, staged.size, bytesPerIpDay(env), DAY))) {
+      await deleteObject(env, body.objectId);
+      return json({ error: "rate limited" }, 429, origin);
+    }
+
     // Per-link flood cap on the delivery link (gates the expensive copy below).
     if (!(await rateLimit(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
       return json({ error: "link is over its daily limit" }, 429, origin);
     }
 
-    // Promote to an immutable, sender-unknown final key, then validate THAT copy.
-    // The sender holds no PUT URL for the final key, so it can't be swapped after
-    // the check (closes the mutable-PUT TOCTOU). Size + magic are checked on the
-    // final object, which is authoritative.
+    // Promote to an immutable, sender-unknown final key, then validate THAT copy. The sender holds no
+    // PUT URL for the final key, so it can't be swapped after the check (closes the mutable-PUT TOCTOU).
     const finalId = hex(randomBytes(OBJECT_ID_BYTES));
     if (!(await copyObject(env, body.objectId, finalId))) return json({ error: "object not found" }, 404, origin);
     const finalInfo = await objectInfo(env, finalId);
-    if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await validateFileKeyHeader(env, finalId))) {
+    if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await validateFileKeyHeader(env, finalId, finalInfo.size))) {
       await deleteObject(env, finalId);
       return json({ error: "not a FileKey file" }, 422, origin);
     }
@@ -513,8 +518,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "invalid link" }, 400, origin);
     }
 
-    // Carry the receiver's manage/revoke link in the delivery email (best-effort:
-    // links minted before revoke existed simply won't have one).
+    // Carry the receiver's manage/revoke link in the delivery email (best-effort).
     const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
     const manageUrl = revokeToken ? `${origin}/revoke#${revokeToken}` : undefined;
     try {
@@ -523,14 +527,20 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       await deleteObject(env, finalId); // no orphaned final; the client can retry
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
-    // Mark done only AFTER the email sends, so a failed send stays retryable.
-    await guard.finish();
+    // The email is OUT — from here we must never release the lock (that would let a retry send a
+    // duplicate). Record done, then best-effort cleanup; a cleanup failure must NOT 500 the sender
+    // after a successful delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
-    await deleteObject(env, body.objectId); // drop the staging/assembled object (best-effort)
-    await env.DROP_KV.delete(`upload:${body.objectId}`);
+    await guard.finish(claim.token);
+    try {
+      await deleteObject(env, body.objectId);
+      await env.DROP_KV.delete(`upload:${body.objectId}`);
+    } catch {
+      /* orphaned staging object — the 7-day lifecycle reaps it */
+    }
     return json({ ok: true }, 200, origin);
   } finally {
-    if (!finished) await guard.release(); // free the claim for a retry (no-op once finished)
+    if (!finished) await guard.release(claim.token); // free the claim for a retry
   }
 }
 

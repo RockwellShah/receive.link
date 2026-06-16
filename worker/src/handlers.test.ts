@@ -48,7 +48,7 @@ async function setupLink(h: TestHarness, email = "receiver@example.com", label =
 // (u32be at offset 142), zero-padded. Padded up to 146 (a full header) so the worker's header check
 // accepts it; mirrors web/core/src/constants.ts.
 function fkeyCiphertext(size: number): Uint8Array {
-  const ct = new Uint8Array(Math.max(size, 146));
+  const ct = new Uint8Array(Math.max(size, 200)); // >= 142+4+metaLen(17)+tag(16)=179, so the size check passes
   ct.set([0x46, 0x4b, 0x45, 0x59], 0); // "FKEY"
   ct[4] = 0x01; // FORMAT_VERSION
   ct[5] = 0x01; // SUITE_ID
@@ -116,6 +116,21 @@ test("upload-complete is idempotent: one upload, one delivery email", async () =
   await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
   await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
   expect(h.email.sent.length).toBe(3); // 2 setup emails + 1 delivery (idempotent: not 2 deliveries)
+});
+
+test("byte budget is charged on the ACTUAL object size at complete, not the declared size", async () => {
+  // 300-byte/day link budget; each upload is a real 200-byte object regardless of declared size.
+  const h = await makeTestEnv({ UPLOAD_BYTES_PER_LINK_DAY: "300" });
+  const link = await setupLink(h);
+  const send = async (declared: number) => {
+    const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: declared }), h.env)).json()) as { objectId: string };
+    h.r2.putRaw(objectId, fkeyCiphertext(200)); // 200 actual bytes, whatever was declared
+    return (await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status;
+  };
+  // First 200-byte upload fits the 300-byte budget. A spoofed-low declared size doesn't help: the
+  // SECOND upload is charged its real 200 bytes (total 400 > 300) and is rejected at complete.
+  expect(await send(200)).toBe(200);
+  expect(await send(1)).toBe(429);
 });
 
 // MULTIPART_THRESHOLD/MIN_PART are forced tiny so a 200-byte file exercises the real multipart
