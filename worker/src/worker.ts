@@ -15,13 +15,13 @@
 //   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
 
 import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
-import { cors, json } from "./http";
+import { allowedOrigin, cors, json } from "./http";
 import type { Env } from "./types";
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    const origin = env.ALLOWED_ORIGIN || "*";
+    const origin = allowedOrigin(env);
 
     if (req.method === "OPTIONS") return new Response(null, { headers: cors(origin) });
 

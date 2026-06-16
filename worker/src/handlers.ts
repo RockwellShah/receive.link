@@ -11,6 +11,7 @@
 
 import {
   DROP_PAYLOAD_VERSION,
+  KEY_ID_LEN,
   LINK_ID_LEN,
   base64urlDecode,
   base64urlEncode,
@@ -21,9 +22,9 @@ import {
 } from "../../shared/codec";
 import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
-import { clientIp, json, readJson } from "./http";
-import { DAY, HOUR, rateLimit } from "./kv";
-import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, hasFileKeyMagic, objectInfo, presignGet, presignPut, presignUploadPart } from "./r2";
+import { allowedOrigin, clientIp, json, readJson } from "./http";
+import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
+import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import type { Env } from "./types";
 import { hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
 
@@ -34,6 +35,9 @@ export const REG_EMAIL_PER_DAY = 5; // confirmation emails one address can recei
 export const UPLOAD_LINK_PER_DAY = 25; // files one Drop link accepts (anti-flood of the inbox)
 export const UPLOAD_IP_PER_DAY = 100; // files one IP can push across all links
 export const REVOKE_IP_PER_DAY = 60; // revoke calls one IP can make (tokens are unguessable; this just caps probing)
+const UPLOAD_BYTES_LINK_FACTOR = 5; // per-link daily byte budget defaults to 5x the per-file cap
+const UPLOAD_BYTES_IP_FACTOR = 10; // per-IP daily byte budget defaults to 10x the per-file cap
+const DEFAULT_SIGN_KEY_ID = 1; // key id stamped into links when SERVER_SIGN_KEY_ID is unset
 const CONFIRM_TTL_SEC = HOUR; // pending registration lifetime
 const PRESIGN_TTL_SEC = HOUR; // presigned PUT/GET lifetime
 const OBJECT_TTL_SEC = 7 * DAY; // matches the R2 bucket lifecycle rule
@@ -110,6 +114,31 @@ function envInt(v: string | undefined, dflt: number): number {
   return Number.isFinite(n) && n > 0 ? n : dflt;
 }
 
+// Daily BYTE budgets (alongside the file-count caps): default to a multiple of the per-file cap so a
+// single max-size upload always fits, but a link/IP can't move unbounded bytes per day.
+function bytesPerLinkDay(env: Env): number {
+  return envInt(env.UPLOAD_BYTES_PER_LINK_DAY, maxUploadBytes(env) * UPLOAD_BYTES_LINK_FACTOR);
+}
+function bytesPerIpDay(env: Env): number {
+  return envInt(env.UPLOAD_BYTES_PER_IP_DAY, maxUploadBytes(env) * UPLOAD_BYTES_IP_FACTOR);
+}
+
+/** The signing key id stamped into newly minted links, so the verifier can pick the right key later. */
+function currentSignKeyId(env: Env): number {
+  return envInt(env.SERVER_SIGN_KEY_ID, DEFAULT_SIGN_KEY_ID);
+}
+
+/** Public keys a link signature may verify against, by key id: the current key + an optional previous
+ *  key kept across a rotation so already-minted (permanent) links keep verifying. */
+function signingKeys(env: Env): Map<number, JsonWebKey> {
+  const keys = new Map<number, JsonWebKey>();
+  keys.set(currentSignKeyId(env), JSON.parse(env.SERVER_SIGN_PUBLIC_JWK) as JsonWebKey);
+  if (env.SERVER_SIGN_PUBLIC_JWK_PREV && env.SERVER_SIGN_KEY_ID_PREV) {
+    keys.set(envInt(env.SERVER_SIGN_KEY_ID_PREV, 0), JSON.parse(env.SERVER_SIGN_PUBLIC_JWK_PREV) as JsonWebKey);
+  }
+  return keys;
+}
+
 // Strip CR/LF + C0/DEL controls so a sender-chosen label can't inject email
 // headers or smuggle control bytes. Applied before signing, so the signed label
 // is already clean everywhere it's later shown.
@@ -127,14 +156,19 @@ const canonEmail = (s: string) => s.trim().toLowerCase();
 export async function parseAndVerify(payloadB64: string, env: Env): Promise<DropLink> {
   const bytes = base64urlDecode(payloadB64);
   const { signable, signature } = splitSignature(bytes);
-  const pub = await importSignPublicKey(JSON.parse(env.SERVER_SIGN_PUBLIC_JWK) as JsonWebKey);
+  // key_id sits right after the version byte, inside the signed region — read it BEFORE verifying so
+  // we pick the public key that signed this (permanent) link, which lets the signing key rotate.
+  if (signable.length < 1 + KEY_ID_LEN) throw new Error("malformed link");
+  const jwk = signingKeys(env).get(signable[1]!);
+  if (!jwk) throw new Error("unknown signing key id");
+  const pub = await importSignPublicKey(jwk);
   if (!(await verifyRegion(pub, signable, signature))) throw new Error("bad server signature");
   return decodeDropLink(bytes);
 }
 
 // POST /register { sealedEmail, shareKey, label } (all base64url except label)
 export async function register(req: Request, env: Env): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   const body = await readJson<{ sealedEmail: string; shareKey: string; label: string }>(req);
   if (!body || typeof body.sealedEmail !== "string" || typeof body.shareKey !== "string" || typeof body.label !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -156,6 +190,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
     sealedEmailBytes = base64urlDecode(body.sealedEmail);
     region = signableBytes({
       version: DROP_PAYLOAD_VERSION,
+      keyId: currentSignKeyId(env),
       linkId: randomBytes(LINK_ID_LEN),
       shareKey: base64urlDecode(body.shareKey),
       label,
@@ -189,7 +224,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
 
 // POST /confirm { nonce } -> { link }
 export async function confirm(req: Request, env: Env): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   const body = await readJson<{ nonce: string }>(req);
   if (!body || typeof body.nonce !== "string") return json({ error: "missing nonce" }, 400, origin);
 
@@ -208,7 +243,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
   // Mint a receiver-only revoke token so they can turn this link off later. It maps
   // to the link_id both ways: revtok->id powers POST /revoke; id->revtok lets each
   // delivery email carry the manage link. Neither entry ever touches the email address.
-  const linkIdHex = hex(region.slice(1, 1 + LINK_ID_LEN));
+  const linkIdHex = hex(region.slice(1 + KEY_ID_LEN, 1 + KEY_ID_LEN + LINK_ID_LEN)); // skip version(1) + key_id(1)
   const revokeToken = hex(randomBytes(REVOKE_TOKEN_BYTES));
   await env.DROP_KV.put(`revtok:${revokeToken}`, linkIdHex);
   await env.DROP_KV.put(`linkrev:${linkIdHex}`, revokeToken);
@@ -231,7 +266,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
 // POST /revoke { token } -> { ok } — the receiver turns their own Drop link off.
 // The token is the secret minted at confirm; it resolves to the link_id we flag.
 export async function revoke(req: Request, env: Env): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   const body = await readJson<{ token: string }>(req);
   if (!body || typeof body.token !== "string") return json({ error: "missing token" }, 400, origin);
   if (!isHex(body.token, REVOKE_TOKEN_BYTES)) return json({ error: "bad token" }, 400, origin);
@@ -252,7 +287,7 @@ export async function revoke(req: Request, env: Env): Promise<Response> {
 //   small (size <= MULTIPART_THRESHOLD): { mode:"single", objectId, uploadUrl }
 //   large: { mode:"multipart", objectId, uploadId, partSize, partCount, partUrls, batchSize }
 export async function uploadInit(req: Request, env: Env): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   const body = await readJson<{ payload: string; size: number }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.size !== "number") {
     return json({ error: "missing fields" }, 400, origin);
@@ -276,6 +311,14 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   }
   const ipHash = await sha256hex(clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
+  // Byte budgets on top of the file-count caps: at a multi-TB per-file cap, counts alone would allow
+  // petabytes/day. Charge the declared ciphertext size to the link + IP daily byte budgets.
+  if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, body.size, bytesPerLinkDay(env), DAY))) {
+    return json({ error: "link is over its daily transfer limit" }, 429, origin);
+  }
+  if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:ip:${ipHash}`, body.size, bytesPerIpDay(env), DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
 
@@ -314,7 +357,7 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
 // Re-presign a batch of UploadPart URLs on demand, so long uploads get fresh
 // signatures and we never sign all 10k up front.
 export async function uploadParts(req: Request, env: Env): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   const body = await readJson<{ payload: string; objectId: string; from: number; count: number }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string" || typeof body.from !== "number" || typeof body.count !== "number") {
     return json({ error: "missing fields" }, 400, origin);
@@ -346,7 +389,7 @@ export async function uploadParts(req: Request, env: Env): Promise<Response> {
 
 // POST /upload-abort { payload, objectId } -> { ok } (cancel cleanup)
 export async function uploadAbort(req: Request, env: Env): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   const body = await readJson<{ payload: string; objectId: string }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -375,7 +418,7 @@ export async function uploadAbort(req: Request, env: Env): Promise<Response> {
 // POST /upload-complete { payload, objectId, parts? } -> { ok }
 // `parts` ({partNumber, etag} per part) is required for multipart; omitted for single PUT.
 export async function uploadComplete(req: Request, env: Env): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   const body = await readJson<{ payload: string; objectId: string; parts?: unknown }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -460,7 +503,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     const finalId = hex(randomBytes(OBJECT_ID_BYTES));
     if (!(await copyObject(env, body.objectId, finalId))) return json({ error: "object not found" }, 404, origin);
     const finalInfo = await objectInfo(env, finalId);
-    if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await hasFileKeyMagic(env, finalId))) {
+    if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await validateFileKeyHeader(env, finalId))) {
       await deleteObject(env, finalId);
       return json({ error: "not a FileKey file" }, 422, origin);
     }
@@ -496,7 +539,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
 
 // GET /fetch/:id -> { url } (presigned R2 GET for the receiver's decrypt page)
 export async function fetchObject(_req: Request, env: Env, objectId: string): Promise<Response> {
-  const origin = env.ALLOWED_ORIGIN || "*";
+  const origin = allowedOrigin(env);
   if (!isHex(objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
   if (!(await objectInfo(env, objectId))) return json({ error: "expired or not found" }, 404, origin);
   const url = await presignGet(env, objectId, PRESIGN_TTL_SEC);

@@ -5,7 +5,11 @@
 // It binds, under a server signature, everything a sender's browser needs to
 // encrypt a file to the receiver and hand it back through the relay:
 //
-//   version(1) | link_id(8) | share_key | label | sealed_email | server_sig(64)
+//   version(1) | key_id(1) | link_id(8) | share_key | label | sealed_email | server_sig(64)
+//
+// - key_id      : which server signing key signed this link. Lets the signing key
+//                 rotate without breaking already-minted (permanent) links — the
+//                 verifier picks the matching public key by id. v2 added this byte.
 //
 // - share_key   : the receiver's public identity, exactly as the FileKey app
 //                 encodes it for the `#to=` flow (opaque bytes here).
@@ -19,7 +23,8 @@
 // This module has ZERO dependencies so it produces byte-identical output in the
 // Worker (no DOM) and the browser. Crypto lives in crypto.ts; framing lives here.
 
-export const DROP_PAYLOAD_VERSION = 1;
+export const DROP_PAYLOAD_VERSION = 2; // v2: added key_id byte after version (signing-key rotation)
+export const KEY_ID_LEN = 1;
 export const LINK_ID_LEN = 8;
 export const SERVER_SIG_LEN = 64; // ECDSA P-256, raw r||s
 export const MAX_LABEL_BYTES = 64; // UTF-8 length cap for the receiver-chosen label
@@ -28,6 +33,7 @@ export const MAX_SEALED_EMAIL_LEN = 1024;
 
 export interface DropLink {
   version: number;
+  keyId: number; // 0..255; which server signing key signed this link (for rotation)
   linkId: Uint8Array; // 8 bytes; rate-limit + revocation handle
   shareKey: Uint8Array; // opaque recipient public-identity bytes (as the app encodes them)
   label: string; // UTF-8, <= MAX_LABEL_BYTES bytes; shown to senders
@@ -55,6 +61,9 @@ const utf8Decode = new TextDecoder("utf-8", { fatal: true });
  */
 export function signableBytes(link: Omit<DropLink, "serverSig">): Uint8Array {
   const label = utf8.encode(link.label);
+  if (!Number.isInteger(link.keyId) || link.keyId < 0 || link.keyId > 255) {
+    throw new DropCodecError(`key_id must be a byte 0..255, got ${link.keyId}`);
+  }
   if (link.linkId.length !== LINK_ID_LEN) {
     throw new DropCodecError(`link_id must be ${LINK_ID_LEN} bytes, got ${link.linkId.length}`);
   }
@@ -67,10 +76,11 @@ export function signableBytes(link: Omit<DropLink, "serverSig">): Uint8Array {
   if (link.sealedEmail.length < 1 || link.sealedEmail.length > MAX_SEALED_EMAIL_LEN) {
     throw new DropCodecError(`sealed_email length out of range: ${link.sealedEmail.length}`);
   }
-  const size = 1 + LINK_ID_LEN + 1 + link.shareKey.length + 1 + label.length + 2 + link.sealedEmail.length;
+  const size = 1 + KEY_ID_LEN + LINK_ID_LEN + 1 + link.shareKey.length + 1 + label.length + 2 + link.sealedEmail.length;
   const out = new Uint8Array(size);
   let o = 0;
   out[o++] = link.version & 0xff;
+  out[o++] = link.keyId & 0xff;
   out.set(link.linkId, o);
   o += LINK_ID_LEN;
   out[o++] = link.shareKey.length & 0xff;
@@ -119,6 +129,8 @@ export function decodeDropLink(bytes: Uint8Array): DropLink {
   need(1);
   const version = bytes[o++]!;
   if (version !== DROP_PAYLOAD_VERSION) throw new DropCodecError(`unsupported version ${version}`);
+  need(KEY_ID_LEN);
+  const keyId = bytes[o++]!;
   need(LINK_ID_LEN);
   const linkId = bytes.slice(o, o + LINK_ID_LEN);
   o += LINK_ID_LEN;
@@ -144,7 +156,7 @@ export function decodeDropLink(bytes: Uint8Array): DropLink {
   const serverSig = bytes.slice(o, o + SERVER_SIG_LEN);
   o += SERVER_SIG_LEN;
   if (o !== bytes.length) throw new DropCodecError("trailing bytes after payload");
-  return { version, linkId, shareKey, label, sealedEmail, serverSig };
+  return { version, keyId, linkId, shareKey, label, sealedEmail, serverSig };
 }
 
 export function encodeDropLinkToFragment(link: DropLink): string {

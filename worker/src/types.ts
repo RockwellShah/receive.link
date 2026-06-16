@@ -26,6 +26,9 @@ export interface Env {
 
   // Vars (public, in wrangler.toml)
   SERVER_SIGN_PUBLIC_JWK: string; // verify Drop links on upload (public half)
+  SERVER_SIGN_KEY_ID?: string; // id (0..255) of the current signing key, stamped into minted links (default 1)
+  SERVER_SIGN_PUBLIC_JWK_PREV?: string; // optional previous signing key, kept to verify links minted before a rotation
+  SERVER_SIGN_KEY_ID_PREV?: string; // id of the previous signing key (pairs with _PREV)
   ALLOWED_ORIGIN: string; // the Drop web client origin (CORS + link/email base)
   MAIL_FROM: string; // e.g. "files@send.filekey.app"
   R2_ACCOUNT_ID: string; // <id>.r2.cloudflarestorage.com
@@ -35,4 +38,6 @@ export interface Env {
   MULTIPART_MIN_PART?: string; // optional: minimum part size (R2 needs >=5 MiB for non-last parts)
   REG_IP_PER_DAY?: string; // optional per-day abuse-cap overrides (staging runs these high)
   REG_EMAIL_PER_DAY?: string;
+  UPLOAD_BYTES_PER_LINK_DAY?: string; // optional daily byte budget per link (default 5x the per-file cap)
+  UPLOAD_BYTES_PER_IP_DAY?: string; // optional daily byte budget per IP (default 10x the per-file cap)
 }

@@ -19,6 +19,7 @@ import {
 function sample(over: Partial<DropLink> = {}): DropLink {
   return {
     version: DROP_PAYLOAD_VERSION,
+    keyId: 1,
     linkId: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
     shareKey: new Uint8Array(38).fill(0xab),
     label: "Rockwell's tax inbox",
@@ -32,6 +33,7 @@ test("encode → decode round-trips every field", () => {
   const link = sample();
   const decoded = decodeDropLink(encodeDropLink(link));
   expect(decoded.version).toBe(link.version);
+  expect(decoded.keyId).toBe(link.keyId);
   expect(decoded.linkId).toEqual(link.linkId);
   expect(decoded.shareKey).toEqual(link.shareKey);
   expect(decoded.label).toBe(link.label);
@@ -76,8 +78,13 @@ test("rejects a wrong-length signature at encode", () => {
 
 test("rejects an unknown version at decode", () => {
   const bytes = encodeDropLink(sample());
-  bytes[0] = 0x02;
+  bytes[0] = 0x09; // not DROP_PAYLOAD_VERSION
   expect(() => decodeDropLink(bytes)).toThrow(/unsupported version/);
+});
+
+test("round-trips key_id and rejects an out-of-range one at encode", () => {
+  expect(decodeDropLink(encodeDropLink(sample({ keyId: 200 }))).keyId).toBe(200);
+  expect(() => signableBytes(sample({ keyId: 256 }))).toThrow(DropCodecError);
 });
 
 test("rejects a truncated payload", () => {

@@ -1,4 +1,15 @@
 // HTTP helpers: CORS + JSON responses + safe body parsing.
+import type { Env } from "./types";
+
+/**
+ * The single allowed cross-origin caller. FAIL-CLOSED: if ALLOWED_ORIGIN is not
+ * configured we return "" (an origin no browser matches) rather than "*", so a
+ * misconfigured deploy denies cross-origin access instead of opening the API to
+ * any site. ALLOWED_ORIGIN is always set in wrangler.toml for staging + prod.
+ */
+export function allowedOrigin(env: Env): string {
+  return env.ALLOWED_ORIGIN || "";
+}
 
 export function cors(origin: string): Record<string, string> {
   return {
@@ -13,7 +24,9 @@ export function cors(origin: string): Record<string, string> {
 export function json(data: unknown, status: number, origin: string): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...cors(origin), "content-type": "application/json" },
+    // no-store: these bodies carry presigned R2 URLs, one-time nonces, and revoke
+    // tokens — never let a cache (browser, CDN, proxy) keep them.
+    headers: { ...cors(origin), "content-type": "application/json", "cache-control": "no-store" },
   });
 }
 

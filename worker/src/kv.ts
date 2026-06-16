@@ -29,3 +29,25 @@ export async function rateLimit(
   await kv.put(k, String(current + 1), { expirationTtl: windowSec * 2 });
   return true;
 }
+
+/**
+ * Byte-budget variant of {@link rateLimit}: accumulates `addBytes` into a fixed window and returns
+ * false once the window total would exceed `limitBytes`. Same SOFT-limit caveat (KV is eventually
+ * consistent, ~1 write/s/key) — an abuse dampener, not a hard quota. Pairs with the count limit so a
+ * 5 TB per-file cap can't be turned into petabytes/day via many uploads.
+ */
+export async function rateLimitBytes(
+  kv: KVNamespace,
+  key: string,
+  addBytes: number,
+  limitBytes: number,
+  windowSec: number,
+  nowMs: number = Date.now(),
+): Promise<boolean> {
+  const window = Math.floor(nowMs / 1000 / windowSec);
+  const k = `rlb:${key}:${window}`;
+  const current = parseInt((await kv.get(k)) || "0", 10);
+  if (current + addBytes > limitBytes) return false;
+  await kv.put(k, String(current + addBytes), { expirationTtl: windowSec * 2 });
+  return true;
+}

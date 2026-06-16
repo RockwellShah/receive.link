@@ -44,9 +44,15 @@ async function setupLink(h: TestHarness, email = "receiver@example.com", label =
   return ((await conf.json()) as { link: string }).link;
 }
 
+// A minimally-valid FileKey container: magic + format version + suite + a sane metadata-length field
+// (u32be at offset 142), zero-padded. Padded up to 146 (a full header) so the worker's header check
+// accepts it; mirrors web/core/src/constants.ts.
 function fkeyCiphertext(size: number): Uint8Array {
-  const ct = new Uint8Array(size);
+  const ct = new Uint8Array(Math.max(size, 146));
   ct.set([0x46, 0x4b, 0x45, 0x59], 0); // "FKEY"
+  ct[4] = 0x01; // FORMAT_VERSION
+  ct[5] = 0x01; // SUITE_ID
+  ct[145] = 17; // u32be metadata length at offset 142 == 17 (METADATA_CT_MIN)
   return ct;
 }
 
@@ -112,12 +118,13 @@ test("upload-complete is idempotent: one upload, one delivery email", async () =
   expect(h.email.sent.length).toBe(3); // 2 setup emails + 1 delivery (idempotent: not 2 deliveries)
 });
 
-// MULTIPART_THRESHOLD/MIN_PART are forced tiny so a 50-byte file exercises the real
-// multipart path (5 parts) without moving 100+ MiB through the test.
+// MULTIPART_THRESHOLD/MIN_PART are forced tiny so a 200-byte file exercises the real multipart
+// path (20 parts of 10 bytes) without moving 100+ MiB through the test. 200 bytes is also a full
+// FileKey header, so the assembled object passes the worker's header validation.
 test("multipart: a large upload splits into parts, assembles, and delivers", async () => {
   const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "10" });
   const link = await setupLink(h);
-  const init = await uploadInit(post("/upload-init", { payload: link, size: 50 }), h.env);
+  const init = await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env);
   expect(init.status).toBe(200);
   const mp = (await init.json()) as {
     mode: string;
@@ -129,15 +136,16 @@ test("multipart: a large upload splits into parts, assembles, and delivers", asy
   };
   expect(mp.mode).toBe("multipart");
   expect(mp.partSize).toBe(10);
-  expect(mp.partCount).toBe(5);
-  expect(mp.partUrls.length).toBe(5);
+  expect(mp.partCount).toBe(20);
+  expect(mp.partUrls.length).toBe(20);
   expect(mp.partUrls[0]!.url).toContain("partNumber=1");
   expect(mp.partUrls[0]!.url).toContain("X-Amz-Signature=");
 
-  // Simulate the browser's direct UploadPart PUTs (part 1 carries the FKEY magic).
+  // Simulate the browser's direct UploadPart PUTs: split one valid ciphertext into partSize chunks.
+  const full = fkeyCiphertext(200);
   const parts: { partNumber: number; etag: string }[] = [];
   for (let n = 1; n <= mp.partCount; n++) {
-    const chunk = n === 1 ? fkeyCiphertext(10) : new Uint8Array(10);
+    const chunk = full.subarray((n - 1) * mp.partSize, n * mp.partSize);
     parts.push({ partNumber: n, etag: h.r2.putPartRaw(mp.uploadId, n, chunk) });
   }
 
@@ -145,9 +153,9 @@ test("multipart: a large upload splits into parts, assembles, and delivers", asy
   expect(comp.status).toBe(200);
   const delivery = h.email.sent.at(-1)!;
   expect(delivery.text).toContain("/d/");
-  // The assembled final object is the full 50 bytes (parts concatenated in order).
+  // The assembled final object is the full 200 bytes (parts concatenated in order).
   const finalId = delivery.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
-  expect((await h.r2.head(finalId))!.size).toBe(50);
+  expect((await h.r2.head(finalId))!.size).toBe(200);
 });
 
 // A delivery email that throws the first time it is called, then succeeds. Installed AFTER setup so
@@ -166,11 +174,12 @@ class FailOnce extends CapturingEmail {
 test("multipart: delivery failure after assembly is retry-safe (retry skips the consumed uploadId)", async () => {
   const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "10" });
   const link = await setupLink(h);
-  const init = await uploadInit(post("/upload-init", { payload: link, size: 50 }), h.env);
-  const mp = (await init.json()) as { objectId: string; uploadId: string; partCount: number };
+  const init = await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env);
+  const mp = (await init.json()) as { objectId: string; uploadId: string; partSize: number; partCount: number };
+  const full = fkeyCiphertext(200);
   const parts: { partNumber: number; etag: string }[] = [];
   for (let n = 1; n <= mp.partCount; n++) {
-    const chunk = n === 1 ? fkeyCiphertext(10) : new Uint8Array(10);
+    const chunk = full.subarray((n - 1) * mp.partSize, n * mp.partSize);
     parts.push({ partNumber: n, etag: h.r2.putPartRaw(mp.uploadId, n, chunk) });
   }
 
@@ -181,7 +190,7 @@ test("multipart: delivery failure after assembly is retry-safe (retry skips the 
   // First complete: the MPU assembles, but the delivery email throws -> retryable 502, staging kept.
   const first = await uploadComplete(post("/upload-complete", { payload: link, objectId: mp.objectId, parts }), h.env);
   expect(first.status).toBe(502);
-  expect((await h.r2.head(mp.objectId))!.size).toBe(50); // assembled object survived for the retry
+  expect((await h.r2.head(mp.objectId))!.size).toBe(200); // assembled object survived for the retry
   expect(failEmail.sent.length).toBe(0); // delivery threw; nothing recorded
 
   // Retry: the uploadId is already consumed (CompleteMultipartUpload is one-shot). The fix must detect

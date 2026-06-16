@@ -29,6 +29,7 @@ const sealed = await sealEmail(kemPub, testEmail);
 // Mint the signed link (replicates the confirm handler, offline).
 const region = signableBytes({
   version: DROP_PAYLOAD_VERSION,
+  keyId: 1, // matches the worker's default SERVER_SIGN_KEY_ID
   linkId: crypto.getRandomValues(new Uint8Array(LINK_ID_LEN)),
   shareKey: new TextEncoder().encode(shareKey),
   label: "Smoke test",

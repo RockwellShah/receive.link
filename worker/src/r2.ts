@@ -69,16 +69,30 @@ export async function deleteObject(env: Env, objectId: string): Promise<void> {
   await env.DROP_BUCKET.delete(objectId);
 }
 
+// FileKey container header layout — mirrors web/core/src/constants.ts (§3, §5). Keep in sync.
+const FK_VERSION = 0x01; // FORMAT_VERSION
+const FK_SUITE = 0x01; // SUITE_ID
+const FK_META_LEN_OFFSET = 12 + 65 + 65; // HEADER_LEN(12) + PK_LEN(65) + ENC_LEN(65) = 142; u32be metadata length follows
+const FK_META_CT_MIN = 17; // 1-byte metadata version + 16-byte tag
+const FK_META_CT_MAX = 1_048_592; // 1 MiB + 16-byte tag
+const FK_MIN_PREFIX = FK_META_LEN_OFFSET + 4; // 146: smallest prefix we read + validate
+
 /**
- * Read just the first bytes via a ranged GET and confirm the FileKey magic.
- * This is what stops Drop being used as an open mailer for arbitrary bytes,
- * even though the upload itself went straight to R2.
+ * Validate the FileKey container's fixed (unencrypted) header via a ranged GET of the first ~146
+ * bytes — not just the 4-byte magic: magic + format version + suite id + a sane metadata-length
+ * field, and that the object is at least a full header long. This is the server's only structural
+ * gate (it can't authenticate the E2E ciphertext), so it stays strict on what it CAN check; it's
+ * what stops Drop being an open mailer for arbitrary bytes.
  */
-export async function hasFileKeyMagic(env: Env, objectId: string): Promise<boolean> {
-  const obj = await env.DROP_BUCKET.get(objectId, { range: { offset: 0, length: FILEKEY_MAGIC.length } });
+export async function validateFileKeyHeader(env: Env, objectId: string): Promise<boolean> {
+  const obj = await env.DROP_BUCKET.get(objectId, { range: { offset: 0, length: FK_MIN_PREFIX } });
   if (!obj) return false;
-  const head = new Uint8Array(await obj.arrayBuffer());
-  return head.length >= FILEKEY_MAGIC.length && FILEKEY_MAGIC.every((b, i) => head[i] === b);
+  const h = new Uint8Array(await obj.arrayBuffer());
+  if (h.length < FK_MIN_PREFIX) return false; // too small to be a real FileKey ciphertext
+  if (!FILEKEY_MAGIC.every((b, i) => h[i] === b)) return false;
+  if (h[4] !== FK_VERSION || h[5] !== FK_SUITE) return false;
+  const metaLen = ((h[FK_META_LEN_OFFSET]! << 24) | (h[FK_META_LEN_OFFSET + 1]! << 16) | (h[FK_META_LEN_OFFSET + 2]! << 8) | h[FK_META_LEN_OFFSET + 3]!) >>> 0;
+  return metaLen >= FK_META_CT_MIN && metaLen <= FK_META_CT_MAX;
 }
 
 // ---- Multipart (large uploads) -----------------------------------------------

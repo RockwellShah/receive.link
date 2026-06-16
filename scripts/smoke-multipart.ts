@@ -20,6 +20,7 @@ const sealed = await sealEmail(kemPub, Bun.argv[2] ?? "smoke-multipart@example.c
 
 const region = signableBytes({
   version: DROP_PAYLOAD_VERSION,
+  keyId: 1, // matches the worker's default SERVER_SIGN_KEY_ID
   linkId: crypto.getRandomValues(new Uint8Array(LINK_ID_LEN)),
   shareKey: new TextEncoder().encode(shareKey),
   label: "Multipart smoke",
