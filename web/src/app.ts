@@ -9,7 +9,7 @@ import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, OK, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCardWith, saveDecryptedStream, showDropBar, uploadCard } from "../fk/ui";
-import { ciphertextLength, encryptFileToParts, encryptFileToShareKey, openCiphertext } from "../fk/stream";
+import { ciphertextLength, encryptFileToParts, encryptFileToShareKey, openCiphertext, openCiphertextSource, streamSource } from "../fk/stream";
 import { uploadPartsPool } from "../fk/pool";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError, type UploadInit } from "./api";
@@ -254,33 +254,42 @@ async function uploadPart(
 }
 
 // ---- Receive (/d/<id>) ----
+// Enough of the ciphertext to cover the fixed head + the metadata (<= ~1 MiB), fetched as a Range
+// request so we can show the filename without downloading the whole file.
+const METADATA_PREFIX = 1_200_000;
 async function receiveMode(objectId: string): Promise<void> {
   const st = new StatusMsg("Opening your file");
   try {
     const { url } = await api.fetchUrl(objectId);
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("the file has expired or was already removed");
-    const ciphertext = await resp.blob(); // disk-backed; not held whole in RAM
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
-    // Open once just for metadata (to render the card). Each Save RE-OPENS a fresh decrypt stream:
-    // the chunk generator is single-use, so a failed, cancelled, or double-clicked save must start
-    // clean, not resume a half-consumed generator (which would silently write a truncated file and
-    // still report success). `saving` blocks concurrent saves.
-    const { metadata } = await openCiphertext(ciphertext, identity, NS);
+    // Metadata only: fetch just the head + metadata prefix (a Range request) and decrypt it for the
+    // filename. The full payload streams to disk on Save (below), so the whole ciphertext is never
+    // buffered — true 1x disk, which is what makes receiving a multi-TB file feasible.
+    const headResp = await fetch(url, { headers: { Range: `bytes=0-${METADATA_PREFIX - 1}` } });
+    if (!headResp.ok) throw new Error("the file has expired or was already removed"); // 200 or 206 are ok
+    const { metadata } = await openCiphertext(await headResp.blob(), identity, NS);
     st.done();
     await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you and decrypts on your device as you save it."], OK);
     if (!(window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker && metadata.originalSize > 2 * 1024 * 1024 * 1024) {
       await appMsg(["For a file this large, Chrome or Edge can save it more reliably than this browser."]);
     }
+    const filename = metadata.filename || "file";
     let saving = false;
-    saveCardWith(metadata.filename || "file", "Decrypted file", async () => {
+    saveCardWith(filename, "Decrypted file", async () => {
       if (saving) return; // one save at a time; ignore double-clicks
       saving = true;
       try {
-        const { chunks } = await openCiphertext(ciphertext, identity, NS); // fresh stream per click
-        await saveDecryptedStream(metadata.filename || "file", metadata.mimeType, metadata.originalSize, chunks);
+        // Stream the full ciphertext straight to disk (1x disk): fetch -> ReadableStream -> decrypt ->
+        // write, never buffering the whole file. A fresh fetch per click is naturally re-startable, so a
+        // failed/cancelled/double-clicked save just starts clean.
+        const resp = await fetch(url);
+        if (!resp.ok || !resp.body) throw new Error("the file has expired or was already removed");
+        const size = Number(resp.headers.get("content-length"));
+        if (!Number.isFinite(size) || size <= 0) throw new Error("couldn't read the file size");
+        const { chunks } = await openCiphertextSource(streamSource(resp.body, size), identity, NS);
+        await saveDecryptedStream(filename, metadata.mimeType, metadata.originalSize, chunks);
       } catch (e) {
         await appMsg([humanError(e)], ERR);
       } finally {
