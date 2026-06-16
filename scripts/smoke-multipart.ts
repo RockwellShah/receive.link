@@ -38,7 +38,10 @@ const post = (path: string, body: unknown) =>
 // ~6 MiB so it splits into 2 parts at a 5 MiB min part size (part 2 < 5 MiB is fine — it's last).
 const SIZE = 6 * 1024 * 1024;
 const blob = new Uint8Array(SIZE);
-blob.set([0x46, 0x4b, 0x45, 0x59], 0); // FKEY magic for the server-side sniff
+blob.set([0x46, 0x4b, 0x45, 0x59], 0); // FKEY magic for the server-side header check
+blob[4] = 0x01; // FORMAT_VERSION
+blob[5] = 0x01; // SUITE_ID
+blob[145] = 17; // u32be metadata length @142 == 17 (passes validateFileKeyHeader)
 
 console.log("1) upload-init ...");
 const initRes = await post("/upload-init", { payload, size: SIZE });
