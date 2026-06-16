@@ -14,7 +14,7 @@ import { uploadPartsPool } from "../fk/pool";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError, type UploadInit } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
-import { getPrfSecret } from "./webauthn";
+import { checkSupport, getPrfSecret, prfBrowserSupport } from "./webauthn";
 
 const NS = new NamespaceSet(["filekey.app"]);
 const ns = NS.namespaces[0]!;
@@ -328,6 +328,25 @@ void (async () => {
   initChrome();
   cfg = await ensureConfig(); // in dev, fetches the mock server's keys so they match
   api = new DropApi(cfg.apiBase);
+
+  // Browser support gate: every flow needs a passkey (WebAuthn PRF) over HTTPS. Fail loudly up front
+  // instead of cryptically mid-flow on an unsupported browser.
+  const support = checkSupport();
+  if (!support.secureContext || !support.webauthn) {
+    await appMsg(
+      [{ t: "This browser can't run FileKey Drop.", b: true }, " It needs passkeys (WebAuthn) over HTTPS — try a recent Chrome, Edge, Safari, or Firefox."],
+      ERR,
+    );
+    return;
+  }
+  if ((await prfBrowserSupport()) === false) {
+    await appMsg(
+      [{ t: "This browser is missing a passkey feature FileKey needs (PRF).", b: true }, " Try the latest Chrome, Edge, or Safari."],
+      ERR,
+    );
+    return;
+  }
+
   const path = location.pathname;
   const hash = location.hash.replace(/^#/, "");
   if (path === "/confirm") void confirmMode(hash);

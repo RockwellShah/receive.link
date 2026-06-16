@@ -21,6 +21,18 @@ export function cors(origin: string): Record<string, string> {
   };
 }
 
+/**
+ * Structured log line for Cloudflare Workers logs (`wrangler tail` / Logpush). PRIVACY: object ids,
+ * link-id hashes, sizes, and error tags only — NEVER emails, plaintext, ciphertext, or tokens.
+ */
+export function logEvent(event: string, fields: Record<string, unknown> = {}): void {
+  try {
+    console.log(JSON.stringify({ event, ...fields }));
+  } catch {
+    /* logging must never throw into a handler */
+  }
+}
+
 export function json(data: unknown, status: number, origin: string): Response {
   return new Response(JSON.stringify(data), {
     status,

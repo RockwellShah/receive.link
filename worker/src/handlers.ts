@@ -22,7 +22,7 @@ import {
 } from "../../shared/codec";
 import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
-import { allowedOrigin, clientIp, json, readJson } from "./http";
+import { allowedOrigin, clientIp, json, logEvent, readJson } from "./http";
 import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import type { Env } from "./types";
@@ -470,6 +470,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       }
       if (!(await completeMultipart(env, body.objectId, bind.mp.uploadId, parts))) {
         // Possibly transient — keep the multipart + binding so the client can retry.
+        logEvent("assemble_failed", { objectId: body.objectId, parts: parts.length });
         return json({ error: "could not assemble upload, try again" }, 502, origin);
       }
     }
@@ -486,6 +487,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // upload-init): per-link + per-IP daily caps so a multi-TB per-file cap can't become PB/day.
     const ipHash = await sha256hex(clientIp(req));
     if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, staged.size, bytesPerLinkDay(env), DAY))) {
+      logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: staged.size });
       await deleteObject(env, body.objectId);
       return json({ error: "link is over its daily transfer limit" }, 429, origin);
     }
@@ -505,6 +507,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     if (!(await copyObject(env, body.objectId, finalId))) return json({ error: "object not found" }, 404, origin);
     const finalInfo = await objectInfo(env, finalId);
     if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await validateFileKeyHeader(env, finalId, finalInfo.size))) {
+      logEvent("invalid_ciphertext", { objectId: body.objectId, size: finalInfo?.size ?? null });
       await deleteObject(env, finalId);
       return json({ error: "not a FileKey file" }, 422, origin);
     }
@@ -524,6 +527,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     try {
       await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label, manageUrl);
     } catch {
+      logEvent("delivery_failed", { link: linkIdHex, finalId });
       await deleteObject(env, finalId); // no orphaned final; the client can retry
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
@@ -532,6 +536,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // after a successful delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
     await guard.finish(claim.token);
+    logEvent("delivered", { link: linkIdHex, finalId, size: staged.size });
     try {
       await deleteObject(env, body.objectId);
       await env.DROP_KV.delete(`upload:${body.objectId}`);
