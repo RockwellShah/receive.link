@@ -7,6 +7,9 @@
 //   GET  /healthz          liveness
 //   POST /register         unseal email, send confirm mail, 202
 //   POST /confirm          consume one-time nonce, return the signed link + revoke token
+//   POST /native/register-device register an iOS install for push delivery
+//   POST /native/create-link     create a push-first Drop link with optional email fallback
+//   POST /native/confirm-email   confirm optional email fallback for a native link
 //   POST /revoke           turn a link off using the receiver's revoke token
 //   POST /upload-init      verify + limit; presigned single PUT (small) or multipart (large)
 //   POST /upload-parts     re-presign a batch of multipart UploadPart URLs (browser uploads direct)
@@ -14,7 +17,7 @@
 //   POST /upload-abort     cancel an in-progress multipart upload
 //   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
 
-import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
+import { confirm, fetchObject, nativeConfirmEmail, nativeCreateLink, nativeRegisterDevice, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
 import { allowedOrigin, cors, json } from "./http";
 import type { Env } from "./types";
 
@@ -36,6 +39,12 @@ export default {
         return register(req, env);
       case "POST /confirm":
         return confirm(req, env);
+      case "POST /native/register-device":
+        return nativeRegisterDevice(req, env);
+      case "POST /native/create-link":
+        return nativeCreateLink(req, env);
+      case "POST /native/confirm-email":
+        return nativeConfirmEmail(req, env);
       case "POST /revoke":
         return revoke(req, env);
       case "POST /upload-init":

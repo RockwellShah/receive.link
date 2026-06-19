@@ -8,6 +8,9 @@ import {
   REG_EMAIL_PER_DAY,
   confirm,
   fetchObject,
+  nativeConfirmEmail,
+  nativeCreateLink,
+  nativeRegisterDevice,
   parseAndVerify,
   register,
   uploadComplete,
@@ -27,6 +30,12 @@ function post(path: string, body: unknown, ip = "1.2.3.4"): Request {
 function nonceFrom(text: string): string {
   const m = text.match(/\/confirm#([A-Za-z0-9_-]+)/);
   if (!m) throw new Error(`no nonce in confirm email: ${text}`);
+  return m[1]!;
+}
+
+function nativeNonceFrom(text: string): string {
+  const m = text.match(/\/native\/confirm-email#([A-Za-z0-9_-]+)/);
+  if (!m) throw new Error(`no native email nonce in confirm email: ${text}`);
   return m[1]!;
 }
 
@@ -92,6 +101,57 @@ test("full flow: register -> confirm -> upload-init -> upload-complete emails th
   expect(finalId).not.toBe(objectId);
   expect(await h.r2.head(finalId)).not.toBeNull();
   expect(await h.r2.head(objectId)).toBeNull();
+});
+
+test("native flow: create push-first link -> upload-complete sends push without email", async () => {
+  const h = await makeTestEnv();
+  const installId = "ios-install-0001";
+  const dev = await nativeRegisterDevice(
+    post("/native/register-device", { installId, token: "apns-token-0000000000000001", environment: "development" }),
+    h.env,
+  );
+  expect(dev.status).toBe(200);
+
+  const made = await nativeCreateLink(post("/native/create-link", { installId, shareKey: SHARE_KEY, label: "Phone" }), h.env);
+  expect(made.status).toBe(200);
+  const link = ((await made.json()) as { link: string; revokeToken: string }).link;
+  expect((await parseAndVerify(link, h.env)).label).toBe("Phone");
+  expect(h.email.sent.length).toBe(0);
+
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
+  expect(comp.status).toBe(200);
+  expect(h.push.sent.length).toBe(1);
+  expect(h.push.sent[0]!.url).toContain("/d/");
+  expect(h.push.sent[0]!.token).toBe("apns-token-0000000000000001");
+  expect(h.email.sent.length).toBe(0);
+});
+
+test("native flow: optional email fallback is attached only after confirmation", async () => {
+  const h = await makeTestEnv();
+  const installId = "ios-install-0002";
+  await nativeRegisterDevice(post("/native/register-device", { installId, token: "apns-token-0000000000000002" }), h.env);
+  const made = await nativeCreateLink(
+    post("/native/create-link", { installId, shareKey: SHARE_KEY, label: "Phone", sealedEmail: await sealed(h, "native@example.com") }),
+    h.env,
+  );
+  expect(made.status).toBe(200);
+  const link = ((await made.json()) as { link: string }).link;
+  expect(h.email.sent.length).toBe(1); // fallback confirmation only
+
+  const confirmed = await nativeConfirmEmail(post("/native/confirm-email", { nonce: nativeNonceFrom(h.email.sent[0]!.text!) }), h.env);
+  expect(confirmed.status).toBe(200);
+  expect(h.email.sent.length).toBe(2); // durable copy of the native link/manage link
+
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
+  expect(comp.status).toBe(200);
+  expect(h.push.sent.length).toBe(1);
+  expect(h.email.sent.length).toBe(3);
+  expect(h.email.sent.at(-1)!.to).toBe("native@example.com");
+  expect(h.email.sent.at(-1)!.text).toContain("/d/");
 });
 
 test("upload-complete rejects bytes that aren't FileKey ciphertext (no open mailer)", async () => {
