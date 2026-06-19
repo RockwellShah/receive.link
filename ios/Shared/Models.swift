@@ -15,6 +15,26 @@ struct DropLinkRecord: Identifiable, Codable, Hashable {
   }
 }
 
+struct DropUploadRequest: Identifiable, Hashable {
+  var id: String = UUID().uuidString
+  var payload: String
+  var label: String
+}
+
+enum PresentedSheet: Identifiable, Hashable {
+  case linkReady(DropLinkRecord)
+  case upload(DropUploadRequest)
+
+  var id: String {
+    switch self {
+    case let .linkReady(link):
+      return "link-ready-\(link.id)"
+    case let .upload(request):
+      return "upload-\(request.id)"
+    }
+  }
+}
+
 struct InboxItem: Identifiable, Codable, Hashable {
   var id: String
   var objectId: String

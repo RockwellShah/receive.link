@@ -7,6 +7,7 @@ final class SharedLinkStore {
   private let defaults: UserDefaults
   private let linksKey = "dropLinks.v1"
   private let inboxKey = "inboxItems.v1"
+  private let onboardingKey = "onboardingComplete.v1"
 
   init(defaults: UserDefaults = UserDefaults(suiteName: EnvoyConfig.appGroup) ?? .standard) {
     self.defaults = defaults
@@ -20,6 +21,14 @@ final class SharedLinkStore {
   func saveLinks(_ links: [DropLinkRecord]) {
     let data = try? JSONEncoder().encode(links)
     defaults.set(data, forKey: linksKey)
+  }
+
+  func onboardingComplete() -> Bool {
+    defaults.bool(forKey: onboardingKey)
+  }
+
+  func setOnboardingComplete(_ complete: Bool) {
+    defaults.set(complete, forKey: onboardingKey)
   }
 
   func upsert(_ link: DropLinkRecord) {

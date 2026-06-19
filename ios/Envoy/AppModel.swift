@@ -9,8 +9,11 @@ final class AppModel {
   var inbox: [InboxItem] = []
   var transfers: [TransferRecord] = []
   var statusMessage: String?
-  var selectedTab: AppTab = .inbox
+  var onboardingComplete = false
+  var presentedSheet: PresentedSheet?
   var activeObjectId: String?
+  var pendingConfirmationEmail: String?
+  var pendingConfirmationLabel: String?
 
   private let store = SharedLinkStore.shared
   private let api = EnvoyAPI()
@@ -20,15 +23,54 @@ final class AppModel {
   func start() async {
     links = store.loadLinks()
     inbox = store.loadInbox()
+    onboardingComplete = store.onboardingComplete() || !links.isEmpty
+    if onboardingComplete {
+      store.setOnboardingComplete(true)
+    }
   }
 
-  func enrollPasskey(displayName: String) async {
+  @discardableResult
+  func registerDropLink(email: String, label: String) async -> Bool {
+    let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard Self.isValidEmail(trimmedEmail) else {
+      statusMessage = "Enter an email address like you@example.com."
+      return false
+    }
+
     do {
-      try await passkeys.enroll(displayName: displayName)
-      statusMessage = "Envoy passkey is ready."
+      let displayName = trimmedLabel.isEmpty ? trimmedEmail : trimmedLabel
+      let identity = try await passkeys.fileKeyIdentity(createIfNeeded: displayName)
+      let shareKey = crypto.shareKey(identity: identity)
+      let sealedEmail = try FileKeyCrypto.sealEmail(trimmedEmail, serverKemPublicKey: EnvoyConfig.serverKemPublicKey)
+      try await api.register(
+        sealedEmail: Base64URL.encode(sealedEmail),
+        shareKey: Base64URL.encode(Data(shareKey.utf8)),
+        label: trimmedLabel
+      )
+      pendingConfirmationEmail = trimmedEmail
+      pendingConfirmationLabel = trimmedLabel
+      statusMessage = nil
+      return true
     } catch {
       statusMessage = error.localizedDescription
+      return false
     }
+  }
+
+  @discardableResult
+  func confirmSetup(from confirmationLink: String) async -> Bool {
+    guard let nonce = Self.confirmationNonce(from: confirmationLink) else {
+      statusMessage = "Paste the confirmation link from your email."
+      return false
+    }
+    return await confirmSetup(nonce: nonce)
+  }
+
+  func acknowledgeReadyLink() {
+    store.setOnboardingComplete(true)
+    onboardingComplete = true
+    presentedSheet = nil
   }
 
   func revoke(_ link: DropLinkRecord) async {
@@ -180,7 +222,6 @@ final class AppModel {
       store.upsert(item)
       inbox = store.loadInbox()
       activeObjectId = objectId
-      selectedTab = .inbox
       updateTransfer(id: transferId, status: .complete, title: item.label, progress: 1)
       statusMessage = "Decrypted \(item.label) (\(decrypted.plaintext.count) bytes)."
     } catch {
@@ -194,15 +235,59 @@ final class AppModel {
   }
 
   func handle(url: URL) {
-    if url.pathComponents.contains("d"), let objectId = url.pathComponents.last {
+    if let nonce = Self.confirmationNonce(from: url) {
+      Task { await confirmSetup(nonce: nonce) }
+      return
+    }
+
+    if let objectId = Self.objectID(from: url) {
       Task { await fetch(objectId: objectId) }
       return
     }
-    if let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.fragment {
-      selectedTab = .send
-      statusMessage = "Drop link opened. Paste field is ready for sending."
-      UIPasteboard.general.string = fragment
+
+    if let payload = Self.dropPayload(from: url) {
+      presentUpload(payload: payload)
     }
+  }
+
+  func presentUpload(payload: String) {
+    let normalized = Self.normalizedDropPayload(payload)
+    do {
+      let decoded = try DropLinkCodec.verify(fragment: normalized, publicJWK: EnvoyConfig.serverSignPublicJWK)
+      let label = decoded.label.trimmingCharacters(in: .whitespacesAndNewlines)
+      presentedSheet = .upload(.init(payload: normalized, label: label.isEmpty ? "Drop link" : label))
+    } catch {
+      statusMessage = error.localizedDescription
+    }
+  }
+
+  private func confirmSetup(nonce: String) async -> Bool {
+    do {
+      let response = try await api.confirm(nonce: nonce)
+      let record = makeLinkRecord(link: response.link, revokeToken: response.revokeToken)
+      store.upsert(record)
+      links = store.loadLinks()
+      presentedSheet = .linkReady(record)
+      statusMessage = nil
+      return true
+    } catch {
+      statusMessage = error.localizedDescription
+      return false
+    }
+  }
+
+  private func makeLinkRecord(link: String, revokeToken: String) -> DropLinkRecord {
+    let decoded = try? DropLinkCodec.verify(fragment: link, publicJWK: EnvoyConfig.serverSignPublicJWK)
+    let decodedLabel = decoded?.label.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let pendingLabel = pendingConfirmationLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return DropLinkRecord(
+      id: decoded?.linkId.hexString ?? UUID().uuidString,
+      label: decodedLabel.isEmpty ? (pendingLabel.isEmpty ? "Drop link" : pendingLabel) : decodedLabel,
+      link: link,
+      revokeToken: revokeToken,
+      createdAt: Date(),
+      emailFallbackVerified: true
+    )
   }
 
   private func updateTransfer(id: String, status: TransferRecord.Status, title: String, progress: Double) {
@@ -225,6 +310,58 @@ final class AppModel {
         return "The upload server did not return a URL for part \(partNumber)."
       }
     }
+  }
+
+  private static func isValidEmail(_ value: String) -> Bool {
+    value.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) != nil
+  }
+
+  private static func confirmationNonce(from value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let url = URL(string: trimmed), let nonce = confirmationNonce(from: url) {
+      return nonce
+    }
+    if trimmed.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil {
+      return trimmed
+    }
+    return nil
+  }
+
+  private static func confirmationNonce(from url: URL) -> String? {
+    let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    let isConfirmPath = url.path == "/confirm" || url.host == "confirm"
+    guard isConfirmPath,
+          let nonce = components?.fragment?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !nonce.isEmpty else {
+      return nil
+    }
+    return nonce
+  }
+
+  private static func objectID(from url: URL) -> String? {
+    let parts = url.pathComponents.filter { $0 != "/" }
+    guard parts.count >= 2, parts[0] == "d" else { return nil }
+    return parts[1]
+  }
+
+  private static func dropPayload(from url: URL) -> String? {
+    guard url.path != "/confirm",
+          url.path != "/revoke",
+          url.host != "confirm",
+          url.host != "revoke",
+          let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.fragment else {
+      return nil
+    }
+    let normalized = normalizedDropPayload(fragment)
+    return normalized.isEmpty ? nil : normalized
+  }
+
+  private static func normalizedDropPayload(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let fragment = URLComponents(string: trimmed)?.fragment {
+      return fragment.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return trimmed
   }
 }
 

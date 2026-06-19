@@ -25,6 +25,20 @@ struct EnvoyAPI {
     var batchSize: Int?
   }
 
+  struct ConfirmResponse: Codable, Hashable {
+    var link: String
+    var revokeToken: String
+  }
+
+  func register(sealedEmail: String, shareKey: String, label: String) async throws {
+    let body = RegisterBody(sealedEmail: sealedEmail, shareKey: shareKey, label: label)
+    _ = try await post(path: "/register", body: body) as EmptyResponse
+  }
+
+  func confirm(nonce: String) async throws -> ConfirmResponse {
+    try await post(path: "/confirm", body: ["nonce": nonce])
+  }
+
   func revoke(token: String) async throws {
     _ = try await post(path: "/revoke", body: ["token": token]) as EmptyResponse
   }
@@ -113,6 +127,11 @@ struct EnvoyAPI {
 
   private struct EmptyResponse: Decodable {}
   private struct FetchResponse: Decodable { var url: URL }
+  private struct RegisterBody: Encodable {
+    var sealedEmail: String
+    var shareKey: String
+    var label: String
+  }
   private struct UploadPartsBody: Encodable {
     var payload: String
     var objectId: String

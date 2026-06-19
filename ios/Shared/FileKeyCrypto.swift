@@ -7,12 +7,14 @@ enum FileKeyCryptoError: Error, LocalizedError {
   case invalidShareKey
   case invalidFile
   case authenticationFailed
+  case invalidServerKey
 
   var errorDescription: String? {
     switch self {
     case .invalidShareKey: return "The FileKey share key is invalid."
     case .invalidFile: return "The file is not a valid FileKey ciphertext."
     case .authenticationFailed: return "The file could not be authenticated or decrypted."
+    case .invalidServerKey: return "The Envoy server public key is invalid."
     }
   }
 }
@@ -53,6 +55,7 @@ struct FileKeyCrypto {
     static let hpkeVersionLabel = "HPKE-v1"
     static let kemSuiteId = Data([0x4b, 0x45, 0x4d, 0x00, 0x10])
     static let rpId = "filekey.app"
+    static let emailSealInfo = Data("FILEKEY-DROP/email-seal/v1".utf8)
   }
 
   func shareKey(identity: FileKeyIdentity) -> String {
@@ -76,6 +79,23 @@ struct FileKeyCrypto {
 
   static func throwawayIdentity() throws -> FileKeyIdentity {
     try identity(fromPRFSecret: randomData(count: 32))
+  }
+
+  static var emailSealInfo: Data {
+    C.emailSealInfo
+  }
+
+  static func sealEmail(_ email: String, serverKemPublicKey: Data) throws -> Data {
+    guard serverKemPublicKey.count == C.publicKeyLength else { throw FileKeyCryptoError.invalidServerKey }
+    let recipientKey = try P256.KeyAgreement.PublicKey(x963Representation: serverKemPublicKey)
+    var sender = try HPKE.Sender(
+      recipientKey: recipientKey,
+      ciphersuite: .P256_SHA256_AES_GCM_256,
+      info: C.emailSealInfo
+    )
+    let ciphertext = try sender.seal(Data(email.utf8))
+    guard sender.encapsulatedKey.count == C.encLength else { throw FileKeyCryptoError.invalidServerKey }
+    return sender.encapsulatedKey + ciphertext
   }
 
   func encryptForUpload(fileURL: URL, recipientShareKey: String) throws -> Data {

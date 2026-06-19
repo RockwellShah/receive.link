@@ -93,6 +93,24 @@ final class DropLinkCodecTests: XCTestCase {
     XCTAssertEqual(decrypted.plaintext, plaintext)
   }
 
+  func testSealedEmailUsesHPKEEncThenCiphertextFormat() throws {
+    let privateKey = P256.KeyAgreement.PrivateKey()
+    let sealed = try FileKeyCrypto.sealEmail("receiver@example.com", serverKemPublicKey: privateKey.publicKey.x963Representation)
+
+    XCTAssertGreaterThan(sealed.count, 65)
+    let enc = sealed.prefix(65)
+    let ciphertext = sealed.dropFirst(65)
+    var recipient = try HPKE.Recipient(
+      privateKey: privateKey,
+      ciphersuite: .P256_SHA256_AES_GCM_256,
+      info: FileKeyCrypto.emailSealInfo,
+      encapsulatedKey: enc
+    )
+    let opened = try recipient.open(ciphertext)
+
+    XCTAssertEqual(String(data: opened, encoding: .utf8), "receiver@example.com")
+  }
+
   func testFileKeyRejectsTamperedCiphertext() throws {
     let crypto = FileKeyCrypto()
     let sender = makeIdentity("tamper-sender")

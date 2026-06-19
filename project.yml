@@ -36,6 +36,7 @@ targets:
       properties:
         com.apple.developer.associated-domains:
           - webcredentials:receive.link
+          - applinks:receive.link
         com.apple.security.application-groups:
           - group.app.filekey.envoy
     dependencies:

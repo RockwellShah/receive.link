@@ -1,22 +1,120 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
+
+enum LinkSetupMode {
+  case onboarding
+  case additional
+}
+
+private enum LinkSetupStage {
+  case intro
+  case details
+  case checkEmail
+}
+
+struct LinkSetupView: View {
+  @Environment(AppModel.self) private var model
+
+  let mode: LinkSetupMode
+  @State private var stage: LinkSetupStage
+  @State private var email = ""
+  @State private var label = ""
+  @State private var confirmationLink = ""
+  @State private var isWorking = false
+
+  init(mode: LinkSetupMode) {
+    self.mode = mode
+    _stage = State(initialValue: mode == .onboarding ? .intro : .details)
+  }
+
+  var body: some View {
+    Form {
+      switch stage {
+      case .intro:
+        Section {
+          Text("Create a link people can use to send you files.")
+            .font(.headline)
+          Text("Files are encrypted to your passkey. Envoy does not see files or store plain email.")
+            .foregroundStyle(.secondary)
+        }
+        Section {
+          Button("Continue") {
+            stage = .details
+          }
+        }
+      case .details:
+        Section("Email") {
+          TextField("you@example.com", text: $email)
+            .keyboardType(.emailAddress)
+            .textContentType(.emailAddress)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        }
+        Section("Sender-facing label") {
+          TextField("Optional", text: $label)
+        }
+        Section {
+          Button {
+            Task { await register() }
+          } label: {
+            if isWorking {
+              ProgressView()
+            } else {
+              Label("Create or Use Envoy Passkey", systemImage: "person.badge.key")
+            }
+          }
+          .disabled(isWorking)
+        }
+      case .checkEmail:
+        Section {
+          Text("Check your email")
+            .font(.headline)
+          Text("Tap the confirmation link to finish setup and get your Drop link.")
+            .foregroundStyle(.secondary)
+        }
+        Section("Paste confirmation link") {
+          TextField("https://receive.link/confirm#...", text: $confirmationLink, axis: .vertical)
+            .lineLimit(2...5)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+          Button {
+            Task { await confirm() }
+          } label: {
+            if isWorking {
+              ProgressView()
+            } else {
+              Label("Confirm", systemImage: "checkmark.circle")
+            }
+          }
+          .disabled(isWorking || confirmationLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+      }
+    }
+    .navigationTitle(mode == .onboarding ? "Envoy" : "New Link")
+  }
+
+  private func register() async {
+    isWorking = true
+    defer { isWorking = false }
+    if await model.registerDropLink(email: email, label: label) {
+      stage = .checkEmail
+    }
+  }
+
+  private func confirm() async {
+    isWorking = true
+    defer { isWorking = false }
+    _ = await model.confirmSetup(from: confirmationLink)
+  }
+}
 
 struct InboxView: View {
   @Environment(AppModel.self) private var model
-  @State private var objectId = ""
 
   var body: some View {
     List {
-      Section("Open download") {
-        TextField("Object id from /d/<id>", text: $objectId)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-        Button("Fetch file") {
-          Task { await model.fetch(objectId: objectId) }
-        }
-        .disabled(objectId.isEmpty)
-      }
-      Section("Recent") {
+      Section("Received") {
         if model.inbox.isEmpty {
           ContentUnavailableView("No received files", systemImage: "tray")
         } else {
@@ -42,125 +140,226 @@ struct InboxView: View {
           }
         }
       }
+
+      if !model.transfers.isEmpty {
+        Section("Activity") {
+          ForEach(model.transfers) { transfer in
+            HStack {
+              Image(systemName: iconName(for: transfer.status))
+                .foregroundStyle(iconColor(for: transfer.status))
+              VStack(alignment: .leading) {
+                Text(transfer.title)
+                Text(transfer.status.rawValue.capitalized)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+              Spacer()
+              if transfer.status == .running {
+                ProgressView(value: transfer.progress)
+                  .frame(width: 72)
+              }
+            }
+          }
+        }
+      }
     }
     .navigationTitle("Inbox")
   }
-}
 
-struct LinksView: View {
-  @Environment(AppModel.self) private var model
-  @State private var label = ""
-
-  var body: some View {
-    List {
-      Section("Create") {
-        TextField("Label", text: $label)
-        Button {
-          Task { await model.enrollPasskey(displayName: label) }
-        } label: {
-          Label("Create Envoy Passkey", systemImage: "person.badge.key")
-        }
-        Link(destination: EnvoyConfig.defaultWebBase) {
-          Label("Create Drop Link on Web", systemImage: "safari")
-        }
-      }
-      Section("Your links") {
-        if model.links.isEmpty {
-          ContentUnavailableView("No Drop links", systemImage: "link")
-        } else {
-          ForEach(model.links) { link in
-            VStack(alignment: .leading, spacing: 8) {
-              Text(link.label)
-                .font(.headline)
-              Text(link.shareURL.absoluteString)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-              HStack {
-                ShareLink(item: link.shareURL) {
-                  Label("Share", systemImage: "square.and.arrow.up")
-                }
-                Button(role: .destructive) {
-                  Task { await model.revoke(link) }
-                } label: {
-                  Label("Revoke", systemImage: "trash")
-                }
-              }
-              .buttonStyle(.bordered)
-            }
-          }
-        }
-      }
-    }
-    .navigationTitle("Links")
-  }
-}
-
-struct SendView: View {
-  @Environment(AppModel.self) private var model
-  @State private var payload = UIPasteboard.general.string ?? ""
-  @State private var importing = false
-  @State private var selectedFile: URL?
-
-  var body: some View {
-    Form {
-      Section("Drop link") {
-        TextField("Paste link or fragment", text: $payload, axis: .vertical)
-          .lineLimit(3...6)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-      }
-      Section("File") {
-        Button {
-          importing = true
-        } label: {
-          Label(selectedFile?.lastPathComponent ?? "Choose File", systemImage: "doc")
-        }
-        Button {
-          if let selectedFile {
-            Task { await model.upload(fileURL: selectedFile, to: normalizedPayload) }
-          }
-        } label: {
-          Label("Encrypt and Send", systemImage: "paperplane")
-        }
-        .disabled(selectedFile == nil || normalizedPayload.isEmpty)
-      }
-      Section("Transfers") {
-        ForEach(model.transfers) { transfer in
-          HStack {
-            Image(systemName: transfer.status == .complete ? "checkmark.circle" : "exclamationmark.triangle")
-            VStack(alignment: .leading) {
-              Text(transfer.title)
-              Text(transfer.status.rawValue.capitalized)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-          }
-        }
-      }
-    }
-    .navigationTitle("Send")
-    .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in
-      selectedFile = try? result.get()
+  private func iconName(for status: TransferRecord.Status) -> String {
+    switch status {
+    case .pending, .running: return "arrow.triangle.2.circlepath"
+    case .complete: return "checkmark.circle"
+    case .failed: return "exclamationmark.triangle"
     }
   }
 
-  private var normalizedPayload: String {
-    if let fragment = URLComponents(string: payload)?.fragment {
-      return fragment
+  private func iconColor(for status: TransferRecord.Status) -> Color {
+    switch status {
+    case .pending, .running: return .secondary
+    case .complete: return .green
+    case .failed: return .orange
     }
-    return payload.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }
 
 struct SettingsView: View {
+  @Environment(AppModel.self) private var model
+
   var body: some View {
     Form {
-      Section("Native Status") {
-        Text("This branch uses the existing web API only. Native push, device registration, and native link creation are disabled.")
+      Section("Manage Links") {
+        NavigationLink {
+          LinkSetupView(mode: .additional)
+        } label: {
+          Label("Create New Drop Link", systemImage: "link.badge.plus")
+        }
+
+        if model.links.isEmpty {
+          Text("No Drop links")
+            .foregroundStyle(.secondary)
+        } else {
+          ForEach(model.links) { link in
+            LinkManagementRow(link: link)
+          }
+        }
+      }
+
+      Section("Status") {
+        Text("This branch uses the existing web API. Native push and device registration are disabled.")
           .foregroundStyle(.secondary)
       }
     }
     .navigationTitle("Settings")
+  }
+}
+
+private struct LinkManagementRow: View {
+  @Environment(AppModel.self) private var model
+
+  let link: DropLinkRecord
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(link.label)
+        .font(.headline)
+      Text(link.shareURL.absoluteString)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(3)
+        .textSelection(.enabled)
+      HStack {
+        ShareLink(item: link.shareURL) {
+          Label("Share", systemImage: "square.and.arrow.up")
+        }
+        Button {
+          UIPasteboard.general.url = link.shareURL
+          model.statusMessage = "Drop link copied."
+        } label: {
+          Label("Copy", systemImage: "doc.on.doc")
+        }
+        Button(role: .destructive) {
+          Task { await model.revoke(link) }
+        } label: {
+          Label("Revoke", systemImage: "trash")
+        }
+      }
+      .buttonStyle(.bordered)
+    }
+    .padding(.vertical, 4)
+  }
+}
+
+struct LinkReadySheet: View {
+  @Environment(AppModel.self) private var model
+
+  let link: DropLinkRecord
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section {
+          Text("Your Drop link is ready.")
+            .font(.headline)
+          Text("Share it with anyone. Envoy will email you a download link when someone sends a file.")
+            .foregroundStyle(.secondary)
+        }
+        Section("Drop link") {
+          Text(link.shareURL.absoluteString)
+            .font(.footnote)
+            .textSelection(.enabled)
+          ShareLink(item: link.shareURL) {
+            Label("Share", systemImage: "square.and.arrow.up")
+          }
+          Button {
+            UIPasteboard.general.url = link.shareURL
+            model.statusMessage = "Drop link copied."
+          } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+          }
+          Button("Done") {
+            model.acknowledgeReadyLink()
+          }
+          .buttonStyle(.borderedProminent)
+        }
+      }
+      .navigationTitle("Link Ready")
+    }
+  }
+}
+
+struct UploadSheet: View {
+  @Environment(AppModel.self) private var model
+  @Environment(\.dismiss) private var dismiss
+
+  let request: DropUploadRequest
+  @State private var importing = false
+  @State private var selectedFile: URL?
+  @State private var isSending = false
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("Drop link") {
+          Text(request.label)
+          Text(request.payload)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(3)
+        }
+
+        Section("File") {
+          Button {
+            importing = true
+          } label: {
+            Label(selectedFile?.lastPathComponent ?? "Choose File", systemImage: "doc")
+          }
+          Button {
+            Task { await send() }
+          } label: {
+            if isSending {
+              ProgressView()
+            } else {
+              Label("Encrypt and Send", systemImage: "paperplane")
+            }
+          }
+          .disabled(selectedFile == nil || isSending)
+        }
+
+        if !model.transfers.isEmpty {
+          Section("Activity") {
+            ForEach(model.transfers.prefix(3)) { transfer in
+              VStack(alignment: .leading, spacing: 4) {
+                Text(transfer.title)
+                Text(transfer.status.rawValue.capitalized)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                if transfer.status == .running {
+                  ProgressView(value: transfer.progress)
+                }
+              }
+            }
+          }
+        }
+      }
+      .navigationTitle("Send File")
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") {
+            dismiss()
+          }
+        }
+      }
+      .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in
+        selectedFile = try? result.get()
+      }
+    }
+  }
+
+  private func send() async {
+    guard let selectedFile else { return }
+    isSending = true
+    defer { isSending = false }
+    await model.upload(fileURL: selectedFile, to: request.payload)
   }
 }

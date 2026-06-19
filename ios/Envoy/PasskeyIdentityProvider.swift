@@ -36,6 +36,16 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
     return try FileKeyCrypto.identity(fromPRFSecret: prfSecret)
   }
 
+  func fileKeyIdentity(createIfNeeded displayName: String) async throws -> FileKeyIdentity {
+    do {
+      return try await fileKeyIdentity()
+    } catch {
+      guard Self.shouldAttemptEnrollment(after: error) else { throw error }
+      try await enroll(displayName: displayName)
+      return try await fileKeyIdentity()
+    }
+  }
+
   private func prfSecret() async throws -> Data {
     let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: EnvoyConfig.passkeyRelyingPartyID)
     let request = provider.createCredentialAssertionRequest(challenge: try randomData(count: 32))
@@ -123,6 +133,24 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
       }
       return error
     }
+  }
+
+  private static func shouldAttemptEnrollment(after error: Error) -> Bool {
+    if case PasskeyError.associatedDomainUnavailable = error {
+      return false
+    }
+    if case PasskeyError.requestInProgress = error {
+      return false
+    }
+    let nsError = error as NSError
+    if nsError.domain == ASAuthorizationError.errorDomain,
+       ASAuthorizationError.Code(rawValue: nsError.code) == .canceled {
+      return false
+    }
+    if nsError.localizedDescription.localizedCaseInsensitiveContains("not associated with domain") {
+      return false
+    }
+    return true
   }
 }
 
