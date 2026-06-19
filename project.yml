@@ -61,3 +61,32 @@ targets:
       - ios/EnvoyTests
     dependencies:
       - target: Envoy
+schemes:
+  Envoy:
+    build:
+      targets:
+        Envoy: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - EnvoyTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  EnvoyMessages:
+    build:
+      targets:
+        EnvoyMessages: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
