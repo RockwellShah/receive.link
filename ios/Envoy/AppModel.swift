@@ -25,7 +25,7 @@ final class AppModel {
   func enrollPasskey(displayName: String) async {
     do {
       try await passkeys.enroll(displayName: displayName)
-      statusMessage = "FileKey passkey is ready."
+      statusMessage = "Envoy passkey is ready."
     } catch {
       statusMessage = error.localizedDescription
     }

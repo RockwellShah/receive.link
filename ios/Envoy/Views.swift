@@ -58,7 +58,7 @@ struct LinksView: View {
         Button {
           Task { await model.enrollPasskey(displayName: label) }
         } label: {
-          Label("Create FileKey Passkey", systemImage: "person.badge.key")
+          Label("Create Envoy Passkey", systemImage: "person.badge.key")
         }
         Link(destination: EnvoyConfig.defaultWebBase) {
           Label("Create Drop Link on Web", systemImage: "safari")

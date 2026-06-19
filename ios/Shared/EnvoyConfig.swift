@@ -2,9 +2,9 @@ import Foundation
 
 enum EnvoyConfig {
   static let appGroup = "group.app.filekey.envoy"
-  static let passkeyRelyingPartyID = "filekey.app"
+  static let passkeyRelyingPartyID = "receive.link"
   static let defaultAPIBase = URL(string: "https://filekey-drop-staging.rockwellshah.workers.dev")!
-  static let defaultWebBase = URL(string: "https://drop-staging.filekey.app")!
+  static let defaultWebBase = URL(string: "https://receive.link")!
   static let serverSignPublicJWK: [String: String] = [
     "crv": "P-256",
     "kty": "EC",

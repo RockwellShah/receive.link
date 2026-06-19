@@ -13,7 +13,7 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
 
   func enroll(displayName: String) async throws {
     let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: EnvoyConfig.passkeyRelyingPartyID)
-    let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "FileKey" : displayName
+    let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Envoy" : displayName
     let request = provider.createCredentialRegistrationRequest(
       challenge: try randomData(count: 32),
       name: name,
@@ -104,15 +104,15 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
     var errorDescription: String? {
       switch self {
       case .missingPRFOutput:
-        return "No passkey PRF output was returned. Create or use a FileKey passkey that supports PRF."
+        return "No passkey PRF output was returned. Create or use an Envoy passkey that supports PRF."
       case .prfUnsupported:
-        return "This passkey provider does not support the PRF extension FileKey requires."
+        return "This passkey provider does not support the PRF extension Envoy requires."
       case .randomFailed:
         return "Could not generate secure random bytes."
       case .requestInProgress:
         return "A passkey request is already in progress."
       case .associatedDomainUnavailable:
-        return "FileKey passkeys are not enabled for this app build yet. The app must have the webcredentials:filekey.app entitlement, and filekey.app must publish an Apple app-site-association file that includes this app identifier."
+        return "Envoy passkeys are not enabled for this app build yet. The app must have the webcredentials:receive.link entitlement, and receive.link must publish an Apple app-site-association file that includes this app identifier."
       }
     }
 

@@ -5,7 +5,7 @@ options:
     iOS: "18.0"
 settings:
   base:
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "PQV6T4HT58"
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
@@ -35,7 +35,7 @@ targets:
       path: ios/Envoy/Envoy.entitlements
       properties:
         com.apple.developer.associated-domains:
-          - webcredentials:filekey.app
+          - webcredentials:receive.link
         com.apple.security.application-groups:
           - group.app.filekey.envoy
     dependencies:
