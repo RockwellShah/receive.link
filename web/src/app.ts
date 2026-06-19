@@ -1,4 +1,4 @@
-// Envoy web client. Routes four surfaces by path + hash, each played out
+// receive.link web client. Routes four surfaces by path + hash, each played out
 // as a FileKey chat conversation using FileKey's own UI machinery (web/fk/ui.ts,
 // vendored verbatim):
 //   /                  -> Setup (receiver creates a link)
@@ -39,7 +39,7 @@ function humanError(e: unknown): string {
     return m;
   }
   const m = e instanceof Error ? e.message : String(e);
-  if (/no PRF|passkey|assertion/i.test(m)) return "Couldn't use your passkey. Make sure you have an Envoy passkey on this device, then reload.";
+  if (/no PRF|passkey|assertion/i.test(m)) return "Couldn't use your passkey. Make sure you have a receive.link passkey on this device, then reload.";
   if (/auth_failed|wrong_namespace/i.test(m)) return "This file couldn't be decrypted. It may be corrupted, or not encrypted for you.";
   return m;
 }
@@ -378,11 +378,11 @@ void (async () => {
   const gated = async (fn: () => void): Promise<void> => {
     const s = checkSupport();
     if (!s.secureContext || !s.webauthn) {
-      await appMsg([{ t: "This browser can't open Envoy links.", b: true }, " It needs passkeys (WebAuthn) over HTTPS - try a recent Chrome, Edge, or Safari."], ERR);
+      await appMsg([{ t: "This browser can't open receive.link.", b: true }, " It needs passkeys (WebAuthn) over HTTPS - try a recent Chrome, Edge, or Safari."], ERR);
       return;
     }
     if ((await prfBrowserSupport()) === false) {
-      await appMsg([{ t: "This browser is missing a passkey feature Envoy needs (PRF).", b: true }, " Try the latest Chrome, Edge, or Safari."], ERR);
+      await appMsg([{ t: "This browser is missing a passkey feature receive.link needs (PRF).", b: true }, " Try the latest Chrome, Edge, or Safari."], ERR);
       return;
     }
     fn();

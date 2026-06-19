@@ -1,10 +1,9 @@
-# Contributing to Envoy
+# Contributing to receive.link
 
 Welcome. This gets you from a clone to a running app and a green test suite, and covers the conventions worth knowing before you change anything.
 
-> Naming: this is **Envoy**. The UI and package are branded Envoy; the staging deployment still
-> uses `drop-staging.filekey.app` (a domain move is pending), and some internal identifiers
-> (`DropLink`, `DropApi`, the codec) plus the vendored `web/core` still use the older `FileKey` name.
+> Naming: this is **receive.link** (the name, brand, and domain). Some internal identifiers
+> (`DropLink`, `DropApi`, the codec) and the vendored `web/core` still use the older `FileKey` name.
 
 ## Prerequisites
 
@@ -22,7 +21,7 @@ bun run dev:mock      # http://localhost:8080
 
 - The app is at `http://localhost:8080`.
 - Outgoing email is captured, not sent: open **`http://localhost:8080/__mail`** to click the confirmation and download links.
-- Passkeys (WebAuthn) work on `localhost` and `*.filekey.app`, but not on arbitrary hosts (see Gotchas).
+- Passkeys (WebAuthn) work on `localhost` and on `receive.link`, but not on arbitrary hosts (see Gotchas).
 
 Other run targets:
 - `bun run dev` runs the real Worker via `wrangler dev` (needs Cloudflare auth + secrets; usually not needed).
@@ -59,7 +58,7 @@ Branch off `main`, push your branch, open a PR, and keep `main` deployable. The 
 
 ## Gotchas (these have cost real time)
 
-- **Passkeys need a registrable domain.** WebAuthn's RP ID is the last two labels of the host, and browsers reject a public-suffix RP ID. Passkeys therefore work on `localhost` and on a `*.filekey.app` subdomain, but not on a bare `*.pages.dev` or a random host. Develop on `localhost` (the mock server) or a `*.filekey.app` subdomain.
+- **Passkeys need a registrable domain.** WebAuthn's RP ID is the last two labels of the host, and browsers reject a public-suffix RP ID. Passkeys therefore work on `localhost` and on `receive.link`, but not on a bare `*.pages.dev` or a random host. Develop on `localhost` (the mock server).
 - **Drop links are v2.** A link minted by an older v1 build no longer verifies against the current code; re-register to get a fresh one.
 
 ## Deploy (owner only, for reference)

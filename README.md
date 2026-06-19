@@ -1,8 +1,7 @@
-# Envoy
+# receive.link
 
-> The app and package are branded **Envoy**. The staging deployment still lives at
-> `drop-staging.filekey.app` until the domain move, and some internal code identifiers
-> (e.g. `DropLink`, `DropApi`) plus the vendored `web/core` still carry the older `FileKey` name.
+> **receive.link** is the name, brand, and domain. Some internal code identifiers
+> (e.g. `DropLink`, `DropApi`) and the vendored `web/core` still carry the older `FileKey` name.
 
 Give anyone a link. Whatever files they drop through it arrive **end-to-end encrypted to your passkey**, with a download link in your email. Think "email attachments, but the relay can't read them."
 
