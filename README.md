@@ -1,66 +1,56 @@
-# FileKey Drop
+# Envoy
 
-Give anyone a link. Whatever they drop arrives end-to-end encrypted to your passkey, in your email inbox. *Email attachments, but the server can't read them.*
+> **Envoy** is the working name for this project. The code is still branded **FileKey Drop**
+> internally (package name, UI strings, `drop.filekey.app`); a rename is pending.
 
-Part of the FileKey family: **Vault** (the local/offline app), **Drop** (this — inbound file requests), **Send** (outbound links, later). One identity, one crypto core.
+Give anyone a link. Whatever files they drop through it arrive **end-to-end encrypted to your passkey**, with a download link in your email. Think "email attachments, but the relay can't read them."
 
-> Status: **Phase 2 in progress.** Phase 1 (the register → confirm → upload → email protocol) is implemented and tested. The crypto core is vendored and verified in-repo; the web UI is next. 34 tests. Local-only repo, no remote, until built and security-reviewed. This is a different product from FileKey with a server component, so it lives in its own repo.
+Files are encrypted in the sender's browser and uploaded straight to object storage. A small Cloudflare Worker only coordinates: it verifies a signed link, hands out short-lived upload/download URLs, and sends the email. **It never sees your files and never holds a key.**
 
-## How it works (always-relay)
+- **How it works** (architecture, what the server can and cannot see, the tradeoff): [HOW-IT-WORKS.md](HOW-IT-WORKS.md)
+- **Set it up, run it, tests, conventions:** [CONTRIBUTING.md](CONTRIBUTING.md)
 
-1. **Receiver** (passkey holder) does one-time setup: confirms an email, gets a permanent Drop link.
-2. **Sender** (anyone, no account) opens the link, drops a file. Their browser encrypts it to the receiver's public key and uploads the **ciphertext** to R2.
-3. **Worker** verifies the link's signature, unseals the receiver's email *in memory*, and emails them a download link. Stores no email↔key mapping.
-4. **Receiver** clicks the link, fetches the ciphertext, decrypts with their passkey.
+## Status
 
-The Worker never decrypts and holds no database. The receiver's address lives **sealed inside their own link** (HPKE-sealed to the server key) and is read only for the moment it takes to send the email. The link can't exist for an inbox nobody proved they control (the server signs it only after an email-confirm click).
+Working end-to-end on **staging** (`drop-staging.filekey.app`): register, confirm, upload (single PUT and S3 multipart, up to ~5 TB), email delivery, receive, decrypt. Hardened across three rounds of adversarial review. **Not in production yet** (the prod config is still placeholders). 47 tests; typecheck clean on both the worker and the browser client.
 
-Full design + threat model + cost/pricing research: `../FileKey v1/HANDOFF-cloud-storage.md` (internal).
-
-## Layout
-
-```
-shared/codec.ts        Drop-link payload codec (zero-dep; used by Worker + web client)
-shared/crypto.ts       ECDSA link signatures + HPKE email seal/unseal (@hpke/core)
-shared/util.ts         small shared helpers
-worker/src/handlers.ts register / confirm / upload-init / upload-complete / fetch
-worker/src/r2.ts       presigned R2 PUT/GET (browser-direct) + FileKey-magic sniff
-worker/src/kv.ts       soft rate limiting + nonce/idempotency state
-worker/src/email.ts    Cloudflare Email Service wrappers (confirm + delivery mail)
-worker/src/worker.ts   request router
-worker/src/types.ts    Worker env bindings (EMAIL, R2, KV, secrets)
-worker/src/testing.ts  in-memory binding fakes for tests
-web/core/              vendored read-only copy of FileKey's crypto core (see its README)
-scripts/gen-keys.ts    generate per-env server keys (KEM + signing)
-wrangler.toml          send_email + R2 + KV bindings (fill REPLACE_ME at deploy)
-```
-
-## Develop
+## Quick start (local, no secrets needed)
 
 ```sh
 bun install
-bun test          # codec + crypto + full handler protocol (33 tests)
-bun run typecheck
+bun run dev:mock      # mock server at http://localhost:8080
+bun test              # codec + crypto + the full worker protocol + multipart + streaming
+bun run typecheck     # worker/shared AND the browser client
 ```
+
+`dev:mock` (`web/devserver.ts`) runs the **real** Worker handlers over in-memory R2/KV/email fakes and generates throwaway keys, so you can drive the whole flow with no Cloudflare account. Captured emails (the confirm + download links) show up at `http://localhost:8080/__mail`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev guide.
+
+## Layout
+
+| Path | What |
+|------|------|
+| `web/src/` | the browser app: `app.ts` (flows + routing), `api.ts` (Worker client), `webauthn.ts` (passkey/PRF), `config.ts` |
+| `web/fk/` | DOM + crypto glue: `ui.ts` (chat UI + save-to-disk), `stream.ts` (streaming encrypt/decrypt), `pool.ts` (concurrent multipart upload), `bundle.ts` |
+| `web/core/` | **vendored, read-only** copy of FileKey's crypto core. Do not edit (see `web/fk/README.md`) |
+| `shared/` | `codec.ts` (Drop-link wire format, used by both sides), `crypto.ts` (link signatures + email sealing), `util.ts` |
+| `worker/src/` | the Cloudflare Worker: `handlers.ts` (endpoints), `completion.ts` (Durable Object), `r2.ts`, `kv.ts`, `email.ts`, `http.ts`, `worker.ts` (router), `testing.ts` (in-memory fakes) |
+| `scripts/` | `gen-keys.ts` plus live smoke tests (these need staging keys) |
+| `wrangler.toml` | Worker config + bindings. Secrets live in Wrangler, never here |
 
 ## Stack
 
-- **Email:** Cloudflare Email Service via the `send_email` Worker binding (`env.EMAIL.send`). One vendor for R2 + Worker + Email + DNS. Beta as of 2026-05; kept behind a single swappable call.
-- **Relay:** Cloudflare R2 (zero egress), 7-day object lifecycle.
-- **Crypto:** WebCrypto ECDSA P-256 (link signatures) + `@hpke/core` HPKE base mode, DHKEM-P256 + HKDF-SHA-256 + AES-256-GCM (email sealing). Same suite as FileKey's core.
+- **Web:** static client on Cloudflare Pages. All crypto runs in the browser.
+- **Worker:** Cloudflare Workers + one Durable Object (`CompletionGuard`, for atomic exactly-once delivery).
+- **Storage:** R2 (browser-direct via presigned URLs, ~7-day object lifecycle) + KV (one-time nonces, rate-limit counters).
+- **Email:** Cloudflare Email Service via the `send_email` binding.
+- **Crypto:** WebAuthn PRF derives a passkey-bound identity; HPKE (DHKEM-P256 / HKDF-SHA-256 / AES-256-GCM) seals files and the recipient's email; ECDSA-P256 signs links. Tooling: Bun + TypeScript + esbuild + Wrangler.
 
-## Deploy (when ready)
+## Deploy (owner only)
 
-1. `bun run gen:keys` once per environment → set `SERVER_SIGN_PRIVATE_JWK` + `SERVER_KEM_PRIVATE_JWK` with `wrangler secret put`, paste the 2 public values into `wrangler.toml` / the client. Staging and prod use different keys.
-2. Create an R2 S3 API token (R2 > Manage API tokens) → set `R2_ACCESS_KEY_ID` + `R2_SECRET_ACCESS_KEY` secrets; fill `R2_ACCOUNT_ID` / `R2_BUCKET` vars.
-3. Onboard + DKIM-verify the `MAIL_FROM` sender domain (`drop.filekey.app`) in the Cloudflare dashboard.
-4. Create the R2 bucket + a ~7-day lifecycle rule, the KV namespace (fill the `REPLACE_ME` ids), and a bucket **CORS** rule allowing PUT/GET from the Drop web origin (browser-direct upload/download).
-5. `wrangler deploy` (staging) → smoke-test → `wrangler deploy --env production`.
+Deploys need the Cloudflare secrets, which are not in the repo, so contributors develop against the mock server instead. For the owner:
 
-Secrets never go in git or `wrangler.toml`; they live in Wrangler secrets / `.dev.vars` (gitignored). Four secrets total: two server keys (from gen-keys) + two R2 S3 credentials.
+1. `bun run gen:keys` per environment, then `wrangler secret put` the two private keys (`SERVER_SIGN_PRIVATE_JWK`, `SERVER_KEM_PRIVATE_JWK`) and the two R2 S3 credentials (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`); paste the public values into `wrangler.toml` / the client config.
+2. Create the R2 bucket with lifecycle rules (7-day object expiry + abort-incomplete-multipart) and a CORS rule allowing browser-direct PUT/GET; create the KV namespace; DKIM-verify the `MAIL_FROM` sender domain.
+3. `bun run deploy` (Worker) and `wrangler pages deploy web` (client) to staging; smoke-test; then the `--env production` equivalents.
 
-## Roadmap
-
-- **Phase 1 (done)** — the four handlers: register → confirm (one-time nonce) → upload-init (presigned R2 PUT) → upload-complete (FileKey-magic check + unseal + email), plus `/fetch/:id`. Soft abuse limits + idempotency. 33 tests.
-- **Phase 2** — Drop web client: setup flow + upload page (vendors a read-only copy of FileKey's DOM-free core; extract a shared `@filekey/core` package before any public push) + `/d/<id>` fetch+decrypt page.
-- **Phase 3** — tune abuse limits, logging policy, threat-model docs page, then the Fable-5 + Codex security review and a staging dogfood before going public. Verify browser-direct R2 PUT/GET + CORS on live R2.
+Secrets never go in git or `wrangler.toml`. `keys/`, `.dev.vars`, and `.env` are gitignored.
