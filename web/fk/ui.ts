@@ -410,7 +410,7 @@ export function hideDropBar(): void {
 export function initChrome(): void {
   mainInner = $("main_inner");
   allowAutoScroll = true;
-  $("logo_bar").innerHTML = `${SVG.logo.replace("<svg", '<svg class="filekey_logo_icon"')}<span id="logo_txt">FileKey</span><span class="badge">Drop</span>`;
+  $("logo_bar").innerHTML = `${SVG.logo.replace("<svg", '<svg class="filekey_logo_icon"')}<span id="logo_txt">Envoy</span>`;
   $("logo_bar").addEventListener("click", () => (location.href = "/"));
 
   const backdrop = $("chiz_hidden_click_container");

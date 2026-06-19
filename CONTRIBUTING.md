@@ -2,8 +2,9 @@
 
 Welcome. This gets you from a clone to a running app and a green test suite, and covers the conventions worth knowing before you change anything.
 
-> Naming: the repo is **Envoy**, but the code is still branded **FileKey Drop** (package name,
-> UI strings, `drop.filekey.app`). Treat them as the same thing for now.
+> Naming: this is **Envoy**. The UI and package are branded Envoy; the staging deployment still
+> uses `drop-staging.filekey.app` (a domain move is pending), and some internal identifiers
+> (`DropLink`, `DropApi`, the codec) plus the vendored `web/core` still use the older `FileKey` name.
 
 ## Prerequisites
 

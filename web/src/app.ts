@@ -1,7 +1,7 @@
-// FileKey Drop — web client. Routes four surfaces by path + hash, each played out
+// Envoy web client. Routes four surfaces by path + hash, each played out
 // as a FileKey chat conversation using FileKey's own UI machinery (web/fk/ui.ts,
 // vendored verbatim):
-//   /                  -> Setup (receiver creates a Drop link)
+//   /                  -> Setup (receiver creates a link)
 //   /#<linkPayload>    -> Upload (anyone drops a file for the receiver)
 //   /confirm#<nonce>   -> Confirm (finish setup, reveal the permanent link)
 //   /d/<objectId>      -> Receive (receiver fetches + decrypts a delivered file)
@@ -30,7 +30,7 @@ function hexToBytes(s: string): Uint8Array {
 function humanError(e: unknown): string {
   if (e instanceof DropApiError) {
     const m = e.message;
-    if (/revoked/i.test(m)) return "This Drop link has been turned off. Ask the recipient for a new one.";
+    if (/revoked/i.test(m)) return "This link has been turned off. Ask the recipient for a new one.";
     if (/invalid or expired/i.test(m)) return "This confirmation link expired or was already used. Set up again.";
     if (/too large|maxBytes/i.test(m)) return "That file is over the upload limit.";
     if (/rate limited|daily limit|over its daily/i.test(m)) return "Too many requests right now. Please try again later.";
@@ -39,7 +39,7 @@ function humanError(e: unknown): string {
     return m;
   }
   const m = e instanceof Error ? e.message : String(e);
-  if (/no PRF|passkey|assertion/i.test(m)) return "Couldn't use your passkey. Make sure you have a FileKey passkey on this device, then reload.";
+  if (/no PRF|passkey|assertion/i.test(m)) return "Couldn't use your passkey. Make sure you have an Envoy passkey on this device, then reload.";
   if (/auth_failed|wrong_namespace/i.test(m)) return "This file couldn't be decrypted. It may be corrupted, or not encrypted for you.";
   return m;
 }
@@ -79,8 +79,8 @@ async function setupMode(): Promise<void> {
       label,
     });
     st.fail();
-    await appMsg([{ t: "Check your email.", b: true }, ` We sent a confirmation link to ${email}. Click it to finish and get your Drop link.`]);
-    await appMsg(["You can close this tab. After you confirm, your Drop link can be shared from any device."]);
+    await appMsg([{ t: "Check your email.", b: true }, ` We sent a confirmation link to ${email}. Click it to finish and get your link.`]);
+    await appMsg(["You can close this tab. After you confirm, your link can be shared from any device."]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);
@@ -94,7 +94,7 @@ async function confirmMode(nonce: string): Promise<void> {
     const { link } = await api.confirm(nonce);
     st.fail();
     await linkReveal(
-      "Your Drop link is ready. Share it with anyone, and we'll email you a download link whenever someone sends a file. The file stays encrypted until you open it with your passkey:",
+      "Your link is ready. Share it with anyone, and we'll email you a download link whenever someone sends a file. The file stays encrypted until you open it with your passkey:",
       `${location.origin}/#${link}`,
     );
     await appMsg(["Save it somewhere. If you lose it, just set up again."]);
@@ -104,7 +104,7 @@ async function confirmMode(nonce: string): Promise<void> {
   }
 }
 
-// ---- Upload (the Drop link target) ----
+// ---- Upload (the link target) ----
 async function uploadMode(payload: string): Promise<void> {
   if (!(await requireConfig())) return;
   let label = "";
@@ -118,7 +118,7 @@ async function uploadMode(payload: string): Promise<void> {
     await appMsg([{ t: "This link isn't valid.", b: true }, " It may be incomplete or tampered with. Ask the recipient for a fresh link."], ERR);
     return;
   }
-  const who = label ? `"${label}"` : "this FileKey user";
+  const who = label ? `"${label}"` : "this person";
   await appMsg([`Send files to ${who}.`, " The contents are encrypted so only they can open them."]);
   showDropBar("Drop files to send", (items) => void sendFiles(payload, items));
 }
@@ -180,7 +180,7 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
       await appMsg([humanError(e)], ERR);
     }
   } finally {
-    // Re-show the drop bar so they can keep sending without reloading — the Drop link
+    // Re-show the drop bar so they can keep sending without reloading — the link
     // stays valid (capped per day by the Worker). Runs on success, error, and cancel.
     showDropBar("Drop files to send", (next) => void sendFiles(payload, next));
   }
@@ -343,7 +343,7 @@ async function revokeMode(token: string): Promise<void> {
   }
   let revoking = false;
   const host = await appMsg([
-    { t: "Turn off this Drop link?", b: true },
+    { t: "Turn off this link?", b: true },
     " People with the old link won't be able to send you files anymore. Download links already emailed to you still work until they expire.",
   ]);
   actionRow(host, [
@@ -357,8 +357,8 @@ async function doRevoke(token: string): Promise<void> {
   try {
     await api.revoke(token);
     st.fail();
-    const host = await appMsg([{ t: "This Drop link is off.", b: true }, " People can no longer send files to it. You can create a new one anytime."], OK);
-    actionRow(host, [{ label: "Create a new Drop link", icon: SVG.plus.replace("<svg", '<svg class="act_icon act_fill"'), onClick: () => void (location.href = "/") }]);
+    const host = await appMsg([{ t: "This link is off.", b: true }, " People can no longer send files to it. You can create a new one anytime."], OK);
+    actionRow(host, [{ label: "Create a new link", icon: SVG.plus.replace("<svg", '<svg class="act_icon act_fill"'), onClick: () => void (location.href = "/") }]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);
@@ -371,18 +371,18 @@ void (async () => {
   cfg = await ensureConfig(); // in dev, fetches the mock server's keys so they match
   api = new DropApi(cfg.apiBase);
 
-  // Only the receiver's flows need a passkey (WebAuthn PRF): creating a Drop link (setup) and
+  // Only the receiver's flows need a passkey (WebAuthn PRF): creating a link (setup) and
   // decrypting a delivered file (receive). SENDERS use a throwaway identity, and confirm/revoke are
   // nonce/token based — so we gate ONLY those two flows, and fail loudly there instead of cryptically.
   // (Gating everything would wrongly block senders on browsers that can encrypt but lack PRF.)
   const gated = async (fn: () => void): Promise<void> => {
     const s = checkSupport();
     if (!s.secureContext || !s.webauthn) {
-      await appMsg([{ t: "This browser can't open FileKey links.", b: true }, " It needs passkeys (WebAuthn) over HTTPS — try a recent Chrome, Edge, or Safari."], ERR);
+      await appMsg([{ t: "This browser can't open Envoy links.", b: true }, " It needs passkeys (WebAuthn) over HTTPS - try a recent Chrome, Edge, or Safari."], ERR);
       return;
     }
     if ((await prfBrowserSupport()) === false) {
-      await appMsg([{ t: "This browser is missing a passkey feature FileKey needs (PRF).", b: true }, " Try the latest Chrome, Edge, or Safari."], ERR);
+      await appMsg([{ t: "This browser is missing a passkey feature Envoy needs (PRF).", b: true }, " Try the latest Chrome, Edge, or Safari."], ERR);
       return;
     }
     fn();

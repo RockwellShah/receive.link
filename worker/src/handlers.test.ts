@@ -66,7 +66,7 @@ test("full flow: register -> confirm -> upload-init -> upload-complete emails th
   expect(reg.status).toBe(202);
   expect(h.email.sent.length).toBe(1);
   expect(h.email.sent[0]!.to).toBe("receiver@example.com");
-  expect(h.email.sent[0]!.from).toBe("FileKey Drop <files@send.test>");
+  expect(h.email.sent[0]!.from).toBe("Envoy <files@send.test>");
 
   const conf = await confirm(post("/confirm", { nonce: nonceFrom(h.email.sent[0]!.text!) }), h.env);
   expect(conf.status).toBe(200);

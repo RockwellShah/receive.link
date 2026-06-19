@@ -49,8 +49,8 @@ export function deploymentRpId(): string {
 export async function enrollPasskey(displayName: string): Promise<void> {
   const cred = (await navigator.credentials.create({
     publicKey: {
-      rp: { id: deploymentRpId(), name: "FileKey" },
-      user: { id: bs(randomBytes(16)), name: displayName || "FileKey", displayName: displayName || "FileKey" },
+      rp: { id: deploymentRpId(), name: "Envoy" },
+      user: { id: bs(randomBytes(16)), name: displayName || "Envoy", displayName: displayName || "Envoy" },
       challenge: bs(randomBytes(32)),
       pubKeyCredParams: [
         { type: "public-key", alg: -7 }, // ES256
