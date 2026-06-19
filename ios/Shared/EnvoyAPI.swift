@@ -9,6 +9,11 @@ struct EnvoyAPI {
     var url: URL
   }
 
+  struct CompletedPart: Codable, Hashable {
+    var partNumber: Int
+    var etag: String
+  }
+
   struct UploadInit: Codable, Hashable {
     var mode: String
     var objectId: String
@@ -29,8 +34,28 @@ struct EnvoyAPI {
     return try await post(path: "/upload-init", body: body)
   }
 
-  func uploadComplete(payload: String, objectId: String) async throws {
-    _ = try await post(path: "/upload-complete", body: ["payload": payload, "objectId": objectId]) as EmptyResponse
+  func uploadParts(payload: String, objectId: String, from: Int, count: Int) async throws -> [UploadPartURL] {
+    let body = UploadPartsBody(payload: payload, objectId: objectId, from: from, count: count)
+    let response: UploadPartsResponse = try await post(path: "/upload-parts", body: body)
+    return response.partUrls
+  }
+
+  func uploadComplete(payload: String, objectId: String, parts: [CompletedPart]? = nil) async throws {
+    let body = UploadCompleteBody(payload: payload, objectId: objectId, parts: parts)
+    var delay: UInt64 = 1_000_000_000
+    for attempt in 0...4 {
+      do {
+        _ = try await post(path: "/upload-complete", body: body) as EmptyResponse
+        return
+      } catch let error as APIError where error.isRetryableCompletion && attempt < 4 {
+        try await Task.sleep(nanoseconds: delay)
+        delay *= 2
+      }
+    }
+  }
+
+  func uploadAbort(payload: String, objectId: String) async throws {
+    _ = try await post(path: "/upload-abort", body: ["payload": payload, "objectId": objectId]) as EmptyResponse
   }
 
   func put(url: URL, data: Data) async throws {
@@ -38,6 +63,17 @@ struct EnvoyAPI {
     request.httpMethod = "PUT"
     let (data, response) = try await session.upload(for: request, from: data)
     try validate(response: response, data: data, context: "PUT \(url.host ?? url.absoluteString)")
+  }
+
+  func putPart(url: URL, data: Data) async throws -> String {
+    var request = URLRequest(url: url)
+    request.httpMethod = "PUT"
+    let (data, response) = try await session.upload(for: request, from: data)
+    let http = try validate(response: response, data: data, context: "PUT part \(url.host ?? url.absoluteString)")
+    guard let etag = http.value(forHTTPHeaderField: "ETag"), !etag.isEmpty else {
+      throw APIError.missingETag
+    }
+    return etag
   }
 
   func fetchURL(objectId: String) async throws -> URL {
@@ -58,13 +94,15 @@ struct EnvoyAPI {
     return try JSONDecoder().decode(T.self, from: data)
   }
 
-  private func validate(response: URLResponse, data: Data, context: String) throws {
+  @discardableResult
+  private func validate(response: URLResponse, data: Data, context: String) throws -> HTTPURLResponse {
     guard let http = response as? HTTPURLResponse else {
       throw APIError.requestFailed(context: context, status: nil, body: "No HTTP response.")
     }
     guard http.statusCode < 300 else {
       throw APIError.requestFailed(context: context, status: http.statusCode, body: responseBody(data))
     }
+    return http
   }
 
   private func responseBody(_ data: Data) -> String {
@@ -75,9 +113,31 @@ struct EnvoyAPI {
 
   private struct EmptyResponse: Decodable {}
   private struct FetchResponse: Decodable { var url: URL }
+  private struct UploadPartsBody: Encodable {
+    var payload: String
+    var objectId: String
+    var from: Int
+    var count: Int
+  }
+  private struct UploadPartsResponse: Decodable { var partUrls: [UploadPartURL] }
+  private struct UploadCompleteBody: Encodable {
+    var payload: String
+    var objectId: String
+    var parts: [CompletedPart]?
+  }
 
   enum APIError: Error, LocalizedError {
     case requestFailed(context: String, status: Int?, body: String)
+    case missingETag
+
+    var isRetryableCompletion: Bool {
+      switch self {
+      case let .requestFailed(_, status, _):
+        return status == 409 || status == 502
+      case .missingETag:
+        return false
+      }
+    }
 
     var errorDescription: String? {
       switch self {
@@ -86,6 +146,8 @@ struct EnvoyAPI {
           return "Envoy API \(context) failed (\(status)): \(body)"
         }
         return "Envoy API \(context) failed: \(body)"
+      case .missingETag:
+        return "Storage accepted the upload but did not return an ETag."
       }
     }
   }

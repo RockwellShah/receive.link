@@ -7,14 +7,12 @@ enum FileKeyCryptoError: Error, LocalizedError {
   case invalidShareKey
   case invalidFile
   case authenticationFailed
-  case unsupportedMultipart
 
   var errorDescription: String? {
     switch self {
     case .invalidShareKey: return "The FileKey share key is invalid."
     case .invalidFile: return "The file is not a valid FileKey ciphertext."
     case .authenticationFailed: return "The file could not be authenticated or decrypted."
-    case .unsupportedMultipart: return "Native multipart upload support is not wired yet."
     }
   }
 }
