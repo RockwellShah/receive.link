@@ -13,24 +13,9 @@ export interface SendEmailBinding {
   }): Promise<{ messageId: string }>;
 }
 
-/** Optional native push binding used by tests/dev, or by a future APNs adapter. */
-export interface NativePushBinding {
-  send(message: {
-    token: string;
-    environment: "development" | "production";
-    title: string;
-    body: string;
-    url: string;
-    objectId: string;
-    linkId: string;
-    label?: string;
-  }): Promise<{ messageId: string }>;
-}
-
 export interface Env {
   // Bindings
   EMAIL: SendEmailBinding; // [[send_email]] name = "EMAIL"
-  PUSH?: NativePushBinding; // optional test/dev adapter for APNs-style delivery
   DROP_BUCKET: R2Bucket; // ciphertext relay (lifecycle TTL ~7 days)
   DROP_KV: KVNamespace; // confirm-nonce store + rate-limit counters
   COMPLETION: DurableObjectNamespace<CompletionGuard>; // atomic per-object completion guard (exactly-once delivery)
@@ -57,6 +42,4 @@ export interface Env {
   REG_EMAIL_PER_DAY?: string;
   UPLOAD_BYTES_PER_LINK_DAY?: string; // optional daily byte budget per link (default 5x the per-file cap)
   UPLOAD_BYTES_PER_IP_DAY?: string; // optional daily byte budget per IP (default 10x the per-file cap)
-  APNS_WEBHOOK_URL?: string; // optional server-side APNs relay endpoint, if not using PUSH binding
-  APNS_AUTH_TOKEN?: string; // bearer token for APNS_WEBHOOK_URL
 }

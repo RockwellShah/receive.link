@@ -60,13 +60,8 @@ struct LinksView: View {
         } label: {
           Label("Create FileKey Passkey", systemImage: "person.badge.key")
         }
-        Button {
-          Task {
-            await model.createLink(label: label)
-            label = ""
-          }
-        } label: {
-          Label("Create Drop Link", systemImage: "plus")
+        Link(destination: EnvoyConfig.defaultWebBase) {
+          Label("Create Drop Link on Web", systemImage: "safari")
         }
       }
       Section("Your links") {
@@ -159,16 +154,10 @@ struct SendView: View {
 }
 
 struct SettingsView: View {
-  @State private var install = SharedLinkStore.shared.loadInstall()
-
   var body: some View {
     Form {
-      Section("Device") {
-        LabeledContent("Install ID", value: install.installId)
-        LabeledContent("Push environment", value: install.environment)
-      }
       Section("Native Status") {
-        Text("FileKey passkeys, push-first native links, optional email fallback, native encryption, and local inbox storage are enabled. Large-file multipart upload is still pending.")
+        Text("This branch uses the existing web API only. Native push, device registration, and native link creation are disabled.")
           .foregroundStyle(.secondary)
       }
     }

@@ -6,7 +6,6 @@ final class SharedLinkStore {
 
   private let defaults: UserDefaults
   private let linksKey = "dropLinks.v1"
-  private let installKey = "nativeInstall.v1"
   private let inboxKey = "inboxItems.v1"
 
   init(defaults: UserDefaults = UserDefaults(suiteName: EnvoyConfig.appGroup) ?? .standard) {
@@ -28,21 +27,6 @@ final class SharedLinkStore {
     links.removeAll { $0.id == link.id }
     links.insert(link, at: 0)
     saveLinks(links)
-  }
-
-  func loadInstall() -> NativeInstall {
-    if let data = defaults.data(forKey: installKey),
-       let install = try? JSONDecoder().decode(NativeInstall.self, from: data) {
-      return install
-    }
-    let install = NativeInstall(installId: UUID().uuidString, apnsToken: nil, environment: "development")
-    saveInstall(install)
-    return install
-  }
-
-  func saveInstall(_ install: NativeInstall) {
-    let data = try? JSONEncoder().encode(install)
-    defaults.set(data, forKey: installKey)
   }
 
   func loadInbox() -> [InboxItem] {

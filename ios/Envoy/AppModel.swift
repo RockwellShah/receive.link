@@ -15,42 +15,11 @@ final class AppModel {
   private let store = SharedLinkStore.shared
   private let api = EnvoyAPI()
   private let crypto = FileKeyCrypto()
-  private let notifications = NotificationRegistration.shared
   private let passkeys = PasskeyIdentityProvider.shared
 
   func start() async {
     links = store.loadLinks()
     inbox = store.loadInbox()
-    await notifications.requestPermission()
-    await registerDeviceIfPossible()
-    if let pending = notifications.pendingURL {
-      handle(url: pending)
-      notifications.pendingURL = nil
-    }
-  }
-
-  func createLink(label: String) async {
-    do {
-      await registerDeviceIfPossible()
-      let install = store.loadInstall()
-      let identity = try await passkeys.fileKeyIdentity()
-      let shareKey = crypto.shareKey(identity: identity)
-      let created = try await api.createNativeLink(installId: install.installId, shareKey: shareKey, label: label)
-      let payload = try DropLinkCodec.decode(fragment: created.link)
-      let record = DropLinkRecord(
-        id: payload.linkId.hexString,
-        label: label.isEmpty ? "Envoy Drop" : label,
-        link: created.link,
-        revokeToken: created.revokeToken,
-        createdAt: Date(),
-        emailFallbackVerified: false
-      )
-      store.upsert(record)
-      links = store.loadLinks()
-      statusMessage = "Drop link created."
-    } catch {
-      statusMessage = error.localizedDescription
-    }
   }
 
   func enrollPasskey(displayName: String) async {
@@ -140,17 +109,6 @@ final class AppModel {
       selectedTab = .send
       statusMessage = "Drop link opened. Paste field is ready for sending."
       UIPasteboard.general.string = fragment
-    }
-  }
-
-  private func registerDeviceIfPossible() async {
-    var install = store.loadInstall()
-    install.apnsToken = notifications.apnsToken ?? install.apnsToken ?? "simulator-token-\(install.installId)"
-    store.saveInstall(install)
-    do {
-      try await api.registerDevice(install: install)
-    } catch {
-      statusMessage = "Device registration failed: \(error.localizedDescription)"
     }
   }
 

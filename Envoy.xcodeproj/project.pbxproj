@@ -25,7 +25,6 @@
 		AC9573A0772E9C9F1148F7F3 /* MessagesViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD687BBFAB4176A00F78E06B /* MessagesViewController.swift */; };
 		C24D80BFEA4440F0F891C2D4 /* PasskeyIdentityProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79D9552202FCC4AE15548C1 /* PasskeyIdentityProvider.swift */; };
 		C48F8CFCFB797C3C32CDBEF6 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BD6799B1767E162B3929B0 /* Base64URL.swift */; };
-		C9277292867E5F2395FB1726 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6733E3BF86EE0EE9EC86FF56 /* AppDelegate.swift */; };
 		D690E3CFAF4FE85C636B4DB0 /* DropLinkCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FB79D82CDDA7FFFB355EF0 /* DropLinkCodecTests.swift */; };
 		E195B7234000A0B5E529FAA1 /* FileKeyCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F174A8E2C0094DA33F2D78D /* FileKeyCrypto.swift */; };
 		E1D0697C335673872DCD1F9F /* DropLinkCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571F491D0601E7DE5894C7AB /* DropLinkCodec.swift */; };
@@ -72,7 +71,6 @@
 		4F174A8E2C0094DA33F2D78D /* FileKeyCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileKeyCrypto.swift; sourceTree = "<group>"; };
 		571F491D0601E7DE5894C7AB /* DropLinkCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropLinkCodec.swift; sourceTree = "<group>"; };
 		58B12BE442E8371035E097A4 /* SharedLinkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkStore.swift; sourceTree = "<group>"; };
-		6733E3BF86EE0EE9EC86FF56 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		68EBBC6C6F7FA26C024A86D6 /* EnvoyTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EnvoyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		71096106AE2C53005DB7D9E8 /* AppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppView.swift; sourceTree = "<group>"; };
 		7F411F9D8E259C9ED3B81460 /* EnvoyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvoyConfig.swift; sourceTree = "<group>"; };
@@ -111,7 +109,6 @@
 		68990E117530B705F008A355 /* Envoy */ = {
 			isa = PBXGroup;
 			children = (
-				6733E3BF86EE0EE9EC86FF56 /* AppDelegate.swift */,
 				BDDD9A5459ED0D17731221B0 /* AppModel.swift */,
 				71096106AE2C53005DB7D9E8 /* AppView.swift */,
 				B6280B4C484644A8FE3B98A8 /* Envoy.entitlements */,
@@ -276,7 +273,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C9277292867E5F2395FB1726 /* AppDelegate.swift in Sources */,
 				0C148C380E609C52297C8B84 /* AppModel.swift in Sources */,
 				30CB0A54E73785666FFCB868 /* AppView.swift in Sources */,
 				C48F8CFCFB797C3C32CDBEF6 /* Base64URL.swift in Sources */,

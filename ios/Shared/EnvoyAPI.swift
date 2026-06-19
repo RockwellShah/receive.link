@@ -20,28 +20,6 @@ struct EnvoyAPI {
     var batchSize: Int?
   }
 
-  struct CreatedLink: Codable, Hashable {
-    var link: String
-    var revokeToken: String
-    var emailConfirmationSent: Bool?
-  }
-
-  func registerDevice(install: NativeInstall) async throws {
-    _ = try await post(path: "/native/register-device", body: [
-      "installId": install.installId,
-      "token": install.apnsToken ?? "simulator-token-\(install.installId)",
-      "environment": install.environment
-    ] as [String: String]) as EmptyResponse
-  }
-
-  func createNativeLink(installId: String, shareKey: String, label: String) async throws -> CreatedLink {
-    try await post(path: "/native/create-link", body: [
-      "installId": installId,
-      "shareKey": Base64URL.encode(Data(shareKey.utf8)),
-      "label": label
-    ])
-  }
-
   func revoke(token: String) async throws {
     _ = try await post(path: "/revoke", body: ["token": token]) as EmptyResponse
   }

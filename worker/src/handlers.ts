@@ -24,7 +24,6 @@ import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signReg
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
 import { allowedOrigin, clientIp, json, logEvent, readJson } from "./http";
 import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
-import { sendNativeDownloadNotification, type NativeDevice } from "./push";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import type { Env } from "./types";
 import { hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
@@ -44,9 +43,6 @@ const PRESIGN_TTL_SEC = HOUR; // presigned PUT/GET lifetime
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 const OBJECT_ID_BYTES = 16;
 const REVOKE_TOKEN_BYTES = 16; // receiver-only secret that maps to a link_id for revocation
-const NATIVE_DEVICE_TTL_SEC = 180 * DAY;
-const NATIVE_EMAIL_PENDING_TTL_SEC = HOUR;
-const NATIVE_DELIVERY_MARKER = new TextEncoder().encode("FILEKEY-DROP/native-delivery/v1");
 
 // ---- Multipart sizing (large uploads). The cap is policy (MAX_UPLOAD_BYTES, up to
 // R2's ~5 TiB object ceiling); these shape how a big ciphertext splits into <=10k
@@ -104,8 +100,6 @@ function validateParts(parts: unknown, partCount: number): { partNumber: number;
 // The KV upload-binding: which link minted this object, and (for multipart) the
 // in-progress upload's id + sizing. JSON so single + multipart share one key.
 type UploadBinding = { link: string; mp?: { uploadId: string; size: number; partSize: number; partCount: number } };
-type NativeLinkBinding = { installId: string; createdAt: number };
-type NativePendingEmail = { linkIdHex: string; sealedEmail: string; label: string };
 
 function maxUploadBytes(env: Env): number {
   const n = env.MAX_UPLOAD_BYTES ? parseInt(env.MAX_UPLOAD_BYTES, 10) : NaN;
@@ -152,58 +146,6 @@ const stripControl = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, "");
 // Canonicalize for abuse-limit keys only (we still deliver to the exact unsealed
 // address): trim + lowercase so "User@x.com " and "user@x.com" share a quota.
 const canonEmail = (s: string) => s.trim().toLowerCase();
-const validInstallId = (s: string) => /^[A-Za-z0-9._:-]{8,128}$/.test(s);
-const validPushToken = (s: string) => /^[A-Za-z0-9._:-]{16,4096}$/.test(s);
-
-async function mintSignedLink(
-  env: Env,
-  body: { shareKey: Uint8Array; label: string; sealedEmail: Uint8Array },
-): Promise<{ link: string; linkIdHex: string; revokeToken: string }> {
-  const linkId = randomBytes(LINK_ID_LEN);
-  const region = signableBytes({
-    version: DROP_PAYLOAD_VERSION,
-    keyId: currentSignKeyId(env),
-    linkId,
-    shareKey: body.shareKey,
-    label: stripControl(body.label),
-    sealedEmail: body.sealedEmail,
-  });
-  const signPriv = await importSignPrivateKey(JSON.parse(env.SERVER_SIGN_PRIVATE_JWK) as JsonWebKey);
-  const sig = await signRegion(signPriv, region);
-  const full = new Uint8Array(region.length + sig.length);
-  full.set(region, 0);
-  full.set(sig, region.length);
-  const linkIdHex = hex(linkId);
-  const revokeToken = hex(randomBytes(REVOKE_TOKEN_BYTES));
-  await env.DROP_KV.put(`revtok:${revokeToken}`, linkIdHex);
-  await env.DROP_KV.put(`linkrev:${linkIdHex}`, revokeToken);
-  return { link: base64urlEncode(full), linkIdHex, revokeToken };
-}
-
-async function loadNativeDevice(env: Env, installId: string): Promise<NativeDevice | null> {
-  const raw = await env.DROP_KV.get(`native-device:${installId}`);
-  if (!raw) return null;
-  try {
-    const device = JSON.parse(raw) as NativeDevice;
-    return device.installId === installId && device.platform === "ios" ? device : null;
-  } catch {
-    return null;
-  }
-}
-
-async function sendNativeEmailFallback(env: Env, linkIdHex: string, finalId: string, label: string, manageUrl?: string): Promise<void> {
-  const raw = await env.DROP_KV.get(`native-email:${linkIdHex}`);
-  if (!raw) return;
-  let sealedEmail: Uint8Array;
-  try {
-    sealedEmail = base64urlDecode(raw);
-    const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
-    const email = await unsealEmail(kemPriv, sealedEmail);
-    await sendDownloadEmail(env, email, `${allowedOrigin(env)}/d/${finalId}`, label, manageUrl);
-  } catch {
-    logEvent("native_email_fallback_failed", { link: linkIdHex });
-  }
-}
 
 /**
  * Decode a Drop link and verify the server signature against the signing PUBLIC
@@ -318,109 +260,6 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
   }
 
   return json({ link: linkB64, revokeToken }, 200, origin);
-}
-
-// POST /native/register-device { installId, token, environment } -> { ok }
-// Registers one iOS install as a push target for native-created Drop links.
-export async function nativeRegisterDevice(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
-  const body = await readJson<{ installId: string; token: string; environment?: "development" | "production" }>(req);
-  if (!body || typeof body.installId !== "string" || typeof body.token !== "string") {
-    return json({ error: "missing fields" }, 400, origin);
-  }
-  if (!validInstallId(body.installId) || !validPushToken(body.token)) return json({ error: "invalid device" }, 400, origin);
-  const environment = body.environment === "production" ? "production" : "development";
-  const device: NativeDevice = { installId: body.installId, token: body.token, platform: "ios", environment };
-  await env.DROP_KV.put(`native-device:${body.installId}`, JSON.stringify(device), { expirationTtl: NATIVE_DEVICE_TTL_SEC });
-  return json({ ok: true }, 200, origin);
-}
-
-// POST /native/create-link { installId, shareKey, label, sealedEmail? }
-// Creates a push-first Drop link immediately. Optional email fallback is attached
-// only after the receiver confirms the emailed nonce through /native/confirm-email.
-export async function nativeCreateLink(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
-  const body = await readJson<{ installId: string; shareKey: string; label: string; sealedEmail?: string }>(req);
-  if (!body || typeof body.installId !== "string" || typeof body.shareKey !== "string" || typeof body.label !== "string") {
-    return json({ error: "missing fields" }, 400, origin);
-  }
-  if (!validInstallId(body.installId)) return json({ error: "invalid device" }, 400, origin);
-  if (!(await loadNativeDevice(env, body.installId))) return json({ error: "device not registered" }, 404, origin);
-
-  let minted: { link: string; linkIdHex: string; revokeToken: string };
-  try {
-    minted = await mintSignedLink(env, {
-      shareKey: base64urlDecode(body.shareKey),
-      label: body.label,
-      sealedEmail: NATIVE_DELIVERY_MARKER,
-    });
-  } catch {
-    return json({ error: "invalid payload" }, 400, origin);
-  }
-
-  await env.DROP_KV.put(
-    `native-link:${minted.linkIdHex}`,
-    JSON.stringify({ installId: body.installId, createdAt: Date.now() } satisfies NativeLinkBinding),
-  );
-
-  let emailConfirmationSent = false;
-  if (typeof body.sealedEmail === "string" && body.sealedEmail.length > 0) {
-    let email: string;
-    let sealedEmailBytes: Uint8Array;
-    try {
-      sealedEmailBytes = base64urlDecode(body.sealedEmail);
-      const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
-      email = await unsealEmail(kemPriv, sealedEmailBytes);
-    } catch {
-      return json({ error: "invalid sealed email" }, 400, origin);
-    }
-    if (!isEmail(email)) return json({ error: "invalid email" }, 400, origin);
-
-    const emailHash = await sha256hex(canonEmail(email));
-    if (await rateLimit(env.DROP_KV, `reg:em:${emailHash}`, envInt(env.REG_EMAIL_PER_DAY, REG_EMAIL_PER_DAY), DAY)) {
-      const nonce = base64urlEncode(randomBytes(16));
-      const pending: NativePendingEmail = { linkIdHex: minted.linkIdHex, sealedEmail: body.sealedEmail, label: stripControl(body.label) };
-      await env.DROP_KV.put(`native-pending-email:${nonce}`, JSON.stringify(pending), { expirationTtl: NATIVE_EMAIL_PENDING_TTL_SEC });
-      await sendConfirmEmail(env, email, `${origin}/native/confirm-email#${nonce}`, body.label);
-      emailConfirmationSent = true;
-    }
-  }
-
-  return json({ link: minted.link, revokeToken: minted.revokeToken, emailConfirmationSent }, 200, origin);
-}
-
-// POST /native/confirm-email { nonce } -> { ok }
-export async function nativeConfirmEmail(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
-  const body = await readJson<{ nonce: string }>(req);
-  if (!body || typeof body.nonce !== "string") return json({ error: "missing nonce" }, 400, origin);
-
-  const raw = await env.DROP_KV.get(`native-pending-email:${body.nonce}`);
-  if (!raw) return json({ error: "invalid or expired" }, 404, origin);
-  await env.DROP_KV.delete(`native-pending-email:${body.nonce}`);
-  let pending: NativePendingEmail;
-  try {
-    pending = JSON.parse(raw) as NativePendingEmail;
-  } catch {
-    return json({ error: "invalid or expired" }, 404, origin);
-  }
-  if (!isHex(pending.linkIdHex, LINK_ID_LEN)) return json({ error: "invalid or expired" }, 404, origin);
-  if (!(await env.DROP_KV.get(`native-link:${pending.linkIdHex}`))) return json({ error: "invalid or expired" }, 404, origin);
-  await env.DROP_KV.put(`native-email:${pending.linkIdHex}`, pending.sealedEmail);
-
-  // Best effort: give the receiver a durable copy of their manage link after confirmation.
-  try {
-    const revokeToken = await env.DROP_KV.get(`linkrev:${pending.linkIdHex}`);
-    if (revokeToken) {
-      const sealedEmailBytes = base64urlDecode(pending.sealedEmail);
-      const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
-      const email = await unsealEmail(kemPriv, sealedEmailBytes);
-      await sendDropLinkEmail(env, email, "Open Envoy to share your Drop link.", `${origin}/revoke#${revokeToken}`, pending.label);
-    }
-  } catch {
-    /* native app already has the link */
-  }
-  return json({ ok: true }, 200, origin);
 }
 
 // POST /revoke { token } -> { ok } — the receiver turns their own Drop link off.
@@ -660,26 +499,13 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "not a FileKey file" }, 422, origin);
     }
 
-    let nativeLink: NativeLinkBinding | null = null;
-    const nativeRaw = await env.DROP_KV.get(`native-link:${linkIdHex}`);
-    if (nativeRaw) {
-      try {
-        nativeLink = JSON.parse(nativeRaw) as NativeLinkBinding;
-      } catch {
-        await deleteObject(env, finalId);
-        return json({ error: "invalid link" }, 400, origin);
-      }
-    }
-
-    let email: string | undefined;
-    if (!nativeLink) {
-      try {
-        const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
-        email = await unsealEmail(kemPriv, link.sealedEmail);
-      } catch {
-        await deleteObject(env, finalId);
-        return json({ error: "invalid link" }, 400, origin);
-      }
+    let email: string;
+    try {
+      const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
+      email = await unsealEmail(kemPriv, link.sealedEmail);
+    } catch {
+      await deleteObject(env, finalId);
+      return json({ error: "invalid link" }, 400, origin);
     }
 
     // If a stalled attempt was reclaimed while we worked, the reclaimer now owns delivery — abort
@@ -703,24 +529,11 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "rate limited" }, 429, origin);
     }
 
-    // Carry the receiver's manage/revoke link in delivery messages (best-effort for native email fallback).
+    // Carry the receiver's manage/revoke link in the delivery email (best-effort).
     const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
     const manageUrl = revokeToken ? `${origin}/revoke#${revokeToken}` : undefined;
     try {
-      if (nativeLink) {
-        const device = await loadNativeDevice(env, nativeLink.installId);
-        if (!device) throw new Error("native device not registered");
-        const pushed = await sendNativeDownloadNotification(env, device, {
-          downloadUrl: `${origin}/d/${finalId}`,
-          objectId: finalId,
-          linkId: linkIdHex,
-          label: link.label,
-        });
-        if (!pushed) throw new Error("native push unavailable");
-        await sendNativeEmailFallback(env, linkIdHex, finalId, link.label, manageUrl);
-      } else {
-        await sendDownloadEmail(env, email!, `${origin}/d/${finalId}`, link.label, manageUrl);
-      }
+      await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label, manageUrl);
     } catch {
       logEvent("delivery_failed", { link: linkIdHex });
       await deleteObject(env, finalId); // no orphaned final; the client can retry

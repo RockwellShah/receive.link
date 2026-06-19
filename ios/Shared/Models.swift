@@ -36,9 +36,3 @@ struct TransferRecord: Identifiable, Codable, Hashable {
   var progress: Double
   var updatedAt: Date
 }
-
-struct NativeInstall: Codable, Hashable {
-  var installId: String
-  var apnsToken: String?
-  var environment: String
-}
