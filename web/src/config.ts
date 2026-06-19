@@ -16,20 +16,17 @@ export interface DropConfig {
 const PLACEHOLDER = "REPLACE_AFTER_GEN_KEYS";
 
 const ENVS: Record<string, DropConfig> = {
-  "drop.filekey.app": {
-    apiBase: "https://api.drop.filekey.app",
-    serverKemPublicHex: PLACEHOLDER,
-    serverSignPublicJwk: null,
-  },
-  "drop-staging.filekey.app": {
-    apiBase: "https://filekey-drop-staging.rockwellshah.workers.dev",
+  // Production. Worker "receive-link" on workers.dev; keys pinned from keys/prod-*.jwk
+  // (gen-keys-prod), the matching privates set as Wrangler secrets on that Worker.
+  "receive.link": {
+    apiBase: "https://receive-link.rockwellshah.workers.dev",
     serverKemPublicHex:
-      "043b235d0c8594a8dda07e5db3ce127f697a65037aa606135c4ba80316b850833a524f6f78b35f98959887323342bdb93f6b7cc92e2ae92b556ffc5807c116b2b2",
-    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E", y: "3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE" },
+      "04d39d943dbc00c824bc44116b3a3e678dd96b7536b372d9f15c03081c2f99c09eea548bf59f25a0d4d2a1aa929a3b10488d453bb791dc4ab4c55bdba06a50ccbd",
+    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "zjIvdGLoKfO8J88X9FivuNSl6WsV6Xuw8UDKyveBikA", y: "vn2TLgJBXKI8kuo2qYIFAl7zmC3tKUGZhDHB0Z987Lo" },
   },
-  // Staging on Cloudflare Pages → the workers.dev Worker. Keys pinned from
-  // keys/staging.json (gen-keys output); the matching privates are Wrangler secrets.
-  "filekey-drop-staging.pages.dev": {
+  // Staging. Reuses the existing staging Worker + keys (keys/staging.json); privates
+  // are Wrangler secrets on "filekey-drop-staging".
+  "staging.receive.link": {
     apiBase: "https://filekey-drop-staging.rockwellshah.workers.dev",
     serverKemPublicHex:
       "043b235d0c8594a8dda07e5db3ce127f697a65037aa606135c4ba80316b850833a524f6f78b35f98959887323342bdb93f6b7cc92e2ae92b556ffc5807c116b2b2",
