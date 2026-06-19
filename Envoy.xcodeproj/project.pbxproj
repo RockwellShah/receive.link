@@ -76,12 +76,12 @@
 		68EBBC6C6F7FA26C024A86D6 /* EnvoyTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EnvoyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		71096106AE2C53005DB7D9E8 /* AppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppView.swift; sourceTree = "<group>"; };
 		7F411F9D8E259C9ED3B81460 /* EnvoyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvoyConfig.swift; sourceTree = "<group>"; };
-		8D9D989294F807662E234398 /* Envoy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Envoy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8D9D989294F807662E234398 /* Envoy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Envoy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		900726F73BEAA0F3BF9C259E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		96FB79D82CDDA7FFFB355EF0 /* DropLinkCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropLinkCodecTests.swift; sourceTree = "<group>"; };
 		A180CF00AA663FA156EB2A35 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		A2B31C6898E8F4E8AF340C48 /* Bech32m.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bech32m.swift; sourceTree = "<group>"; };
-		B076AA5AD573B0163A0EF14E /* EnvoyMessages.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = EnvoyMessages.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B076AA5AD573B0163A0EF14E /* EnvoyMessages.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EnvoyMessages.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B6280B4C484644A8FE3B98A8 /* Envoy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Envoy.entitlements; sourceTree = "<group>"; };
 		B80A35672C6E6849CA2622D4 /* EnvoyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvoyApp.swift; sourceTree = "<group>"; };
 		BDDD9A5459ED0D17731221B0 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -231,12 +231,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					970895A419BFF46560DBEC43 = {
-						DevelopmentTeam = "";
-					};
-					D7AFE55CA5D33FA83A75D60D = {
-						DevelopmentTeam = "";
-					};
 					ECE3F1A613B50BCFE1DFF04E = {
 						DevelopmentTeam = "";
 					};
@@ -396,6 +390,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
 				CODE_SIGN_ENTITLEMENTS = ios/EnvoyMessages/EnvoyMessages.entitlements;
+				DEVELOPMENT_TEAM = PQV6T4HT58;
 				INFOPLIST_FILE = ios/EnvoyMessages/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -489,6 +484,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ios/Envoy/Envoy.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = PQV6T4HT58;
 				INFOPLIST_FILE = ios/Envoy/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -522,6 +518,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ios/Envoy/Envoy.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = PQV6T4HT58;
 				INFOPLIST_FILE = ios/Envoy/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -538,6 +535,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
 				CODE_SIGN_ENTITLEMENTS = ios/EnvoyMessages/EnvoyMessages.entitlements;
+				DEVELOPMENT_TEAM = PQV6T4HT58;
 				INFOPLIST_FILE = ios/EnvoyMessages/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
