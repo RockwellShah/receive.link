@@ -33,6 +33,11 @@ targets:
               - envoy
     entitlements:
       path: ios/Envoy/Envoy.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - webcredentials:filekey.app
+        com.apple.security.application-groups:
+          - group.app.filekey.envoy
     dependencies:
       - target: EnvoyMessages
         embed: true
@@ -54,9 +59,15 @@ targets:
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MessagesViewController
     entitlements:
       path: ios/EnvoyMessages/EnvoyMessages.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.app.filekey.envoy
   EnvoyTests:
     type: bundle.unit-test
     platform: iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     sources:
       - ios/EnvoyTests
     dependencies:

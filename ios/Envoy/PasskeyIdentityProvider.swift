@@ -72,7 +72,7 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
   func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
     let continuation = continuation
     reset()
-    continuation?.resume(throwing: error)
+    continuation?.resume(throwing: PasskeyError.userFacing(error))
   }
 
   func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
@@ -99,6 +99,7 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
     case prfUnsupported
     case randomFailed
     case requestInProgress
+    case associatedDomainUnavailable
 
     var errorDescription: String? {
       switch self {
@@ -110,7 +111,17 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
         return "Could not generate secure random bytes."
       case .requestInProgress:
         return "A passkey request is already in progress."
+      case .associatedDomainUnavailable:
+        return "FileKey passkeys are not enabled for this app build yet. The app must have the webcredentials:filekey.app entitlement, and filekey.app must publish an Apple app-site-association file that includes this app identifier."
       }
+    }
+
+    static func userFacing(_ error: Error) -> Error {
+      let message = (error as NSError).localizedDescription
+      if message.localizedCaseInsensitiveContains("not associated with domain") {
+        return PasskeyError.associatedDomainUnavailable
+      }
+      return error
     }
   }
 }
