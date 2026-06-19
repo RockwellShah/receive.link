@@ -58,14 +58,15 @@ struct EnvoyAPI {
   func put(url: URL, data: Data) async throws {
     var request = URLRequest(url: url)
     request.httpMethod = "PUT"
-    let (_, response) = try await session.upload(for: request, from: data)
-    guard (response as? HTTPURLResponse)?.statusCode ?? 0 < 300 else { throw APIError.requestFailed }
+    let (data, response) = try await session.upload(for: request, from: data)
+    try validate(response: response, data: data, context: "PUT \(url.host ?? url.absoluteString)")
   }
 
   func fetchURL(objectId: String) async throws -> URL {
-    let url = baseURL.appending(path: "/fetch/\(objectId)")
+    let path = "/fetch/\(objectId)"
+    let url = baseURL.appending(path: path)
     let (data, response) = try await session.data(from: url)
-    guard (response as? HTTPURLResponse)?.statusCode ?? 0 < 300 else { throw APIError.requestFailed }
+    try validate(response: response, data: data, context: "GET \(path)")
     return try JSONDecoder().decode(FetchResponse.self, from: data).url
   }
 
@@ -75,16 +76,40 @@ struct EnvoyAPI {
     request.setValue("application/json", forHTTPHeaderField: "content-type")
     request.httpBody = try JSONEncoder().encode(body)
     let (data, response) = try await session.data(for: request)
-    guard (response as? HTTPURLResponse)?.statusCode ?? 0 < 300 else { throw APIError.requestFailed }
+    try validate(response: response, data: data, context: "POST \(path)")
     return try JSONDecoder().decode(T.self, from: data)
+  }
+
+  private func validate(response: URLResponse, data: Data, context: String) throws {
+    guard let http = response as? HTTPURLResponse else {
+      throw APIError.requestFailed(context: context, status: nil, body: "No HTTP response.")
+    }
+    guard http.statusCode < 300 else {
+      throw APIError.requestFailed(context: context, status: http.statusCode, body: responseBody(data))
+    }
+  }
+
+  private func responseBody(_ data: Data) -> String {
+    guard !data.isEmpty else { return "Empty response body." }
+    let value = String(data: data, encoding: .utf8) ?? "<\(data.count) bytes>"
+    return value.count > 240 ? String(value.prefix(240)) + "..." : value
   }
 
   private struct EmptyResponse: Decodable {}
   private struct FetchResponse: Decodable { var url: URL }
 
   enum APIError: Error, LocalizedError {
-    case requestFailed
-    var errorDescription: String? { "The Envoy API request failed." }
+    case requestFailed(context: String, status: Int?, body: String)
+
+    var errorDescription: String? {
+      switch self {
+      case let .requestFailed(context, status, body):
+        if let status {
+          return "Envoy API \(context) failed (\(status)): \(body)"
+        }
+        return "Envoy API \(context) failed: \(body)"
+      }
+    }
   }
 }
 
