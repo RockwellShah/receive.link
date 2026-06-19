@@ -1,7 +1,7 @@
 // In-memory fakes for the Cloudflare bindings, so handlers can be exercised
 // end-to-end under `bun test` with no account. Test-only.
 import { base64urlDecode } from "../../shared/codec";
-import type { Env, SendEmailBinding } from "./types";
+import type { Env, NativePushBinding, SendEmailBinding } from "./types";
 
 export class MemoryKV {
   store = new Map<string, string>();
@@ -121,6 +121,25 @@ export class CapturingEmail implements SendEmailBinding {
   }
 }
 
+export interface SentPush {
+  token: string;
+  environment: "development" | "production";
+  title: string;
+  body: string;
+  url: string;
+  objectId: string;
+  linkId: string;
+  label?: string;
+}
+
+export class CapturingPush implements NativePushBinding {
+  sent: SentPush[] = [];
+  async send(message: SentPush): Promise<{ messageId: string }> {
+    this.sent.push(message);
+    return { messageId: `push-${this.sent.length}` };
+  }
+}
+
 // In-memory stand-in for the CompletionGuard Durable Object namespace. Bun tests are single-threaded,
 // so the atomic claim()/finish()/release() semantics hold without modeling the running-TTL or alarm.
 export class MemoryCompletion {
@@ -178,6 +197,7 @@ export interface TestHarness {
   kv: MemoryKV;
   r2: MemoryR2;
   email: CapturingEmail;
+  push: CapturingPush;
   kemPublicRaw: Uint8Array; // seal test emails to this
 }
 
@@ -189,10 +209,12 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
   const kv = new MemoryKV();
   const r2 = new MemoryR2();
   const email = new CapturingEmail();
+  const push = new CapturingPush();
   const completion = new MemoryCompletion();
 
   const env: Env = {
     EMAIL: email,
+    PUSH: push,
     DROP_BUCKET: r2 as unknown as R2Bucket,
     DROP_KV: kv as unknown as KVNamespace,
     COMPLETION: completion as unknown as Env["COMPLETION"],
@@ -208,5 +230,5 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
     ...overrides,
   };
 
-  return { env, kv, r2, email, kemPublicRaw: rawFromEcJwk(await crypto.subtle.exportKey("jwk", kem.publicKey)) };
+  return { env, kv, r2, email, push, kemPublicRaw: rawFromEcJwk(await crypto.subtle.exportKey("jwk", kem.publicKey)) };
 }

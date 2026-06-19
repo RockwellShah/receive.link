@@ -1,0 +1,595 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0C148C380E609C52297C8B84 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDD9A5459ED0D17731221B0 /* AppModel.swift */; };
+		12992BE565D141A673E703C4 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BD6799B1767E162B3929B0 /* Base64URL.swift */; };
+		30CB0A54E73785666FFCB868 /* AppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71096106AE2C53005DB7D9E8 /* AppView.swift */; };
+		39B4A41562B45CB9B0E65BC1 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A180CF00AA663FA156EB2A35 /* Models.swift */; };
+		3C7C564A1DC89E46089E43BB /* SharedLinkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B12BE442E8371035E097A4 /* SharedLinkStore.swift */; };
+		3DA1484827EDAF3C13DBDB23 /* Bech32m.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B31C6898E8F4E8AF340C48 /* Bech32m.swift */; };
+		57F950C723BF09F0D080E0E2 /* Bech32m.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B31C6898E8F4E8AF340C48 /* Bech32m.swift */; };
+		5BB030EF298CF4E88C567BEA /* FileKeyCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F174A8E2C0094DA33F2D78D /* FileKeyCrypto.swift */; };
+		6A32FE673DC84D32D2BE8E89 /* EnvoyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = D964EF399DACCCAB75622CE8 /* EnvoyAPI.swift */; };
+		6E76C2B7F1A45BDF096DD279 /* EnvoyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = D964EF399DACCCAB75622CE8 /* EnvoyAPI.swift */; };
+		75BAC0DB822995A143F4A0E7 /* SharedLinkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B12BE442E8371035E097A4 /* SharedLinkStore.swift */; };
+		88FFB40612347CDDC95955FB /* EnvoyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F411F9D8E259C9ED3B81460 /* EnvoyConfig.swift */; };
+		8DB01DFBBF93CA669D8E0214 /* EnvoyMessages.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B076AA5AD573B0163A0EF14E /* EnvoyMessages.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		98FA634023C82F6D3B9B3BFB /* DropLinkCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571F491D0601E7DE5894C7AB /* DropLinkCodec.swift */; };
+		99830E6738E68256E3649F96 /* EnvoyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80A35672C6E6849CA2622D4 /* EnvoyApp.swift */; };
+		AC9573A0772E9C9F1148F7F3 /* MessagesViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD687BBFAB4176A00F78E06B /* MessagesViewController.swift */; };
+		C24D80BFEA4440F0F891C2D4 /* PasskeyIdentityProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79D9552202FCC4AE15548C1 /* PasskeyIdentityProvider.swift */; };
+		C48F8CFCFB797C3C32CDBEF6 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BD6799B1767E162B3929B0 /* Base64URL.swift */; };
+		C9277292867E5F2395FB1726 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6733E3BF86EE0EE9EC86FF56 /* AppDelegate.swift */; };
+		D690E3CFAF4FE85C636B4DB0 /* DropLinkCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FB79D82CDDA7FFFB355EF0 /* DropLinkCodecTests.swift */; };
+		E195B7234000A0B5E529FAA1 /* FileKeyCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F174A8E2C0094DA33F2D78D /* FileKeyCrypto.swift */; };
+		E1D0697C335673872DCD1F9F /* DropLinkCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571F491D0601E7DE5894C7AB /* DropLinkCodec.swift */; };
+		EA59211893673E264F3289D2 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C831E93C57D4EF88A6E8D2B /* Views.swift */; };
+		F783F13436631ABAE3D362E6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A180CF00AA663FA156EB2A35 /* Models.swift */; };
+		F8976ED09DD0B96F008BE359 /* EnvoyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F411F9D8E259C9ED3B81460 /* EnvoyConfig.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7239DAEAD4F572798306B386 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E31C4742BB92E1DD5D97220A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 970895A419BFF46560DBEC43;
+			remoteInfo = Envoy;
+		};
+		A56F4C7082691D567AD82884 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E31C4742BB92E1DD5D97220A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D7AFE55CA5D33FA83A75D60D;
+			remoteInfo = EnvoyMessages;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		18DA1645D30215CAF4F1B4AF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				8DB01DFBBF93CA669D8E0214 /* EnvoyMessages.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		2C831E93C57D4EF88A6E8D2B /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		39B2570FE628CC3362D3D519 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		47BD6799B1767E162B3929B0 /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
+		4F174A8E2C0094DA33F2D78D /* FileKeyCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileKeyCrypto.swift; sourceTree = "<group>"; };
+		571F491D0601E7DE5894C7AB /* DropLinkCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropLinkCodec.swift; sourceTree = "<group>"; };
+		58B12BE442E8371035E097A4 /* SharedLinkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkStore.swift; sourceTree = "<group>"; };
+		6733E3BF86EE0EE9EC86FF56 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		68EBBC6C6F7FA26C024A86D6 /* EnvoyTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EnvoyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		71096106AE2C53005DB7D9E8 /* AppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppView.swift; sourceTree = "<group>"; };
+		7F411F9D8E259C9ED3B81460 /* EnvoyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvoyConfig.swift; sourceTree = "<group>"; };
+		8D9D989294F807662E234398 /* Envoy.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Envoy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		900726F73BEAA0F3BF9C259E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		96FB79D82CDDA7FFFB355EF0 /* DropLinkCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropLinkCodecTests.swift; sourceTree = "<group>"; };
+		A180CF00AA663FA156EB2A35 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A2B31C6898E8F4E8AF340C48 /* Bech32m.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bech32m.swift; sourceTree = "<group>"; };
+		B076AA5AD573B0163A0EF14E /* EnvoyMessages.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = EnvoyMessages.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B6280B4C484644A8FE3B98A8 /* Envoy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Envoy.entitlements; sourceTree = "<group>"; };
+		B80A35672C6E6849CA2622D4 /* EnvoyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvoyApp.swift; sourceTree = "<group>"; };
+		BDDD9A5459ED0D17731221B0 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		CBE0D9DA458915EF526EAD07 /* EnvoyMessages.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EnvoyMessages.entitlements; sourceTree = "<group>"; };
+		D79D9552202FCC4AE15548C1 /* PasskeyIdentityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyIdentityProvider.swift; sourceTree = "<group>"; };
+		D964EF399DACCCAB75622CE8 /* EnvoyAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvoyAPI.swift; sourceTree = "<group>"; };
+		DD687BBFAB4176A00F78E06B /* MessagesViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesViewController.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		46C984C5E84F8449CB0261AE /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				47BD6799B1767E162B3929B0 /* Base64URL.swift */,
+				A2B31C6898E8F4E8AF340C48 /* Bech32m.swift */,
+				571F491D0601E7DE5894C7AB /* DropLinkCodec.swift */,
+				D964EF399DACCCAB75622CE8 /* EnvoyAPI.swift */,
+				7F411F9D8E259C9ED3B81460 /* EnvoyConfig.swift */,
+				4F174A8E2C0094DA33F2D78D /* FileKeyCrypto.swift */,
+				A180CF00AA663FA156EB2A35 /* Models.swift */,
+				58B12BE442E8371035E097A4 /* SharedLinkStore.swift */,
+			);
+			name = Shared;
+			path = ios/Shared;
+			sourceTree = "<group>";
+		};
+		68990E117530B705F008A355 /* Envoy */ = {
+			isa = PBXGroup;
+			children = (
+				6733E3BF86EE0EE9EC86FF56 /* AppDelegate.swift */,
+				BDDD9A5459ED0D17731221B0 /* AppModel.swift */,
+				71096106AE2C53005DB7D9E8 /* AppView.swift */,
+				B6280B4C484644A8FE3B98A8 /* Envoy.entitlements */,
+				B80A35672C6E6849CA2622D4 /* EnvoyApp.swift */,
+				900726F73BEAA0F3BF9C259E /* Info.plist */,
+				D79D9552202FCC4AE15548C1 /* PasskeyIdentityProvider.swift */,
+				2C831E93C57D4EF88A6E8D2B /* Views.swift */,
+			);
+			name = Envoy;
+			path = ios/Envoy;
+			sourceTree = "<group>";
+		};
+		74D745A8518756CCE4948DD5 = {
+			isa = PBXGroup;
+			children = (
+				68990E117530B705F008A355 /* Envoy */,
+				BBCBCFE27592C70AA90AF668 /* EnvoyMessages */,
+				EC1009AA8F375A7133EBB0D9 /* EnvoyTests */,
+				46C984C5E84F8449CB0261AE /* Shared */,
+				FB96F4EB205FF7A2EBB895F3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BBCBCFE27592C70AA90AF668 /* EnvoyMessages */ = {
+			isa = PBXGroup;
+			children = (
+				CBE0D9DA458915EF526EAD07 /* EnvoyMessages.entitlements */,
+				39B2570FE628CC3362D3D519 /* Info.plist */,
+				DD687BBFAB4176A00F78E06B /* MessagesViewController.swift */,
+			);
+			name = EnvoyMessages;
+			path = ios/EnvoyMessages;
+			sourceTree = "<group>";
+		};
+		EC1009AA8F375A7133EBB0D9 /* EnvoyTests */ = {
+			isa = PBXGroup;
+			children = (
+				96FB79D82CDDA7FFFB355EF0 /* DropLinkCodecTests.swift */,
+			);
+			name = EnvoyTests;
+			path = ios/EnvoyTests;
+			sourceTree = "<group>";
+		};
+		FB96F4EB205FF7A2EBB895F3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8D9D989294F807662E234398 /* Envoy.app */,
+				B076AA5AD573B0163A0EF14E /* EnvoyMessages.appex */,
+				68EBBC6C6F7FA26C024A86D6 /* EnvoyTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		970895A419BFF46560DBEC43 /* Envoy */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1CA08B34BF883B03D441BE2 /* Build configuration list for PBXNativeTarget "Envoy" */;
+			buildPhases = (
+				3D27A35043D67DE61B9EFAC1 /* Sources */,
+				18DA1645D30215CAF4F1B4AF /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				79515DF2EEE61890C90B699C /* PBXTargetDependency */,
+			);
+			name = Envoy;
+			packageProductDependencies = (
+			);
+			productName = Envoy;
+			productReference = 8D9D989294F807662E234398 /* Envoy.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D7AFE55CA5D33FA83A75D60D /* EnvoyMessages */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8B1F08D950BDFB4FCFB03249 /* Build configuration list for PBXNativeTarget "EnvoyMessages" */;
+			buildPhases = (
+				980076FE4F8C9406904FF572 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EnvoyMessages;
+			packageProductDependencies = (
+			);
+			productName = EnvoyMessages;
+			productReference = B076AA5AD573B0163A0EF14E /* EnvoyMessages.appex */;
+			productType = "com.apple.product-type.app-extension.messages";
+		};
+		ECE3F1A613B50BCFE1DFF04E /* EnvoyTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C010D5EFC5840FA0C30F72D1 /* Build configuration list for PBXNativeTarget "EnvoyTests" */;
+			buildPhases = (
+				258892F5FC156D52605C500B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				453740C5F8B9666CA1274657 /* PBXTargetDependency */,
+			);
+			name = EnvoyTests;
+			packageProductDependencies = (
+			);
+			productName = EnvoyTests;
+			productReference = 68EBBC6C6F7FA26C024A86D6 /* EnvoyTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E31C4742BB92E1DD5D97220A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					970895A419BFF46560DBEC43 = {
+						DevelopmentTeam = "";
+					};
+					D7AFE55CA5D33FA83A75D60D = {
+						DevelopmentTeam = "";
+					};
+					ECE3F1A613B50BCFE1DFF04E = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 81BB18C45A414BC9896DA5F8 /* Build configuration list for PBXProject "Envoy" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 74D745A8518756CCE4948DD5;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FB96F4EB205FF7A2EBB895F3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				970895A419BFF46560DBEC43 /* Envoy */,
+				D7AFE55CA5D33FA83A75D60D /* EnvoyMessages */,
+				ECE3F1A613B50BCFE1DFF04E /* EnvoyTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		258892F5FC156D52605C500B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D690E3CFAF4FE85C636B4DB0 /* DropLinkCodecTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3D27A35043D67DE61B9EFAC1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C9277292867E5F2395FB1726 /* AppDelegate.swift in Sources */,
+				0C148C380E609C52297C8B84 /* AppModel.swift in Sources */,
+				30CB0A54E73785666FFCB868 /* AppView.swift in Sources */,
+				C48F8CFCFB797C3C32CDBEF6 /* Base64URL.swift in Sources */,
+				57F950C723BF09F0D080E0E2 /* Bech32m.swift in Sources */,
+				98FA634023C82F6D3B9B3BFB /* DropLinkCodec.swift in Sources */,
+				6E76C2B7F1A45BDF096DD279 /* EnvoyAPI.swift in Sources */,
+				99830E6738E68256E3649F96 /* EnvoyApp.swift in Sources */,
+				88FFB40612347CDDC95955FB /* EnvoyConfig.swift in Sources */,
+				E195B7234000A0B5E529FAA1 /* FileKeyCrypto.swift in Sources */,
+				39B4A41562B45CB9B0E65BC1 /* Models.swift in Sources */,
+				C24D80BFEA4440F0F891C2D4 /* PasskeyIdentityProvider.swift in Sources */,
+				75BAC0DB822995A143F4A0E7 /* SharedLinkStore.swift in Sources */,
+				EA59211893673E264F3289D2 /* Views.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		980076FE4F8C9406904FF572 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				12992BE565D141A673E703C4 /* Base64URL.swift in Sources */,
+				3DA1484827EDAF3C13DBDB23 /* Bech32m.swift in Sources */,
+				E1D0697C335673872DCD1F9F /* DropLinkCodec.swift in Sources */,
+				6A32FE673DC84D32D2BE8E89 /* EnvoyAPI.swift in Sources */,
+				F8976ED09DD0B96F008BE359 /* EnvoyConfig.swift in Sources */,
+				5BB030EF298CF4E88C567BEA /* FileKeyCrypto.swift in Sources */,
+				AC9573A0772E9C9F1148F7F3 /* MessagesViewController.swift in Sources */,
+				F783F13436631ABAE3D362E6 /* Models.swift in Sources */,
+				3C7C564A1DC89E46089E43BB /* SharedLinkStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		453740C5F8B9666CA1274657 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 970895A419BFF46560DBEC43 /* Envoy */;
+			targetProxy = 7239DAEAD4F572798306B386 /* PBXContainerItemProxy */;
+		};
+		79515DF2EEE61890C90B699C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D7AFE55CA5D33FA83A75D60D /* EnvoyMessages */;
+			targetProxy = A56F4C7082691D567AD82884 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0B3279E98790240A11DD46FC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		3EAA9E0C488999B2352B2FAE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
+				CODE_SIGN_ENTITLEMENTS = ios/EnvoyMessages/EnvoyMessages.entitlements;
+				INFOPLIST_FILE = ios/EnvoyMessages/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.filekey.envoy.messages;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5085117FC001C07EC2BD5A6A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.filekey.EnvoyTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Envoy.app/Envoy";
+			};
+			name = Debug;
+		};
+		50D31A150EC922D498119AC6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		687911A171223310A88E8E7C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ios/Envoy/Envoy.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = ios/Envoy/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.filekey.envoy;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		794DB91FDA612DC108881ABC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.filekey.EnvoyTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Envoy.app/Envoy";
+			};
+			name = Release;
+		};
+		B15C5562EA3D7E9B2C030FEB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ios/Envoy/Envoy.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = ios/Envoy/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.filekey.envoy;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FF7AD95F40C076E95D354483 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
+				CODE_SIGN_ENTITLEMENTS = ios/EnvoyMessages/EnvoyMessages.entitlements;
+				INFOPLIST_FILE = ios/EnvoyMessages/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.filekey.envoy.messages;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		81BB18C45A414BC9896DA5F8 /* Build configuration list for PBXProject "Envoy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0B3279E98790240A11DD46FC /* Debug */,
+				50D31A150EC922D498119AC6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8B1F08D950BDFB4FCFB03249 /* Build configuration list for PBXNativeTarget "EnvoyMessages" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3EAA9E0C488999B2352B2FAE /* Debug */,
+				FF7AD95F40C076E95D354483 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C010D5EFC5840FA0C30F72D1 /* Build configuration list for PBXNativeTarget "EnvoyTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5085117FC001C07EC2BD5A6A /* Debug */,
+				794DB91FDA612DC108881ABC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F1CA08B34BF883B03D441BE2 /* Build configuration list for PBXNativeTarget "Envoy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				687911A171223310A88E8E7C /* Debug */,
+				B15C5562EA3D7E9B2C030FEB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E31C4742BB92E1DD5D97220A /* Project object */;
+}

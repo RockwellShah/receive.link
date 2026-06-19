@@ -1,0 +1,63 @@
+name: Envoy
+options:
+  bundleIdPrefix: app.filekey
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+targets:
+  Envoy:
+    type: application
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.filekey.envoy
+    sources:
+      - ios/Shared
+      - ios/Envoy
+    info:
+      path: ios/Envoy/Info.plist
+      properties:
+        CFBundleDisplayName: Envoy
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: app.filekey.envoy
+            CFBundleURLSchemes:
+              - envoy
+    entitlements:
+      path: ios/Envoy/Envoy.entitlements
+    dependencies:
+      - target: EnvoyMessages
+        embed: true
+  EnvoyMessages:
+    type: app-extension.messages
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.filekey.envoy.messages
+    sources:
+      - ios/Shared
+      - ios/EnvoyMessages
+    info:
+      path: ios/EnvoyMessages/Info.plist
+      properties:
+        CFBundleDisplayName: Envoy
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.message-payload-provider
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MessagesViewController
+    entitlements:
+      path: ios/EnvoyMessages/EnvoyMessages.entitlements
+  EnvoyTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - ios/EnvoyTests
+    dependencies:
+      - target: Envoy
