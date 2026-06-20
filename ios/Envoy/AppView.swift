@@ -21,6 +21,8 @@ struct AppView: View {
         LinkReadySheet(link: link)
       case let .upload(request):
         UploadSheet(request: request)
+      case let .saveFile(request):
+        FileSavePicker(request: request)
       }
     }
     .alert("Envoy", isPresented: Binding(

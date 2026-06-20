@@ -21,9 +21,16 @@ struct DropUploadRequest: Identifiable, Hashable {
   var label: String
 }
 
+struct FileSaveRequest: Identifiable, Hashable {
+  var id: String = UUID().uuidString
+  var url: URL
+  var filename: String
+}
+
 enum PresentedSheet: Identifiable, Hashable {
   case linkReady(DropLinkRecord)
   case upload(DropUploadRequest)
+  case saveFile(FileSaveRequest)
 
   var id: String {
     switch self {
@@ -31,6 +38,8 @@ enum PresentedSheet: Identifiable, Hashable {
       return "link-ready-\(link.id)"
     case let .upload(request):
       return "upload-\(request.id)"
+    case let .saveFile(request):
+      return "save-file-\(request.id)"
     }
   }
 }

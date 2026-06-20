@@ -136,9 +136,11 @@ struct InboxView: View {
                   .foregroundStyle(.tertiary)
               }
               Spacer()
-              if let url = model.localFileURL(for: item) {
-                ShareLink(item: url) {
-                  Label("Open", systemImage: "square.and.arrow.up")
+              if model.localFileURL(for: item) != nil {
+                Button {
+                  model.presentSavePicker(for: item)
+                } label: {
+                  Label("Save", systemImage: "square.and.arrow.down")
                 }
                 .labelStyle(.iconOnly)
               }
@@ -367,5 +369,40 @@ struct UploadSheet: View {
     isSending = true
     defer { isSending = false }
     await model.upload(fileURL: selectedFile, to: request.payload)
+  }
+}
+
+struct FileSavePicker: UIViewControllerRepresentable {
+  @Environment(AppModel.self) private var model
+
+  let request: FileSaveRequest
+
+  func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+    let picker = UIDocumentPickerViewController(forExporting: [request.url], asCopy: true)
+    picker.delegate = context.coordinator
+    picker.shouldShowFileExtensions = true
+    return picker
+  }
+
+  func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(model: model)
+  }
+
+  final class Coordinator: NSObject, UIDocumentPickerDelegate {
+    private let model: AppModel
+
+    init(model: AppModel) {
+      self.model = model
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+      model.finishSavePicker(didSave: true)
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+      model.finishSavePicker(didSave: false)
+    }
   }
 }

@@ -71,6 +71,21 @@ final class SharedLinkStore {
     return directory.appendingPathComponent(localFileName, isDirectory: false)
   }
 
+  func exportFileURL(for item: InboxItem) throws -> URL {
+    guard let source = localFileURL(for: item) else {
+      throw StoreError.fileUnavailable
+    }
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EnvoyExports", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let filename = safeFileComponent(item.label.isEmpty ? source.lastPathComponent : item.label)
+    let destination = directory.appendingPathComponent(filename, isDirectory: false)
+    if FileManager.default.fileExists(atPath: destination.path) {
+      try FileManager.default.removeItem(at: destination)
+    }
+    try FileManager.default.copyItem(at: source, to: destination)
+    return destination
+  }
+
   private func inboxDirectory() throws -> URL {
     let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: EnvoyConfig.appGroup)
       ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -83,5 +98,16 @@ final class SharedLinkStore {
     let invalid = CharacterSet(charactersIn: "/\\:").union(.controlCharacters)
     let cleaned = value.components(separatedBy: invalid).joined(separator: "_").trimmingCharacters(in: .whitespacesAndNewlines)
     return cleaned.isEmpty ? "file" : cleaned
+  }
+
+  enum StoreError: Error, LocalizedError {
+    case fileUnavailable
+
+    var errorDescription: String? {
+      switch self {
+      case .fileUnavailable:
+        return "The decrypted file is no longer available locally."
+      }
+    }
   }
 }

@@ -228,7 +228,7 @@ final class AppModel {
       inbox = store.loadInbox()
       activeObjectId = objectId
       updateTransfer(id: transferId, status: .complete, title: item.label, progress: 1)
-      statusMessage = "Decrypted \(item.label) (\(decrypted.plaintext.count) bytes)."
+      presentSavePicker(for: item)
     } catch {
       updateTransfer(id: transferId, status: .failed, title: objectId, progress: 0)
       statusMessage = error.localizedDescription
@@ -237,6 +237,24 @@ final class AppModel {
 
   func localFileURL(for item: InboxItem) -> URL? {
     store.localFileURL(for: item)
+  }
+
+  func presentSavePicker(for item: InboxItem) {
+    do {
+      let url = try store.exportFileURL(for: item)
+      presentedSheet = .saveFile(.init(url: url, filename: item.label))
+    } catch {
+      statusMessage = error.localizedDescription
+    }
+  }
+
+  func finishSavePicker(didSave: Bool, error: Error? = nil) {
+    presentedSheet = nil
+    if let error {
+      statusMessage = error.localizedDescription
+    } else if didSave {
+      statusMessage = "File saved."
+    }
   }
 
   func handle(url: URL) {
