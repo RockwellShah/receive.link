@@ -16,18 +16,15 @@ export interface DropConfig {
 const PLACEHOLDER = "REPLACE_AFTER_GEN_KEYS";
 
 const ENVS: Record<string, DropConfig> = {
-  // receive.link. TEMP: served by the STAGING Worker + staging keys for now (iOS bring-up
-  // against receive.link). To cut over to prod once the receive-link Worker has its R2 creds,
-  // swap ALL THREE fields below to the prod values (public keys, safe to stage here) — miss the
-  // KEM key and senders silently seal to a key the prod Worker can't open:
-  //   apiBase:            "https://receive-link.rockwellshah.workers.dev"
-  //   serverKemPublicHex: "04d39d943dbc00c824bc44116b3a3e678dd96b7536b372d9f15c03081c2f99c09eea548bf59f25a0d4d2a1aa929a3b10488d453bb791dc4ab4c55bdba06a50ccbd"
-  //   serverSignPublicJwk x/y: "zjIvdGLoKfO8J88X9FivuNSl6WsV6Xuw8UDKyveBikA" / "vn2TLgJBXKI8kuo2qYIFAl7zmC3tKUGZhDHB0Z987Lo"
+  // receive.link = PRODUCTION: the dedicated "receive-link" Worker + prod keys + the
+  // receive-link-prod R2 bucket. Cut over from staging once prod R2 creds were verified.
+  // The iOS app must point at THIS Worker (same keys) to interoperate; staging lives on
+  // staging.receive.link below.
   "receive.link": {
-    apiBase: "https://filekey-drop-staging.rockwellshah.workers.dev",
+    apiBase: "https://receive-link.rockwellshah.workers.dev",
     serverKemPublicHex:
-      "043b235d0c8594a8dda07e5db3ce127f697a65037aa606135c4ba80316b850833a524f6f78b35f98959887323342bdb93f6b7cc92e2ae92b556ffc5807c116b2b2",
-    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E", y: "3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE" },
+      "04d39d943dbc00c824bc44116b3a3e678dd96b7536b372d9f15c03081c2f99c09eea548bf59f25a0d4d2a1aa929a3b10488d453bb791dc4ab4c55bdba06a50ccbd",
+    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "zjIvdGLoKfO8J88X9FivuNSl6WsV6Xuw8UDKyveBikA", y: "vn2TLgJBXKI8kuo2qYIFAl7zmC3tKUGZhDHB0Z987Lo" },
   },
   // Staging. Reuses the existing staging Worker + keys (keys/staging.json); privates
   // are Wrangler secrets on "filekey-drop-staging".
