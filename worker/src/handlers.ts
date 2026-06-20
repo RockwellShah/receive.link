@@ -22,7 +22,7 @@ import {
 } from "../../shared/codec";
 import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
-import { allowedOrigin, clientIp, json, logEvent, readJson } from "./http";
+import { clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
 import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import type { Env } from "./types";
@@ -167,7 +167,7 @@ export async function parseAndVerify(payloadB64: string, env: Env): Promise<Drop
 
 // POST /register { sealedEmail, shareKey, label } (all base64url except label)
 export async function register(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
+  const origin = corsOrigin(env, req);
   const body = await readJson<{ sealedEmail: string; shareKey: string; label: string }>(req);
   if (!body || typeof body.sealedEmail !== "string" || typeof body.shareKey !== "string" || typeof body.label !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -217,13 +217,13 @@ export async function register(req: Request, env: Env): Promise<Response> {
 
   const nonce = base64urlEncode(randomBytes(16));
   await env.DROP_KV.put(`pending:${nonce}`, base64urlEncode(region), { expirationTtl: CONFIRM_TTL_SEC });
-  await sendConfirmEmail(env, email, `${origin}/confirm#${nonce}`, label);
+  await sendConfirmEmail(env, email, `${linkOrigin(env)}/confirm#${nonce}`, label);
   return json({ ok: true }, 202, origin);
 }
 
 // POST /confirm { nonce } -> { link }
 export async function confirm(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
+  const origin = corsOrigin(env, req);
   const body = await readJson<{ nonce: string }>(req);
   if (!body || typeof body.nonce !== "string") return json({ error: "missing nonce" }, 400, origin);
 
@@ -254,7 +254,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
     const decoded = decodeDropLink(full);
     const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
     const email = await unsealEmail(kemPriv, decoded.sealedEmail);
-    await sendDropLinkEmail(env, email, `${origin}/#${linkB64}`, `${origin}/revoke#${revokeToken}`, decoded.label);
+    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label);
   } catch {
     /* page already showed both links */
   }
@@ -265,7 +265,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
 // POST /revoke { token } -> { ok } — the receiver turns their own Drop link off.
 // The token is the secret minted at confirm; it resolves to the link_id we flag.
 export async function revoke(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
+  const origin = corsOrigin(env, req);
   const body = await readJson<{ token: string }>(req);
   if (!body || typeof body.token !== "string") return json({ error: "missing token" }, 400, origin);
   if (!isHex(body.token, REVOKE_TOKEN_BYTES)) return json({ error: "bad token" }, 400, origin);
@@ -286,7 +286,7 @@ export async function revoke(req: Request, env: Env): Promise<Response> {
 //   small (size <= MULTIPART_THRESHOLD): { mode:"single", objectId, uploadUrl }
 //   large: { mode:"multipart", objectId, uploadId, partSize, partCount, partUrls, batchSize }
 export async function uploadInit(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
+  const origin = corsOrigin(env, req);
   const body = await readJson<{ payload: string; size: number }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.size !== "number") {
     return json({ error: "missing fields" }, 400, origin);
@@ -350,7 +350,7 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
 // Re-presign a batch of UploadPart URLs on demand, so long uploads get fresh
 // signatures and we never sign all 10k up front.
 export async function uploadParts(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
+  const origin = corsOrigin(env, req);
   const body = await readJson<{ payload: string; objectId: string; from: number; count: number }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string" || typeof body.from !== "number" || typeof body.count !== "number") {
     return json({ error: "missing fields" }, 400, origin);
@@ -382,7 +382,7 @@ export async function uploadParts(req: Request, env: Env): Promise<Response> {
 
 // POST /upload-abort { payload, objectId } -> { ok } (cancel cleanup)
 export async function uploadAbort(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
+  const origin = corsOrigin(env, req);
   const body = await readJson<{ payload: string; objectId: string }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -411,7 +411,7 @@ export async function uploadAbort(req: Request, env: Env): Promise<Response> {
 // POST /upload-complete { payload, objectId, parts? } -> { ok }
 // `parts` ({partNumber, etag} per part) is required for multipart; omitted for single PUT.
 export async function uploadComplete(req: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(env);
+  const origin = corsOrigin(env, req);
   const body = await readJson<{ payload: string; objectId: string; parts?: unknown }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -531,9 +531,9 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
 
     // Carry the receiver's manage/revoke link in the delivery email (best-effort).
     const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
-    const manageUrl = revokeToken ? `${origin}/revoke#${revokeToken}` : undefined;
+    const manageUrl = revokeToken ? `${linkOrigin(env)}/revoke#${revokeToken}` : undefined;
     try {
-      await sendDownloadEmail(env, email, `${origin}/d/${finalId}`, link.label, manageUrl);
+      await sendDownloadEmail(env, email, `${linkOrigin(env)}/d/${finalId}`, link.label, manageUrl);
     } catch {
       logEvent("delivery_failed", { link: linkIdHex });
       await deleteObject(env, finalId); // no orphaned final; the client can retry
@@ -558,8 +558,8 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
 }
 
 // GET /fetch/:id -> { url } (presigned R2 GET for the receiver's decrypt page)
-export async function fetchObject(_req: Request, env: Env, objectId: string): Promise<Response> {
-  const origin = allowedOrigin(env);
+export async function fetchObject(req: Request, env: Env, objectId: string): Promise<Response> {
+  const origin = corsOrigin(env, req);
   if (!isHex(objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
   if (!(await objectInfo(env, objectId))) return json({ error: "expired or not found" }, 404, origin);
   const url = await presignGet(env, objectId, PRESIGN_TTL_SEC);

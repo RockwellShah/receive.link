@@ -2,13 +2,29 @@
 import type { Env } from "./types";
 
 /**
- * The single allowed cross-origin caller. FAIL-CLOSED: if ALLOWED_ORIGIN is not
- * configured we return "" (an origin no browser matches) rather than "*", so a
- * misconfigured deploy denies cross-origin access instead of opening the API to
- * any site. ALLOWED_ORIGIN is always set in wrangler.toml for staging + prod.
+ * ALLOWED_ORIGIN is a comma-separated allowlist of cross-origin callers. The FIRST
+ * entry is canonical: the Worker builds confirm/drop/download links + emails from it,
+ * so links always point at one host (e.g. the iOS Universal Links on receive.link).
+ * Any other entries are additional origins accepted for CORS (e.g. a staging subdomain
+ * served by the same Worker).
  */
-export function allowedOrigin(env: Env): string {
-  return env.ALLOWED_ORIGIN || "";
+function originAllowList(env: Env): string[] {
+  return (env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+/** Canonical origin used to build links + emails: the first allow-listed origin. */
+export function linkOrigin(env: Env): string {
+  return originAllowList(env)[0] || "";
+}
+
+/**
+ * The CORS origin to echo back: the request's Origin iff it is allow-listed, else ""
+ * (an origin no browser matches). FAIL-CLOSED: never "*", so a disallowed or
+ * misconfigured origin is denied rather than opening the API to any site.
+ */
+export function corsOrigin(env: Env, req: Request): string {
+  const o = req.headers.get("origin") || "";
+  return originAllowList(env).includes(o) ? o : "";
 }
 
 export function cors(origin: string): Record<string, string> {

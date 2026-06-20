@@ -1,5 +1,5 @@
 {
-  "name": "receive.link",
+  "name": "receive-link",
   "private": true,
   "version": "0.0.1",
   "description": "receive.link: give anyone a link; whatever they drop arrives end-to-end encrypted to your passkey.",

@@ -31,7 +31,7 @@ export interface Env {
   SERVER_SIGN_KEY_ID?: string; // id (0..255) of the current signing key, stamped into minted links (default 1)
   SERVER_SIGN_PUBLIC_JWK_PREV?: string; // optional previous signing key, kept to verify links minted before a rotation
   SERVER_SIGN_KEY_ID_PREV?: string; // id of the previous signing key (pairs with _PREV)
-  ALLOWED_ORIGIN: string; // the Drop web client origin (CORS + link/email base)
+  ALLOWED_ORIGIN: string; // comma-separated CORS allowlist; first entry is the canonical link/email base
   MAIL_FROM: string; // e.g. "files@send.filekey.app"
   R2_ACCOUNT_ID: string; // <id>.r2.cloudflarestorage.com
   R2_BUCKET: string; // bucket name for S3 presigning

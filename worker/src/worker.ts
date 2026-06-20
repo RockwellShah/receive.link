@@ -15,7 +15,7 @@
 //   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
 
 import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
-import { allowedOrigin, cors, json } from "./http";
+import { corsOrigin, cors, json } from "./http";
 import type { Env } from "./types";
 
 // The Durable Object class must be exported from the entry module so the runtime can construct it.
@@ -24,7 +24,7 @@ export { CompletionGuard } from "./completion";
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    const origin = allowedOrigin(env);
+    const origin = corsOrigin(env, req);
 
     if (req.method === "OPTIONS") return new Response(null, { headers: cors(origin) });
 
