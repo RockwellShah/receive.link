@@ -1,0 +1,17 @@
+{
+  "webcredentials": {
+    "apps": ["PQV6T4HT58.app.filekey.envoy"]
+  },
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["PQV6T4HT58.app.filekey.envoy"],
+        "components": [
+          { "/": "/confirm", "#": "*" },
+          { "/": "/", "#": "*" },
+          { "/": "/d/*" }
+        ]
+      }
+    ]
+  }
+}

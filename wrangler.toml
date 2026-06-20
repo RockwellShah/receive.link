@@ -32,7 +32,9 @@ tag = "v1"
 new_sqlite_classes = ["CompletionGuard"]
 
 [vars]
-ALLOWED_ORIGIN = "https://staging.receive.link"
+# receive.link is the live origin (web + iOS). The staging Worker builds receive.link
+# confirm/drop/download links + allows its CORS. staging.receive.link is superseded.
+ALLOWED_ORIGIN = "https://receive.link"
 MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E","y":"3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE"}'
 # Id stamped into newly minted links. To rotate the signing key: bump this, set the new key as

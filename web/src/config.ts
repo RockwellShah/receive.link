@@ -16,13 +16,14 @@ export interface DropConfig {
 const PLACEHOLDER = "REPLACE_AFTER_GEN_KEYS";
 
 const ENVS: Record<string, DropConfig> = {
-  // Production. Worker "receive-link" on workers.dev; keys pinned from keys/prod-*.jwk
-  // (gen-keys-prod), the matching privates set as Wrangler secrets on that Worker.
+  // receive.link. TEMP: served by the STAGING Worker + staging keys for now (iOS bring-up
+  // against receive.link). Cut over to the receive-link prod Worker + prod keys once prod
+  // R2 creds are verified.
   "receive.link": {
-    apiBase: "https://receive-link.rockwellshah.workers.dev",
+    apiBase: "https://filekey-drop-staging.rockwellshah.workers.dev",
     serverKemPublicHex:
-      "04d39d943dbc00c824bc44116b3a3e678dd96b7536b372d9f15c03081c2f99c09eea548bf59f25a0d4d2a1aa929a3b10488d453bb791dc4ab4c55bdba06a50ccbd",
-    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "zjIvdGLoKfO8J88X9FivuNSl6WsV6Xuw8UDKyveBikA", y: "vn2TLgJBXKI8kuo2qYIFAl7zmC3tKUGZhDHB0Z987Lo" },
+      "043b235d0c8594a8dda07e5db3ce127f697a65037aa606135c4ba80316b850833a524f6f78b35f98959887323342bdb93f6b7cc92e2ae92b556ffc5807c116b2b2",
+    serverSignPublicJwk: { crv: "P-256", ext: true, key_ops: ["verify"], kty: "EC", x: "wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E", y: "3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE" },
   },
   // Staging. Reuses the existing staging Worker + keys (keys/staging.json); privates
   // are Wrangler secrets on "filekey-drop-staging".
