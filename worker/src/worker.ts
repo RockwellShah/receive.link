@@ -15,7 +15,7 @@
 //   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
 
 import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
-import { corsOrigin, cors, json } from "./http";
+import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
 
 // The Durable Object class must be exported from the entry module so the runtime can construct it.
@@ -26,7 +26,11 @@ export default {
     const url = new URL(req.url);
     const origin = corsOrigin(env, req);
 
-    if (req.method === "OPTIONS") return new Response(null, { headers: cors(origin) });
+    if (req.method === "OPTIONS") return new Response(null, { headers: { ...cors(origin), "cache-control": "no-store" } });
+
+    // CORS only hides the response, so reject a cross-site POST (present-but-disallowed Origin)
+    // before any handler side effect runs. No-Origin callers and allow-listed origins pass.
+    if (isForbiddenCrossOrigin(env, req)) return json({ error: "forbidden origin" }, 403, "");
 
     const route = `${req.method} ${url.pathname}`;
     switch (route) {

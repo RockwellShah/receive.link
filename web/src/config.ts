@@ -17,8 +17,12 @@ const PLACEHOLDER = "REPLACE_AFTER_GEN_KEYS";
 
 const ENVS: Record<string, DropConfig> = {
   // receive.link. TEMP: served by the STAGING Worker + staging keys for now (iOS bring-up
-  // against receive.link). Cut over to the receive-link prod Worker + prod keys once prod
-  // R2 creds are verified.
+  // against receive.link). To cut over to prod once the receive-link Worker has its R2 creds,
+  // swap ALL THREE fields below to the prod values (public keys, safe to stage here) — miss the
+  // KEM key and senders silently seal to a key the prod Worker can't open:
+  //   apiBase:            "https://receive-link.rockwellshah.workers.dev"
+  //   serverKemPublicHex: "04d39d943dbc00c824bc44116b3a3e678dd96b7536b372d9f15c03081c2f99c09eea548bf59f25a0d4d2a1aa929a3b10488d453bb791dc4ab4c55bdba06a50ccbd"
+  //   serverSignPublicJwk x/y: "zjIvdGLoKfO8J88X9FivuNSl6WsV6Xuw8UDKyveBikA" / "vn2TLgJBXKI8kuo2qYIFAl7zmC3tKUGZhDHB0Z987Lo"
   "receive.link": {
     apiBase: "https://filekey-drop-staging.rockwellshah.workers.dev",
     serverKemPublicHex:

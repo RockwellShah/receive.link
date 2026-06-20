@@ -27,6 +27,16 @@ export function corsOrigin(env: Env, req: Request): string {
   return originAllowList(env).includes(o) ? o : "";
 }
 
+/**
+ * True when a mutating (POST) request carries a present-but-disallowed Origin, so it must be
+ * rejected before any handler runs. CORS only hides the response; a cross-site page can still
+ * fire a no-preflight POST and trigger blind side effects (e.g. a /register email). No-Origin
+ * callers (native apps, server-to-server) and allow-listed browser origins are NOT blocked.
+ */
+export function isForbiddenCrossOrigin(env: Env, req: Request): boolean {
+  return req.method === "POST" && !!req.headers.get("origin") && corsOrigin(env, req) === "";
+}
+
 export function cors(origin: string): Record<string, string> {
   return {
     "access-control-allow-origin": origin,
