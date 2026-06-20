@@ -79,8 +79,13 @@ body{margin:0;}
 #chiz_hidden_click_container{display:none;position:fixed;top:0;height:100vh;z-index:1000;}
 #chiz_hidden_click_container{width:100vw;right:0;}
 
-#logo_bar{display:flex;cursor:pointer;}
+#logo_bar{display:flex;align-items:center;cursor:pointer;}
 #logo_txt{color:#000;font-size:26px;font-family:'Inter', system-ui;margin-left:8px;}
+.rl_logo_icon{width:26px;height:26px;color:#0E0E16;flex:0 0 auto;}
+.logo_dot{color:#23A267;}
+.logo_tld{color:#9a98a8;}
+html[data-theme="dark"] .rl_logo_icon{color:#f2f2f5;}
+html[data-theme="dark"] .logo_tld{color:#8e8ca6;}
 
 #outer_drop_container{position:fixed;bottom:0;left:0;width:100%;background-color:#fff;display:flex;justify-content:center;z-index:900;}
 #drop_container{
@@ -148,7 +153,7 @@ body{margin:0;}
 .failed_filekey_icon{fill:#F91313;}
 .warning_filekey_icon{fill:#e99a32;}
 
-.filekey_logo_icon{fill:#1377F9;width:22px;height:27px}
+/* old FileKey key glyph removed; header now uses .rl_logo_icon (the landing-point mark) */
 .file_icon{fill:#1377F9;width:25px;height:30px}
 .plus_icon{width:28px;height:27px;fill:#1377F9;}
 .import_icon{width:28px;height:28px;fill:none;stroke:#c8c8ce;stroke-width:1.8;}

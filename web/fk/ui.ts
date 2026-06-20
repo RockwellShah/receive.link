@@ -410,7 +410,8 @@ export function hideDropBar(): void {
 export function initChrome(): void {
   mainInner = $("main_inner");
   allowAutoScroll = true;
-  $("logo_bar").innerHTML = `${SVG.logo.replace("<svg", '<svg class="filekey_logo_icon"')}<span id="logo_txt">receive.link</span>`;
+  // receive.link branding (Drop delta): landing-point mark + wordmark with the green dot.
+  $("logo_bar").innerHTML = `<svg class="rl_logo_icon" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span id="logo_txt">receive<span class="logo_dot">.</span><span class="logo_tld">link</span></span>`;
   $("logo_bar").addEventListener("click", () => (location.href = "/"));
 
   const backdrop = $("chiz_hidden_click_container");

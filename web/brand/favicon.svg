@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="receive.link">
+  <style>
+    .core { fill: #0E0E16; }
+    @media (prefers-color-scheme: dark) { .core { fill: #FFFFFF; } }
+  </style>
+  <circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/>
+  <circle cx="50" cy="50" r="12" class="core"/>
+</svg>
