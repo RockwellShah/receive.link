@@ -56,13 +56,19 @@ struct LinkSetupView: View {
         }
         Section {
           Button {
-            Task { await register() }
+            Task { await register(useExistingPasskey: false) }
           } label: {
             if isWorking {
               ProgressView()
             } else {
-              Label("Create or Use Envoy Passkey", systemImage: "person.badge.key")
+              Label("Create Envoy Passkey", systemImage: "person.badge.key")
             }
+          }
+          .disabled(isWorking)
+          Button {
+            Task { await register(useExistingPasskey: true) }
+          } label: {
+            Label("Use Existing Passkey", systemImage: "key")
           }
           .disabled(isWorking)
         }
@@ -94,10 +100,10 @@ struct LinkSetupView: View {
     .navigationTitle(mode == .onboarding ? "Envoy" : "New Link")
   }
 
-  private func register() async {
+  private func register(useExistingPasskey: Bool) async {
     isWorking = true
     defer { isWorking = false }
-    if await model.registerDropLink(email: email, label: label) {
+    if await model.registerDropLink(email: email, label: label, useExistingPasskey: useExistingPasskey) {
       stage = .checkEmail
     }
   }

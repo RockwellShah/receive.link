@@ -30,7 +30,7 @@ final class AppModel {
   }
 
   @discardableResult
-  func registerDropLink(email: String, label: String) async -> Bool {
+  func registerDropLink(email: String, label: String, useExistingPasskey: Bool = false) async -> Bool {
     let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
     guard Self.isValidEmail(trimmedEmail) else {
@@ -40,7 +40,12 @@ final class AppModel {
 
     do {
       let displayName = trimmedLabel.isEmpty ? trimmedEmail : trimmedLabel
-      let identity = try await passkeys.fileKeyIdentity(createIfNeeded: displayName)
+      let identity: FileKeyIdentity
+      if useExistingPasskey {
+        identity = try await passkeys.fileKeyIdentity()
+      } else {
+        identity = try await passkeys.createFileKeyIdentity(displayName: displayName)
+      }
       let shareKey = crypto.shareKey(identity: identity)
       let sealedEmail = try FileKeyCrypto.sealEmail(trimmedEmail, serverKemPublicKey: EnvoyConfig.serverKemPublicKey)
       try await api.register(

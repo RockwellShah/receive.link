@@ -36,6 +36,11 @@ final class PasskeyIdentityProvider: NSObject, ASAuthorizationControllerDelegate
     return try FileKeyCrypto.identity(fromPRFSecret: prfSecret)
   }
 
+  func createFileKeyIdentity(displayName: String) async throws -> FileKeyIdentity {
+    try await enroll(displayName: displayName)
+    return try await fileKeyIdentity()
+  }
+
   func fileKeyIdentity(createIfNeeded displayName: String) async throws -> FileKeyIdentity {
     do {
       return try await fileKeyIdentity()
