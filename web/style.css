@@ -53,7 +53,7 @@ body{margin:0;}
 .msg_actions{display:flex;align-items:center;gap:24px;margin-top:10px;} /* choice row inside a chat-message bubble (duplicate-filekey heads-up, share) */
 .update_notes{margin:8px 0 0 0;padding-left:18px;} /* changelog bullets in the "new version available" notice */
 .update_notes li{margin:3px 0;line-height:1.45;}
-.confirm_pub_key, .edit_pub_key, .copy_button{cursor:pointer;color: #1377F9;font-weight: 500;display:flex;align-items:center;line-height:1;}
+.confirm_pub_key, .edit_pub_key, .copy_button{cursor:pointer;color:var(--fk-link);font-weight: 500;display:flex;align-items:center;line-height:1;}
 .cancel_pub_key{cursor:pointer;color:#00000080;font-weight:500;line-height:1;display:flex;align-items:center;}
 .edit_pub_key{display:none;}
 
@@ -89,7 +89,7 @@ html[data-theme="dark"] .logo_tld{color:#8e8ca6;}
 
 #outer_drop_container{position:fixed;bottom:0;left:0;width:100%;background-color:#fff;display:flex;justify-content:center;z-index:900;}
 #drop_container{
-	background-color:#eaf2fe;
+	background-color:#e9f6ef;
 	display: none;
 	flex-direction: row;
 	align-items: center;
@@ -106,8 +106,8 @@ html[data-theme="dark"] .logo_tld{color:#8e8ca6;}
 .dc_txt_container .file_title{font-weight:600;}
 .dc_buttons{display:flex;align-items:center;gap:10px;flex-shrink:0;}
 .dc_btn{font-family:'Inter';font-size:15px;font-weight:600;line-height:1;padding:11px 18px;border-radius:10px;cursor:pointer;border:1px solid transparent;white-space:nowrap;transition:background .18s ease,transform .18s cubic-bezier(.4,0,.2,1),box-shadow .18s ease;}
-.dc_btn_primary{background:#1377F9;color:#fff;}
-.dc_btn_primary:hover{background:#0e63d6;}
+.dc_btn_primary{background:#23A267;color:#fff;}
+.dc_btn_primary:hover{background:#1c8a55;}
 .dc_btn_ghost{background:#fff;color:#0d0d0d;border-color:#0000001f;font-weight:500;}
 .dc_btn_ghost:hover{background:#f4f4f4;}
 
@@ -136,26 +136,25 @@ html[data-theme="dark"] .logo_tld{color:#8e8ca6;}
 
 .download_icon_container{display:flex;align-items:center;gap:18px;line-height:1;}
 
-.dl_action{display:inline-flex;align-items:center;color:#1377F9;cursor:pointer;font-weight:500}
+.dl_action{display:inline-flex;align-items:center;color:var(--fk-link);cursor:pointer;font-weight:500}
 .slight_vert_padding{padding:1px 0;}
 
 
 .bolded_text{font-weight:700;}
 
 
-.std_dp, .failed_dp, .warning_dp, .ok_dp{position:absolute;left:-48px;top:-5px;border-radius:20px;padding:7px 8.5px; border-radius:70px;line-height:0;}
-.std_dp{border:1px #1377F921 solid;}
-.failed_dp{border:1px #F9131321 solid;}
-.warning_dp{border:1px #e99a3221 solid;}
+.std_dp, .failed_dp, .warning_dp, .ok_dp{position:absolute;left:-44px;top:-2px;line-height:0;}
+/* message avatar is the bare mark, no ring around it */
 
-.filekey_icon, .failed_filekey_icon, .warning_filekey_icon{height:16px;width:13px;}
-.filekey_icon{fill:#1377F9}
+.filekey_icon, .failed_filekey_icon, .warning_filekey_icon, .ok_filekey_icon{height:24px;width:24px;}
+.filekey_icon, .ok_filekey_icon{fill:#23A267}
+.fk_core{fill:#0E0E16;}
 .failed_filekey_icon{fill:#F91313;}
 .warning_filekey_icon{fill:#e99a32;}
 
 /* old FileKey key glyph removed; header now uses .rl_logo_icon (the landing-point mark) */
-.file_icon{fill:#1377F9;width:25px;height:30px}
-.plus_icon{width:28px;height:27px;fill:#1377F9;}
+.file_icon{fill:#23A267;width:25px;height:30px}
+.plus_icon{width:28px;height:27px;fill:#23A267;}
 .import_icon{width:28px;height:28px;fill:none;stroke:#c8c8ce;stroke-width:1.8;}
 .dl_icon{width:19px;height:19px;fill:currentColor;margin-right:4px;}
 .confirm_icon, .edit_icon, .copy_icon{width:18px;height:19px;fill:currentColor;margin-right:4px;}
@@ -208,7 +207,7 @@ body.fk-authed #acct_control{display:flex;}
 
 #chiz_menu_inner{border-radius:10px;border:#0000001A 1px solid;background-color:#fff;padding:16px 0 6px 0px;position:absolute;right:-12px;white-space:nowrap;min-width:210px;box-shadow:2px 10px 10px #00000011}
 #chiz_list{display:flex;flex-direction:column;}
-.chiz_heading{color:#1377f9;font-family:system-ui;font-size:11px;padding:11px 16px;font-weight:600;margin:0;}
+.chiz_heading{color:var(--fk-link);font-family:system-ui;font-size:11px;padding:11px 16px;font-weight:600;margin:0;}
 .top_menu_heading{padding-top:0;}
 /* each menu's first section hugs the card top */
 #chiz_list > .chiz_heading:first-of-type{padding-top:0;}
@@ -217,20 +216,20 @@ body.fk-authed #acct_control{display:flex;}
 .theme_row{display:flex;align-items:center;padding:2px 11px 6px;}
 .theme_opt{cursor:pointer;color:#374151;font-size:15px;font-weight:420;line-height:1;padding:8px 13px;border-radius:8px;}
 .theme_opt:hover{color:#000;}
-.theme_opt.active{color:#1377F9;}
+.theme_opt.active{color:var(--fk-link);}
 .theme_sep{color:#00000040;user-select:none;}
-.theme_opt:focus-visible{outline:2px solid #1377F9;outline-offset:2px;}
+.theme_opt:focus-visible{outline:2px solid #23A267;outline-offset:2px;}
 .plain_menu_link{text-decoration:none;color:#374151;display:flex;}
 .plain_menu_label{flex-grow:1;}
 .outbound_link{width:14px;height:14px;fill:none;stroke:#00000070;stroke-width:1;}
 .ext_icon{width:.8em;height:.8em;fill:none;stroke:currentColor;stroke-width:1.8;vertical-align:-.09em;margin-left:3px;stroke-linecap:round;stroke-linejoin:round;}
 
 /* All in-app clickables are plain blue text — no underline (blue = tappable). External links keep the ↗ icon. */
-.msg_clickable, .msg_link{color:#1377F9;cursor:pointer;font-weight: 450;}
+.msg_clickable, .msg_link{color:var(--fk-link);cursor:pointer;font-weight: 450;}
 /* Smooth hover for inline actions; icons follow via currentColor (matches filekey v1). */
 .msg_clickable, .msg_link, .dl_action, .copy_button, .confirm_pub_key, .edit_pub_key, .cancel_pub_key, .nickname_btn, .nickname_skip, .contacts_add, .contact_act, #copy_pub{transition:color .12s ease;}
 .dl_action svg{fill:currentColor;}
-.msg_clickable:hover, .msg_link:hover, .dl_action:hover, .copy_button:hover, .confirm_pub_key:hover, .edit_pub_key:hover, .nickname_btn:hover, .contacts_add:hover, .contact_act:hover, #copy_pub:hover{color:#4d9bff;}
+.msg_clickable:hover, .msg_link:hover, .dl_action:hover, .copy_button:hover, .confirm_pub_key:hover, .edit_pub_key:hover, .nickname_btn:hover, .contacts_add:hover, .contact_act:hover, #copy_pub:hover{color:#45c98a;}
 .cancel_pub_key:hover, .nickname_skip:hover{color:#0d0d0d;}
 .borderless{border:none;}
 
@@ -259,7 +258,7 @@ body.fk-authed #acct_control{display:flex;}
 .nobreak{white-space:nowrap;}
 
 
-#copy_pub{cursor:pointer;color:#1377F9}
+#copy_pub{cursor:pointer;color:var(--fk-link)}
 
 
 #version_container{display:flex;justify-content:center;padding:8px 0 2px 0;}
@@ -270,14 +269,14 @@ body.fk-authed #acct_control{display:flex;}
 .contacts_picker{display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:50%;margin:4px 0 0;}
 .contacts_picker_label,.contacts_picker_empty{font-size:13px;color:#00000080;width:100%;margin:0;line-height:1.4;}
 .contact_chip{display:inline-flex;align-items:center;gap:7px;max-width:100%;background:#f4f4f4;border:1px solid #0000001a;border-radius:999px;padding:5px 13px 5px 5px;cursor:pointer;font-size:14px;color:#0d0d0d;line-height:1;}
-.contact_chip:hover{background:#1377f91a;border-color:#1377f955;}
+.contact_chip:hover{background:#23A2671a;border-color:#23A26755;}
 .contact_chip_label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.contact_avatar{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#1377f91a;color:#1377F9;font-size:12px;font-weight:600;line-height:1;}
+.contact_avatar{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#23A2671a;color:var(--fk-link);font-size:12px;font-weight:600;line-height:1;}
 
 .nickname_row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:flex-end;width:50%;margin:10px 0 15px;}
 .nickname_input{flex:1 1 180px;min-width:0;border:1px solid #0000001a;border-radius:10px;padding:12px 14px;font-size:16px;font-family:'Inter';color:#0d0d0d;background:#fff;outline:none;}
-.nickname_input:focus{border-color:#1377f955;}
-.nickname_btn{cursor:pointer;color:#1377F9;font-weight:500;line-height:1;}
+.nickname_input:focus{border-color:#23A26755;}
+.nickname_btn{cursor:pointer;color:var(--fk-link);font-weight:500;line-height:1;}
 .nickname_skip{cursor:pointer;color:#00000080;font-weight:500;line-height:1;}
 
 .contacts_manager{margin-top:6px;}
@@ -290,11 +289,11 @@ body.fk-authed #acct_control{display:flex;}
 .contact_name{font-weight:600;font-size:15px;color:#0d0d0d;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .contact_key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#00000080;word-break:break-all;line-height:1.4;}
 .contact_acts{display:flex;gap:14px;flex-shrink:0;align-items:center;}
-.contact_act{cursor:pointer;color:#1377F9;font-weight:500;font-size:14px;line-height:1;}
+.contact_act{cursor:pointer;color:var(--fk-link);font-weight:500;font-size:14px;line-height:1;}
 .contact_act.delete_act{color:#00000080;}
 .contact_act.delete_act:hover{color:#F91313;}
 .contacts_footer{display:flex;align-items:center;gap:18px;margin-top:14px;}
-.contacts_add{cursor:pointer;color:#1377F9;font-weight:500;font-size:14px;line-height:1;}
+.contacts_add{cursor:pointer;color:var(--fk-link);font-weight:500;font-size:14px;line-height:1;}
 .contacts_clear_link{cursor:pointer;color:#00000080;font-weight:500;font-size:14px;line-height:1;}
 .contacts_clear_link:hover{color:#F91313;}
 .add_contact_form{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
@@ -362,11 +361,11 @@ body.fk-authed #acct_control{display:flex;}
    =========================================================================== */
 :root{
 	--fk-fill:#f4f4f4; --fk-surface:#fff; --fk-ink-soft:#0d0d0d;
-	--fk-muted-2:#00000099; --fk-faint:#0000003a; --fk-link:#1377F9; --fk-error:#F91313;
+	--fk-muted-2:#00000099; --fk-faint:#0000003a; --fk-link:#23A267; --fk-error:#F91313;
 }
 html[data-theme="dark"]{
 	--fk-fill:#1f1f23; --fk-surface:#161618; --fk-ink-soft:#f2f2f5;
-	--fk-muted-2:#ffffff80; --fk-faint:#ffffff3a; --fk-link:#4d9bff; --fk-error:#ff5a52;
+	--fk-muted-2:#ffffff80; --fk-faint:#ffffff3a; --fk-link:#45c98a; --fk-error:#ff5a52;
 	background:#0c0c0e; color:#f2f2f5; color-scheme:dark;
 }
 html[data-theme="dark"] #main_container,
@@ -398,7 +397,7 @@ html[data-theme="dark"] .std_uploaded{background:#1f1f23;color:#f2f2f5;}
 html[data-theme="dark"] .std_download{background:#161618;border-color:#ffffff1f;color:#f2f2f5;}
 html[data-theme="dark"] .icon_container,
 html[data-theme="dark"] .some_background{background:#26262a;}
-html[data-theme="dark"] .std_dp{border-color:#1377F955;}
+html[data-theme="dark"] .fk_core{fill:#f2f2f5;}
 html[data-theme="dark"] .dl_action,
 html[data-theme="dark"] .msg_clickable,
 html[data-theme="dark"] .msg_link,
@@ -406,8 +405,8 @@ html[data-theme="dark"] .confirm_pub_key,
 html[data-theme="dark"] #copy_pub,
 html[data-theme="dark"] .contact_act,
 html[data-theme="dark"] .contacts_add,
-html[data-theme="dark"] .nickname_btn{color:#4d9bff;}
-/* Dark-mode hover lift: the base dark link color (#4d9bff) equals the light-mode hover
+html[data-theme="dark"] .nickname_btn{color:#45c98a;}
+/* Dark-mode hover lift: the base dark link color (#45c98a) equals the light-mode hover
    color, so without this the in-app clickables (Confirm, Copy, etc.) show no hover change. */
 html[data-theme="dark"] .msg_clickable:hover,
 html[data-theme="dark"] .msg_link:hover,
@@ -422,8 +421,8 @@ html[data-theme="dark"] #copy_pub:hover{color:#80b8ff;}
 html[data-theme="dark"] .pub_key_textarea,
 html[data-theme="dark"] .nickname_input{background:#161618;color:#f2f2f5;border-color:#ffffff1f;}
 html[data-theme="dark"] .contact_chip{background:#1f1f23;border-color:#ffffff1f;color:#f2f2f5;}
-html[data-theme="dark"] .contact_chip:hover{background:#1377f933;border-color:#1377f988;}
-html[data-theme="dark"] .contact_avatar{background:#1377f933;color:#4d9bff;}
+html[data-theme="dark"] .contact_chip:hover{background:#23A26733;border-color:#23A26788;}
+html[data-theme="dark"] .contact_avatar{background:#23A26733;color:#45c98a;}
 html[data-theme="dark"] .contacts_list,
 html[data-theme="dark"] .contact_row{border-color:#ffffff1f;}
 html[data-theme="dark"] #drop_container{background:#16263f;color:#f2f2f5;}
@@ -434,12 +433,12 @@ html[data-theme="dark"] .plain_menu_link{color:#c9ced6;}
 html[data-theme="dark"] .chiz_item:hover{color:#fff;background:#ffffff14;}
 html[data-theme="dark"] #chiz_menu_inner,
 html[data-theme="dark"] #acct_menu_inner{background:#161618;border-color:#ffffff1f;box-shadow:2px 10px 10px #00000055;}
-html[data-theme="dark"] .chiz_heading{color:#4d9bff;}
+html[data-theme="dark"] .chiz_heading{color:#45c98a;}
 html[data-theme="dark"] .theme_opt{color:#c9ced6;}
 html[data-theme="dark"] .theme_opt:hover{color:#fff;}
-html[data-theme="dark"] .theme_opt.active{color:#4d9bff;}
+html[data-theme="dark"] .theme_opt.active{color:#45c98a;}
 html[data-theme="dark"] .theme_sep{color:#ffffff40;}
-html[data-theme="dark"] .theme_opt:focus-visible{outline-color:#4d9bff;}
+html[data-theme="dark"] .theme_opt:focus-visible{outline-color:#45c98a;}
 html[data-theme="dark"] .outbound_link{stroke:#ffffff70;}
 html[data-theme="dark"] .import_icon{stroke:#6a6a70;}
 html[data-theme="dark"] #version_number_ele{color:#6a6a70;}
@@ -452,11 +451,11 @@ html[data-theme="dark"] .ok_dp{border-color:#58c98a55;}
 /* ---- FileKey Drop additions ---- */
 /* Product badge pill next to the wordmark (same pattern as the site's "Blog" pill). */
 #logo_bar{align-items:center;}
-.badge{margin-left:10px;font-size:11px;font-weight:600;color:#1377F9;background:rgba(19,119,249,0.10);padding:3px 9px;border-radius:999px;letter-spacing:.02em;line-height:1.6;}
-html[data-theme="dark"] .badge{color:#4d9bff;background:rgba(77,155,255,0.14);}
+.badge{margin-left:10px;font-size:11px;font-weight:600;color:var(--fk-link);background:rgba(15,122,69,0.10);padding:3px 9px;border-radius:999px;letter-spacing:.02em;line-height:1.6;}
+html[data-theme="dark"] .badge{color:#45c98a;background:rgba(77,155,255,0.14);}
 /* Single-line email/label prompt inputs reuse the recipient-textarea look. */
 .fk_input{width:100%;outline:none;border:1px solid #0000001a;border-radius:10px;margin:10px 0;padding:14px 16px;line-height:1.4;font-size:16px;color:#0d0d0d;font-family:'Inter';background:#fff;}
-.fk_input:focus{border-color:#1377f955;}
+.fk_input:focus{border-color:#23A26755;}
 .fk_input_err{color:#F91313;font-size:13px;line-height:1.4;margin:0 0 6px 2px;}
 html[data-theme="dark"] .fk_input_err{color:#ff5a52;}
 html[data-theme="dark"] .fk_input{background:#161618;color:#f2f2f5;border-color:#ffffff1f;}
