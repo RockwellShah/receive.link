@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "filekey-drop",
+      "name": "receive-link",
       "dependencies": {
         "@hpke/core": "^1.9.0",
         "@noble/curves": "^2.2.0",
