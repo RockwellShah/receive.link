@@ -2,7 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": ["https://receive.link", "https://staging.receive.link"],
+        "origins": ["https://receive.link"],
         "methods": ["GET", "PUT", "HEAD"],
         "headers": ["*"]
       },
