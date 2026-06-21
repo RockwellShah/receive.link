@@ -435,9 +435,14 @@ async function qrMode(payload: string): Promise<void> {
   );
 }
 
+// Build-time app version (Bun.build define, sourced from package.json), stamped into the menu footer.
+declare const __APP_VERSION__: string;
+
 // ---- route ----
 void (async () => {
   initChrome();
+  const verEl = document.querySelector(".menu_version");
+  if (verEl) verEl.textContent = `v${__APP_VERSION__}`;
   cfg = await ensureConfig(); // in dev, fetches the mock server's keys so they match
   api = new DropApi(cfg.apiBase);
 

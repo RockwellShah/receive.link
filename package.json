@@ -1,7 +1,7 @@
 {
   "name": "receive-link",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "receive.link: give anyone a link; whatever they drop arrives end-to-end encrypted to your passkey.",
   "license": "GPL-3.0-or-later",
   "type": "module",
