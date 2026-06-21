@@ -46,15 +46,15 @@ export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string,
   const lbl = label ? ` "${label}"` : "";
   const text =
     `You're setting up a file link${lbl} on receive.link.\n\n` +
-    `CONFIRM YOUR ADDRESS\n` +
-    `Click below to finish. Then anyone with your link can send you files, and only you can open them:\n\n` +
+    `ONE MORE STEP\n` +
+    `Click below to finish and get your share link. Then anyone with your link can send you files, and only you can open them:\n\n` +
     `${confirmUrl}\n\n` +
     `- - - - - -\n\n` +
     `This link expires in 1 hour. If you didn't request it, you can ignore this email.\n`;
   const html = wrap(
     intro(`You're setting up a file link${label ? ` <strong>"${esc(label)}"</strong>` : ""} on receive.link.`) +
-      head("Confirm your address") +
-      para("Click below to finish. Then anyone with your link can send you files, and only you can open them.") +
+      head("One more step") +
+      para("Click below to finish and get your share link. Then anyone with your link can send you files, and only you can open them.") +
       button(confirmUrl, "Confirm your address") +
       rule +
       note("This link expires in 1 hour. If you didn't request it, you can ignore this email."),
