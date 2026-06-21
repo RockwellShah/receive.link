@@ -27,9 +27,19 @@ id = "c277258851044785971403e8d458b76d"
 name = "COMPLETION"
 class_name = "CompletionGuard"
 
+# Persistent per-recipient account: cumulative inbound metering + the capacity cap. SQLite-backed DO,
+# one instance per receiver id (an HMAC of the recipient's confirmed email; see RECEIVER_ID_SECRET).
+[[durable_objects.bindings]]
+name = "RECEIVER"
+class_name = "ReceiverAccount"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CompletionGuard"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ReceiverAccount"]
 
 [vars]
 # This (default) env is the STAGING Worker, serving staging.receive.link. It must build its own
@@ -55,11 +65,13 @@ MULTIPART_MIN_PART = "5242880"                      # 5 MiB
 REG_EMAIL_PER_DAY = "1000"
 REG_IP_PER_DAY = "1000"
 
-# Secrets (DO NOT put here) — set with:
+# Secrets (DO NOT put here) — set with (per env: add `--env production` for prod):
 #   wrangler secret put SERVER_KEM_PRIVATE_JWK    # from gen-keys
 #   wrangler secret put SERVER_SIGN_PRIVATE_JWK   # from gen-keys
 #   wrangler secret put R2_ACCESS_KEY_ID          # R2 > Manage API tokens
 #   wrangler secret put R2_SECRET_ACCESS_KEY
+#   wrangler secret put RECEIVER_ID_SECRET        # any long random string; keys recipient accounts to their
+#                                                 # confirmed email. Long-lived: rotating it re-keys every account.
 
 [env.production]
 name = "receive-link"
@@ -80,9 +92,17 @@ id = "c639ae5f915d4dc1bbc11ef8ba26e4e6"
 name = "COMPLETION"
 class_name = "CompletionGuard"
 
+[[env.production.durable_objects.bindings]]
+name = "RECEIVER"
+class_name = "ReceiverAccount"
+
 [[env.production.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CompletionGuard"]
+
+[[env.production.migrations]]
+tag = "v2"
+new_sqlite_classes = ["ReceiverAccount"]
 
 [env.production.vars]
 ALLOWED_ORIGIN = "https://receive.link"
@@ -92,3 +112,11 @@ SERVER_SIGN_KEY_ID = "1"                                # see staging note on ke
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "receive-link-prod"
 MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (see staging note above)
+# Per-recipient cumulative inbound ceiling (the free-tier cap). Intentionally UNSET = uncapped: the
+# Worker meters every recipient's inbound now, but rejects nothing, so there's no 1 GB wall before the
+# download gate + payments exist. Set to the free ceiling (e.g. "1000000000" = 1 GB) at launch.
+# The transactional (reserve/commit-on-won + TTL/alarm) charge has landed, so enabling this no longer
+# risks the crash/reclaim double-charge. Still keep it UNSET until the download gate + payment path exist
+# (rest of Phase 1 + Phase 2): a capped-out free receiver would otherwise hit a 1 GB wall with no way to
+# pay/upgrade.
+# RECEIVER_INBOUND_CAP_BYTES = "1000000000"

@@ -18,8 +18,9 @@ import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, up
 import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
 
-// The Durable Object class must be exported from the entry module so the runtime can construct it.
+// Durable Object classes must be exported from the entry module so the runtime can construct them.
 export { CompletionGuard } from "./completion";
+export { ReceiverAccount } from "./receiver";
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {

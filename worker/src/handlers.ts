@@ -26,7 +26,7 @@ import { clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./ht
 import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import type { Env } from "./types";
-import { hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
+import { hex, hmacSha256hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
 
 // Abuse limits (soft, KV fixed-window). Tune from real traffic. Exported so tests
 // assert against the source of truth.
@@ -120,6 +120,21 @@ function bytesPerLinkDay(env: Env): number {
 }
 function bytesPerIpDay(env: Env): number {
   return envInt(env.UPLOAD_BYTES_PER_IP_DAY, maxUploadBytes(env) * UPLOAD_BYTES_IP_FACTOR);
+}
+
+/** Stable per-recipient account id, derived from the receiver's CONFIRMED email via a keyed digest.
+ *  The email is the one identity a sender can't forge — you can only confirm an address you control —
+ *  whereas the share key inside a link is public, so keying on it would let anyone who sees a victim's
+ *  link mint their own link for the victim's account and burn its capacity. HMAC (not a bare hash)
+ *  keeps the id from being reversed back to the address. */
+function receiverId(env: Env, email: string): Promise<string> {
+  return hmacSha256hex(env.RECEIVER_ID_SECRET, canonEmail(email));
+}
+
+/** Per-recipient cumulative inbound ceiling in bytes (the free-tier cap). Unset/<=0 => uncapped, so
+ *  the Worker meters every recipient but rejects nothing until the cap is dialed in (see uploadComplete). */
+function receiverInboundCap(env: Env): number {
+  return envInt(env.RECEIVER_INBOUND_CAP_BYTES, 0);
 }
 
 /** The signing key id stamped into newly minted links, so the verifier can pick the right key later. */
@@ -312,8 +327,10 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
-  // NOTE: byte budgets are charged at upload-COMPLETE on the actual object size, not here — the
-  // declared `size` is client-controlled and no presigned PUT enforces it (see uploadComplete).
+  // NOTE: byte budgets + the recipient-capacity charge are applied at upload-COMPLETE on the actual
+  // object size, not here — the declared `size` is client-controlled and no presigned PUT enforces it
+  // (see uploadComplete). A fail-fast capacity pre-check needs the unsealed email (the account key), so
+  // it lands with the download gate in Phase 1, when the cap is actually switched on.
 
   // Bind the object to the link that minted it, so completion can't pair another
   // (e.g. a victim's) link with this object.
@@ -417,6 +434,13 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     return json({ error: "missing fields" }, 400, origin);
   }
   if (!isHex(body.objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
+  // Fail fast on a missing account-id secret BEFORE any side effect (copy, byte-budget increments): the
+  // recipient charge derives rid from it, and we don't want a misconfigured deploy to do work + orphan
+  // R2 objects before throwing late.
+  if (!env.RECEIVER_ID_SECRET) {
+    logEvent("config_error", { what: "RECEIVER_ID_SECRET" });
+    return json({ error: "service misconfigured" }, 503, origin);
+  }
 
   let link: DropLink;
   try {
@@ -456,6 +480,10 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       : json({ error: "completion already in progress, try again" }, 409, origin);
   }
   let finished = false;
+  // The recipient-capacity reservation taken before the delivery email (below). Committed iff this
+  // attempt wins the exactly-once delivery race; released on every other path. Held here so the finally
+  // can release it on an abort. A crash before either frees the hold via the DO's reservation TTL.
+  let reservation: { acct: ReturnType<Env["RECEIVER"]["get"]>; token: string } | null = null;
   try {
     // Multipart: validate the part set strictly, then assemble — but only if a prior attempt hasn't
     // already completed the MPU (CompleteMultipartUpload consumes the uploadId; if an earlier attempt
@@ -509,12 +537,34 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
 
     // If a stalled attempt was reclaimed while we worked, the reclaimer now owns delivery — abort
-    // before the email rather than send a duplicate (fences the side effect, not just the state).
-    if (!(await guard.heldBy(claim.token))) return json({ error: "completion was retried elsewhere, try again" }, 409, origin);
+    // before the email rather than send a duplicate (fences the side effect, not just the state). The
+    // reclaimer mints its own final key, so drop ours instead of leaking it until TTL.
+    if (!(await guard.heldBy(claim.token))) {
+      await deleteObject(env, finalId);
+      return json({ error: "completion was retried elsewhere, try again" }, 409, origin);
+    }
 
-    // Byte budgets, charged on the ACTUAL object size and AFTER every other gate, so an invalid or
-    // over-limit upload never burns the quota. Per-link + per-IP daily caps keep a multi-TB per-file
-    // cap from becoming petabytes/day.
+    // Recipient capacity FIRST among the post-fence gates, on the ACTUAL final-object size: RESERVE the
+    // bytes against the cap (atomic in the DO, so two concurrent uploads to one recipient can't both
+    // slip a tight cap). The hold is committed only if THIS attempt wins delivery (below) and released
+    // on every other path (byte-budget reject, failed email, abort, or a duplicate that lost the
+    // exactly-once race), so the charge is exactly-once; a crash frees the hold via the DO's reservation
+    // TTL. An over-cap upload rejects here WITHOUT burning the byte budget. We reserve the actual
+    // final-object size on every (re)try, so overwriting mutable staging to deliver more is caught here.
+    // Uncapped deployments still meter (commit accrues `total`) for accurate history.
+    const acct = env.RECEIVER.get(env.RECEIVER.idFromName(await receiverId(env, email)));
+    const hold = await acct.reserve(finalInfo.size, receiverInboundCap(env));
+    if (!hold.ok) {
+      logEvent("recipient_over_capacity", { link: linkIdHex, size: finalInfo.size });
+      await deleteObject(env, finalId);
+      await deleteObject(env, body.objectId);
+      return json({ error: "recipient inbox is full", overCapacity: true }, 507, origin);
+    }
+    reservation = { acct, token: hold.token };
+
+    // Byte budgets on the ACTUAL object size, after the recipient reservation (released by the finally
+    // if a budget rejects here). Per-link + per-IP daily caps keep a multi-TB per-file cap from
+    // becoming petabytes/day.
     const ipHash = await sha256hex(clientIp(req));
     if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, finalInfo.size, bytesPerLinkDay(env), DAY))) {
       logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: finalInfo.size });
@@ -539,11 +589,16 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       await deleteObject(env, finalId); // no orphaned final; the client can retry
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
-    // The email is OUT — from here we must never release the lock (that would let a retry send a
-    // duplicate). Record done, then best-effort cleanup; a cleanup failure must NOT 500 the sender
-    // after a successful delivery (the client doesn't retry 500, so it would report a false failure).
+    // The email is OUT — from here we must never release the completion lock (that would let a retry
+    // send a duplicate). Commit the recipient charge IFF we WON the exactly-once delivery transition; if
+    // a stalled+reclaimed sibling already delivered (a duplicate email, the completion guard's accepted
+    // residual), finish() is "already"/"lost" and we RELEASE the hold instead, so the receiver is
+    // charged exactly once. Then best-effort cleanup; a cleanup failure must NOT 500 after a successful
+    // delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
-    await guard.finish(claim.token);
+    const outcome = await guard.finish(claim.token);
+    if (outcome === "won") await acct.commit(hold.token);
+    else { logEvent("delivery_duplicate", { link: linkIdHex }); await acct.release(hold.token); }
     logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {
       await deleteObject(env, body.objectId);
@@ -553,7 +608,13 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
     return json({ ok: true }, 200, origin);
   } finally {
-    if (!finished) await guard.release(claim.token); // free the claim for a retry
+    if (!finished) {
+      // Abort path (before delivery): release the capacity hold so it doesn't sit against the cap until
+      // its TTL, then free the completion claim for a retry. Best-effort: a release failure must not mask
+      // the real result (the DO's reservation alarm reclaims the hold either way).
+      if (reservation) await reservation.acct.release(reservation.token).catch(() => logEvent("receiver_release_failed", { link: linkIdHex }));
+      await guard.release(claim.token);
+    }
   }
 }
 

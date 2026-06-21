@@ -1,6 +1,7 @@
 // Worker environment bindings. R2Bucket / KVNamespace / ExportedHandler come
 // from @cloudflare/workers-types.
 import type { CompletionGuard } from "./completion";
+import type { ReceiverAccount } from "./receiver";
 
 /** Minimal shape of the Cloudflare `send_email` Worker binding. */
 export interface SendEmailBinding {
@@ -19,12 +20,14 @@ export interface Env {
   DROP_BUCKET: R2Bucket; // ciphertext relay (lifecycle TTL ~7 days)
   DROP_KV: KVNamespace; // confirm-nonce store + rate-limit counters
   COMPLETION: DurableObjectNamespace<CompletionGuard>; // atomic per-object completion guard (exactly-once delivery)
+  RECEIVER: DurableObjectNamespace<ReceiverAccount>; // persistent per-recipient account (inbound metering + capacity cap)
 
   // Secrets (wrangler secret put) — never in wrangler.toml
   SERVER_KEM_PRIVATE_JWK: string; // unseal recipient emails (HPKE)
   SERVER_SIGN_PRIVATE_JWK: string; // sign Drop links at /confirm (ECDSA)
   R2_ACCESS_KEY_ID: string; // R2 S3 API token — presign uploads/downloads
   R2_SECRET_ACCESS_KEY: string;
+  RECEIVER_ID_SECRET: string; // HMAC key deriving a recipient's account id (rid) from their confirmed email — stable + long-lived (rotating it re-keys every account)
 
   // Vars (public, in wrangler.toml)
   SERVER_SIGN_PUBLIC_JWK: string; // verify Drop links on upload (public half)
@@ -35,7 +38,8 @@ export interface Env {
   MAIL_FROM: string; // e.g. "files@send.filekey.app"
   R2_ACCOUNT_ID: string; // <id>.r2.cloudflarestorage.com
   R2_BUCKET: string; // bucket name for S3 presigning
-  MAX_UPLOAD_BYTES?: string; // optional cap override (default 2 GiB)
+  MAX_UPLOAD_BYTES?: string; // optional per-file cap override (default 2 GiB)
+  RECEIVER_INBOUND_CAP_BYTES?: string; // optional per-recipient cumulative inbound ceiling (unset/<=0 = uncapped; the free-tier cap, dialed in at monetization launch)
   MULTIPART_THRESHOLD?: string; // optional: ciphertext bytes above which multipart kicks in
   MULTIPART_MIN_PART?: string; // optional: minimum part size (R2 needs >=5 MiB for non-last parts)
   REG_IP_PER_DAY?: string; // optional per-day abuse-cap overrides (staging runs these high)

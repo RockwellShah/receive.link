@@ -14,7 +14,7 @@ import {
   uploadInit,
   uploadParts,
 } from "./handlers";
-import { CapturingEmail, makeTestEnv, type TestHarness } from "./testing";
+import { CapturingEmail, MemoryCompletion, MemoryReceiver, makeTestEnv, type SentMail, type TestHarness } from "./testing";
 
 function post(path: string, body: unknown, ip = "1.2.3.4"): Request {
   return new Request(`https://api.drop.test${path}`, {
@@ -213,6 +213,136 @@ test("multipart: delivery failure after assembly is retry-safe (retry skips the 
   const second = await uploadComplete(post("/upload-complete", { payload: link, objectId: mp.objectId, parts }), h.env);
   expect(second.status).toBe(200);
   expect(failEmail.sent.at(-1)!.text).toContain("/d/"); // delivered on the retry
+});
+
+test("recipient capacity is per-recipient (shared across a receiver's links) and charged on the actual size", async () => {
+  // 300-byte ceiling. Two SEPARATE links confirmed to the SAME email resolve to one account (rid is a
+  // keyed hash of the confirmed email), so they draw down ONE shared budget — per-recipient, not per-link.
+  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
+  const linkA = await setupLink(h, "shared@example.com", "A");
+  const linkB = await setupLink(h, "shared@example.com", "B");
+  const before = h.email.sent.length;
+  const send = async (link: string, declared: number) => {
+    const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: declared }), h.env)).json()) as { objectId: string };
+    h.r2.putRaw(objectId, fkeyCiphertext(200)); // 200 real bytes, whatever was declared
+    return (await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status;
+  };
+  expect(await send(linkA, 200)).toBe(200); // 200 <= 300
+  // Declared size is irrelevant (no pre-check); the actual 200 bytes are charged at complete on the
+  // OTHER link: 200 + 200 = 400 > 300, rejected there, the recipient never emailed.
+  expect(await send(linkB, 1)).toBe(507);
+  expect(h.email.sent.length).toBe(before + 1); // only the first upload delivered
+});
+
+test("recipient links keyed to DIFFERENT confirmed emails have independent capacity", async () => {
+  // Same 300-byte ceiling, but two different recipients each get their own budget.
+  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
+  const send = async (link: string) => {
+    const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+    h.r2.putRaw(objectId, fkeyCiphertext(200));
+    return (await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status;
+  };
+  // Two 200-byte uploads, one to each recipient, both succeed — neither eats the other's quota.
+  expect(await send(await setupLink(h, "alice@example.com", "A"))).toBe(200);
+  expect(await send(await setupLink(h, "bob@example.com", "B"))).toBe(200);
+});
+
+test("recipient capacity: a retried completion after a delivery failure counts the bytes once", async () => {
+  // 450-byte ceiling. One 200-byte upload whose first delivery email throws, then succeeds when the
+  // SAME completion retries. The failed attempt's reservation is released in the finally, so the retry
+  // re-reserves to a clean total (counted once), not double-counted.
+  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "450" });
+  const link = await setupLink(h);
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  h.env.EMAIL = new FailOnce();
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(502); // charged, then email throws -> refunded
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(200); // retry re-charges + delivers
+
+  // A second, distinct 200-byte upload brings the total to 400 (<= 450) and is accepted. Had the failed
+  // attempt's hold NOT been released, the total would already be 400 and this would be 600 > 450 and
+  // rejected, so its success proves the first upload was counted exactly once.
+  const { objectId: o2 } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(o2, fkeyCiphertext(200));
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId: o2 }), h.env)).status).toBe(200);
+});
+
+test("recipient capacity: a retry can't overwrite mutable staging to deliver more than was charged", async () => {
+  // 300-byte ceiling. First completion reserves the real 200 bytes, then the delivery email fails (502)
+  // and the hold is released. The sender overwrites the still-mutable staging object to 400 bytes (the
+  // presigned PUT stays valid) and retries: the retry must re-reserve the CURRENT 400 bytes (400 > 300)
+  // and reject, not deliver 400 while having counted only 200.
+  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
+  const link = await setupLink(h);
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  const fail = new FailOnce();
+  h.env.EMAIL = fail;
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(502); // charged 200, email throws -> refunded
+  h.r2.putRaw(objectId, fkeyCiphertext(400)); // attacker overwrites staging via the still-valid presigned PUT
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(507); // 400 > 300 -> rejected
+  expect(fail.sent.length).toBe(0); // never delivered the oversized object
+});
+
+test("upload-complete fails fast (503, no side effects) when RECEIVER_ID_SECRET is unset", async () => {
+  // A misconfigured deploy must not do work (copy, byte-budget charges) then throw late deriving rid.
+  const h = await makeTestEnv({ RECEIVER_ID_SECRET: "" });
+  const link = await setupLink(h);
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  const before = h.email.sent.length;
+  const comp = await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
+  expect(comp.status).toBe(503);
+  expect(h.email.sent.length).toBe(before); // no delivery
+  expect(await h.r2.head(objectId)).not.toBeNull(); // staging untouched (guard fired before the copy)
+});
+
+test("an over-capacity rejection does not burn the daily byte budget", async () => {
+  // The recipient charge runs BEFORE the byte budgets, so a 507 leaves no byte-budget counters — a
+  // rejected upload can't eat the link/IP transfer quota that real deliveries need.
+  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "100" });
+  const link = await setupLink(h);
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200)); // 200 > 100 cap
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(507);
+  expect([...h.kv.store.keys()].some((k) => k.startsWith("rlb:up:bytes:"))).toBe(false);
+});
+
+test("reclaim race: a duplicate delivery that lost the exactly-once race releases its hold (charges once)", async () => {
+  // Simulate a stalled+reclaimed sibling finishing during our email send: the completion flips to "done"
+  // mid-send, so our finish() returns "already" and we must RELEASE the capacity reservation, not commit
+  // it. Without commit-on-won this is the double-charge Codex flagged.
+  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "1000" });
+  const link = await setupLink(h);
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  const completion = h.env.COMPLETION as unknown as MemoryCompletion;
+  h.env.EMAIL = new (class extends CapturingEmail {
+    async send(m: SentMail): Promise<{ messageId: string }> {
+      completion.forceDone(objectId); // another attempt wins the race just before our send lands
+      return super.send(m);
+    }
+  })();
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(200); // still delivered (a duplicate)
+
+  // The 200 bytes were RELEASED, not committed: a fresh 1000-byte upload to the same recipient fits the
+  // 1000 cap. Had we wrongly committed, total would be 200 and this would be 1200 > 1000 -> 507.
+  h.env.EMAIL = new CapturingEmail();
+  const { objectId: o2 } = (await (await uploadInit(post("/upload-init", { payload: link, size: 1000 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(o2, fkeyCiphertext(1000));
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId: o2 }), h.env)).status).toBe(200);
+});
+
+test("recipient capacity: a live reservation holds against the cap so concurrent uploads can't both slip", async () => {
+  // The handler path is linear per request, so exercise the hold directly on the account: a still-open
+  // reservation must count against the cap, and releasing it must free the space again.
+  const recv = new MemoryReceiver();
+  const acct = recv.get(recv.idFromName("rid-concurrency"));
+  const first = await acct.reserve(200, 300);
+  expect(first.ok).toBe(true);
+  expect((await acct.reserve(200, 300)).ok).toBe(false); // 0 + 200(held) + 200 = 400 > 300
+  if (first.ok) await acct.release(first.token);
+  expect((await acct.reserve(200, 300)).ok).toBe(true); // hold freed -> fits again
 });
 
 test("multipart: a wrong part count is rejected (no partial assembly, no email)", async () => {

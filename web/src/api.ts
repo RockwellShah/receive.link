@@ -93,7 +93,7 @@ export class DropApi {
    * Upload step 3: confirm the object + trigger the delivery email. `parts` for multipart. Retries on
    * transient 409 (another complete in progress) and 502 (assembly/email blip): the Worker makes these
    * safe to repeat (completion is idempotent + retry-safe), so a recoverable race resolves itself
-   * instead of failing the send. Terminal errors (400/410/413/422) are not retried.
+   * instead of failing the send. Terminal errors (400/410/413/422/507) are not retried.
    */
   async uploadComplete(payload: string, objectId: string, parts?: { partNumber: number; etag: string }[]): Promise<{ ok: true }> {
     const body = parts ? { payload, objectId, parts } : { payload, objectId };

@@ -33,6 +33,7 @@ function humanError(e: unknown): string {
     if (/revoked/i.test(m)) return "This link has been turned off. Ask the recipient for a new one.";
     if (/invalid or expired/i.test(m)) return "This confirmation link expired or was already used. Set up again.";
     if (/too large|maxBytes/i.test(m)) return "That file is over the upload limit.";
+    if (/inbox is full|over capacity/i.test(m)) return "This inbox is full right now. The recipient has been notified.";
     if (/rate limited|daily limit|over its daily/i.test(m)) return "Too many requests right now. Please try again later.";
     if (/invalid link|bad signature|not a FileKey/i.test(m)) return "This link isn't valid. Ask the recipient for a fresh one.";
     if (/invalid token|bad token|missing token/i.test(m)) return "This manage link isn't valid. Use the most recent one from a delivery email or your confirmation page.";

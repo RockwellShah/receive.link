@@ -15,6 +15,14 @@ export async function sha256hex(s: string): Promise<string> {
   return hex(new Uint8Array(digest));
 }
 
+/** Keyed digest: HMAC-SHA-256(keyUtf8, msg) as hex. Used to derive a stable, non-reversible account id
+ *  from a confirmed email — the secret stops anyone who sees the id from dictionary-recovering the address. */
+export async function hmacSha256hex(keyUtf8: string, msg: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(keyUtf8), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
+  return hex(new Uint8Array(sig));
+}
+
 // Deliberately permissive: we only guard against obviously-malformed input before
 // handing an address to the mail provider. Real validity is proven by delivery.
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;

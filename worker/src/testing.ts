@@ -128,6 +128,11 @@ export class MemoryCompletion {
   idFromName(name: string): DurableObjectId {
     return { toString: () => name } as unknown as DurableObjectId;
   }
+  /** Test hook: simulate another attempt winning the exactly-once race for `name`, so the in-flight
+   *  owner's finish() returns "already" (its delivery becomes a duplicate). */
+  forceDone(name: string): void {
+    this.state.set(name, { phase: "done" });
+  }
   get(id: DurableObjectId) {
     const name = id.toString();
     const state = this.state;
@@ -148,18 +153,60 @@ export class MemoryCompletion {
         const s = state.get(name);
         return s?.phase === "running" && s.owner === token;
       },
-      async finish(token: string): Promise<boolean> {
+      async finish(token: string): Promise<"won" | "already" | "lost"> {
         const s = state.get(name);
-        if (s?.phase === "done") return true;
+        if (s?.phase === "done") return "already";
         if (s?.phase === "running" && s.owner === token) {
           state.set(name, { phase: "done" });
-          return true;
+          return "won";
         }
-        return false;
+        return "lost";
       },
       async release(token: string): Promise<void> {
         const s = state.get(name);
         if (s?.phase === "running" && s.owner === token) state.delete(name);
+      },
+    };
+  }
+}
+
+// In-memory stand-in for the ReceiverAccount DO namespace. Single-threaded bun tests, so the atomic
+// reserve()/commit()/release() hold trivially. Mirrors worker/src/receiver.ts's accounting — minus the
+// time-based reservation expiry (that's the DO's crash-cleanup alarm, exercised against the live DO).
+export class MemoryReceiver {
+  private totals = new Map<string, number>();
+  private holds = new Map<string, Map<string, number>>(); // rid -> token -> reserved bytes
+  idFromName(name: string): DurableObjectId {
+    return { toString: () => name } as unknown as DurableObjectId;
+  }
+  get(id: DurableObjectId) {
+    const name = id.toString();
+    const totals = this.totals;
+    const allHolds = this.holds;
+    const clamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+    const held = () => allHolds.get(name) ?? allHolds.set(name, new Map<string, number>()).get(name)!;
+    const liveReserved = () => {
+      let s = 0;
+      for (const b of held().values()) s += b;
+      return s;
+    };
+    return {
+      async reserve(bytes: number, cap: number): Promise<{ ok: true; token: string } | { ok: false }> {
+        const add = clamp(bytes);
+        const t = totals.get(name) ?? 0;
+        if (cap > 0 && t + liveReserved() + add > cap) return { ok: false };
+        const token = crypto.randomUUID();
+        held().set(token, add);
+        return { ok: true, token };
+      },
+      async commit(token: string): Promise<void> {
+        const b = held().get(token);
+        if (b === undefined) return;
+        held().delete(token);
+        totals.set(name, (totals.get(name) ?? 0) + b);
+      },
+      async release(token: string): Promise<void> {
+        held().delete(token);
       },
     };
   }
@@ -190,12 +237,14 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
   const r2 = new MemoryR2();
   const email = new CapturingEmail();
   const completion = new MemoryCompletion();
+  const receiver = new MemoryReceiver();
 
   const env: Env = {
     EMAIL: email,
     DROP_BUCKET: r2 as unknown as R2Bucket,
     DROP_KV: kv as unknown as KVNamespace,
     COMPLETION: completion as unknown as Env["COMPLETION"],
+    RECEIVER: receiver as unknown as Env["RECEIVER"],
     SERVER_SIGN_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.privateKey)),
     SERVER_SIGN_PUBLIC_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.publicKey)),
     SERVER_KEM_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", kem.privateKey)),
@@ -205,6 +254,7 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
     R2_BUCKET: "filekey-drop-test",
     R2_ACCESS_KEY_ID: "TESTKEYID",
     R2_SECRET_ACCESS_KEY: "testsecret",
+    RECEIVER_ID_SECRET: "test-receiver-id-secret",
     ...overrides,
   };
 

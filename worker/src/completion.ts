@@ -49,16 +49,21 @@ export class CompletionGuard extends DurableObject {
     return s?.phase === "running" && s.owner === token && s.runAt !== undefined && Date.now() - s.runAt < RUNNING_TTL_MS;
   }
 
-  /** Mark delivered — only the current owner may. Returns false if the lock was reclaimed by someone
-   *  else (already-done counts as success/idempotent). */
-  async finish(token: string): Promise<boolean> {
+  /** Make the exactly-once running->done transition. Returns:
+   *  - "won":     THIS token made the transition (the single authoritative delivery). Callers tie an
+   *               exactly-once side effect (the recipient charge commit) to this.
+   *  - "already": it was already done — another attempt won; this delivery was a duplicate.
+   *  - "lost":    this token no longer owns the lock (reclaimed). Also treated as not-the-winner.
+   *  Only ONE token ever gets "won" for a given object, so a charge committed only on "won" is
+   *  exactly-once even when a stalled+reclaimed attempt also delivers (a duplicate email). */
+  async finish(token: string): Promise<"won" | "already" | "lost"> {
     const s = await this.ctx.storage.get<Stored>("s");
-    if (s?.phase === "done") return true;
+    if (s?.phase === "done") return "already";
     if (s?.phase === "running" && s.owner === token) {
       await this.ctx.storage.put("s", { phase: "done" } satisfies Stored);
-      return true;
+      return "won";
     }
-    return false;
+    return "lost";
   }
 
   /** Release the lock after a retryable failure — only the current owner may, so a reclaimed attempt
