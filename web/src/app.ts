@@ -166,12 +166,16 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
     // `active` tracks the live phase so a failure (or cancel) acts on the right status row.
     let active: StatusMsg | undefined;
     try {
+      // Show the file + a status the instant the picker closes. Deriving the throwaway sender identity
+      // and presigning (uploadInit) take a beat; without this the page sat blank until "Encrypting".
+      uploadCard(file.name, single ? "File" : "Bundle");
+      active = new StatusMsg("Preparing");
       const link = decodeDropLink(base64urlDecode(payload));
       const shareKey = new TextDecoder().decode(link.shareKey);
       const sender = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns); // throwaway
       const ctLen = ciphertextLength(file);
       const init = await api.uploadInit(payload, ctLen);
-      uploadCard(file.name, single ? "File" : "Bundle");
+      active.done();
       if (init.mode === "single") {
         // Small file: encrypt to a (disk-backed) ciphertext Blob, then one PUT.
         active = new StatusMsg("Encrypting");
