@@ -14,7 +14,7 @@ import { uploadPartsPool } from "../fk/pool";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
 import { DropApi, DropApiError, type UploadInit } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
-import { checkSupport, getPrfSecret, prfBrowserSupport } from "./webauthn";
+import { checkSupport, enrollPasskey, getPrfSecret, prfBrowserSupport } from "./webauthn";
 
 const NS = new NamespaceSet(["filekey.app"]);
 const ns = NS.namespaces[0]!;
@@ -39,6 +39,7 @@ function humanError(e: unknown): string {
     return m;
   }
   const m = e instanceof Error ? e.message : String(e);
+  if (/not allowed|timed out|NotAllowed|AbortError|cancel/i.test(m)) return "The passkey prompt was dismissed or timed out. Reload and try again.";
   if (/no PRF|passkey|assertion/i.test(m)) return "Couldn't use your passkey. Make sure you have a receive.link passkey on this device, then reload.";
   if (/auth_failed|wrong_namespace/i.test(m)) return "This file couldn't be decrypted. It may be corrupted, or not encrypted for you.";
   return m;
@@ -65,8 +66,19 @@ async function setupMode(): Promise<void> {
     (v) => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email) ? null : "Enter an email address like you@example.com."),
   );
   if (!(await requireConfig())) return;
+  // New visitors have no passkey to "use" yet, so create one on this browser's first setup,
+  // then derive the identity from it; after that we reuse it. (Opening a download link always
+  // uses the existing passkey and never enrolls, so received files stay tied to one key.)
+  const firstPasskey = !localStorage.getItem("rl_passkey");
+  if (firstPasskey) {
+    await appMsg(["Now create your passkey. It's the key that unlocks your files, kept on this device (Face ID, a fingerprint, or a security key). No password, no account."]);
+  }
   const st = new StatusMsg("Setting up");
   try {
+    if (firstPasskey) {
+      await enrollPasskey(email);
+      try { localStorage.setItem("rl_passkey", "1"); } catch { /* private mode: just enroll again next time */ }
+    }
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
