@@ -12,6 +12,15 @@ const BRAND = "#23A267"; // receive.link green
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+// A short random code appended to every subject so mail clients (Gmail especially) don't collapse
+// same-subject messages into one thread. The delivery mail derives its code from the download id (so
+// it lines up with the /d/<id> link); confirm + link-ready have no natural id to surface, so they get
+// a random one. Each mail also already carries a unique Message-ID, but Gmail threads on subject too.
+function refCode(): string {
+  const b = new Uint8Array(3);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
 // Inline-styled fragments — email clients strip <style>/classes, so every rule is inline.
 const wrap = (inner: string): string =>
   `<div style="max-width:480px;margin:0 auto;padding:12px 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;">${inner}</div>`;
@@ -33,7 +42,7 @@ const urlBox = (url: string): string =>
 
 /** Setup-time email: the receiver clicks this once to confirm their address. */
 export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string, label: string): Promise<void> {
-  const subject = "Confirm your address";
+  const subject = `Confirm your address · #${refCode()}`;
   const lbl = label ? ` "${label}"` : "";
   const text =
     `You're setting up a file link${lbl} on receive.link.\n\n` +
@@ -56,7 +65,7 @@ export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string,
 /** Post-confirm email: a durable copy of the receiver's link (to share) and their
  *  private manage/revoke link, so neither is lost if they close the tab. */
 export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, manageUrl: string, label: string): Promise<void> {
-  const subject = `Your file link is ready${label ? ` · ${label}` : ""}`;
+  const subject = `Your file link is ready${label ? ` · ${label}` : ""} · #${refCode()}`;
   const lbl = label ? ` "${label}"` : "";
   const text =
     `Your file link${lbl} is ready.\n\n` +
