@@ -25,18 +25,32 @@ const button = (url: string, label: string): string =>
 // next to a primary "open the file" button).
 const quietLink = (url: string, label: string): string =>
   `<div style="margin:10px 0 4px;"><a href="${url}" style="color:#1f9d57;text-decoration:underline;font-size:14px;">${label}</a></div>`;
+// Fine print (expiry notices, "didn't request this" disclaimers): muted + smaller.
+const note = (html: string): string =>
+  `<div style="margin:0;color:#8a8a8a;font-size:13px;line-height:1.5;">${html}</div>`;
 const urlBox = (url: string): string =>
   `<div style="background:#f4f4f5;border-radius:8px;padding:12px 14px;margin:6px 0 2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;word-break:break-all;"><a href="${url}" style="color:#1f9d57;text-decoration:none;">${url}</a></div>`;
 
 /** Setup-time email: the receiver clicks this once to confirm their address. */
 export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string, label: string): Promise<void> {
   const subject = "Confirm your address";
+  const lbl = label ? ` "${label}"` : "";
   const text =
-    `You're setting up a link${label ? ` ("${label}")` : ""} on receive.link so people can send you ` +
-    `end-to-end encrypted files.\n\n` +
-    `Confirm this address to finish:\n${confirmUrl}\n\n` +
-    `If you didn't request this, ignore this email. This confirmation link expires in 1 hour.\n`;
-  await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text });
+    `You're setting up a file link${lbl} on receive.link.\n\n` +
+    `CONFIRM YOUR ADDRESS\n` +
+    `Click below to finish. Then anyone with your link can send you files, and only you can open them:\n\n` +
+    `${confirmUrl}\n\n` +
+    `- - - - - -\n\n` +
+    `This link expires in 1 hour. If you didn't request it, you can ignore this email.\n`;
+  const html = wrap(
+    intro(`You're setting up a file link${label ? ` <strong>"${esc(label)}"</strong>` : ""} on receive.link.`) +
+      head("Confirm your address") +
+      para("Click below to finish. Then anyone with your link can send you files, and only you can open them.") +
+      button(confirmUrl, "Confirm your address") +
+      rule +
+      note("This link expires in 1 hour. If you didn't request it, you can ignore this email."),
+  );
+  await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
 }
 
 /** Post-confirm email: a durable copy of the receiver's link (to share) and their
