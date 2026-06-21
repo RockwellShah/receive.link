@@ -465,6 +465,7 @@ async function qrMode(payload: string): Promise<void> {
       " Share it with anyone, or have them scan the QR. Only you can open what they send.",
     ],
     `${location.origin}/#${payload}`,
+    { qrOpen: true },
   );
   if (!qrShown) {
     await appMsg([{ t: "Couldn't show the QR.", b: true }, " Your link is above — copy it or use Share instead."], ERR);

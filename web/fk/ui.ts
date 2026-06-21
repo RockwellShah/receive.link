@@ -298,7 +298,7 @@ function marchingBorder(el: HTMLElement) {
 }
 
 // ---- reveal a copy-able string (v1 displayPublicKey) ----
-export async function linkReveal(intro: Seg[], value: string): Promise<boolean> {
+export async function linkReveal(intro: Seg[], value: string, opts: { qrOpen?: boolean } = {}): Promise<boolean> {
   const msg = await appMsg(intro);
   const p = document.createElement("p"); p.textContent = value;
   p.style.cssText = "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;word-break:break-all;background:var(--fk-fill);border-radius:10px;padding:14px 16px;margin:12px 0 0;color:var(--fk-ink-soft)";
@@ -338,8 +338,9 @@ export async function linkReveal(intro: Seg[], value: string): Promise<boolean> 
 
   if (qr) {
     const qrEl = qr;
+    qrEl.style.display = opts.qrOpen ? "inline-block" : "none"; // hidden by default on the share screen; the /qr page opens it
     const qrBtn = document.createElement("div"); qrBtn.className = "copy_button";
-    qrBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:currentColor;margin-right:4px"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z"/></svg><span class="qr_lbl">Hide QR</span>`;
+    qrBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:currentColor;margin-right:4px"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z"/></svg><span class="qr_lbl">${opts.qrOpen ? "Hide QR" : "Show QR"}</span>`;
     acts.appendChild(qrBtn);
     qrBtn.addEventListener("click", () => {
       const showing = qrEl.style.display !== "none";
