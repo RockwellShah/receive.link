@@ -31,6 +31,18 @@ class_name = "CompletionGuard"
 tag = "v1"
 new_sqlite_classes = ["CompletionGuard"]
 
+# Staging-only cleanup. This Worker was briefly used to test the Phase 0 monetization feature, which
+# created a ReceiverAccount Durable Object (migration v2). That feature lives on its own `monetization`
+# branch now; v3 deletes the DO so this clean email/copy Worker can run on staging again. Prod never
+# got v2, so its migrations ([env.production], below) stay at v1.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ReceiverAccount"]
+
+[[migrations]]
+tag = "v3"
+deleted_classes = ["ReceiverAccount"]
+
 [vars]
 # This (default) env is the STAGING Worker, serving staging.receive.link. It must build its own
 # confirm/drop/download links from staging.receive.link so they land back on THIS Worker + KV.
