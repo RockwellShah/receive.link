@@ -32,10 +32,11 @@ tag = "v1"
 new_sqlite_classes = ["CompletionGuard"]
 
 [vars]
-# Comma-separated CORS allowlist; the FIRST origin (receive.link) is canonical and is what
-# the Worker builds confirm/drop/download links from (so links hit the iOS Universal Links).
-# staging.receive.link is also allowed, so it keeps working on this shared staging Worker.
-ALLOWED_ORIGIN = "https://receive.link,https://staging.receive.link"
+# This (default) env is the STAGING Worker, serving staging.receive.link. It must build its own
+# confirm/drop/download links from staging.receive.link so they land back on THIS Worker + KV.
+# receive.link is now the separate prod "receive-link" Worker (own KV/keys) - listing it here
+# would make staging links point at prod, and prod wouldn't find the confirm nonce.
+ALLOWED_ORIGIN = "https://staging.receive.link"
 MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E","y":"3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE"}'
 # Id stamped into newly minted links. To rotate the signing key: bump this, set the new key as
