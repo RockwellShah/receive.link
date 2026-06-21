@@ -42,7 +42,7 @@ const urlBox = (url: string): string =>
 
 /** Setup-time email: the receiver clicks this once to confirm their address. */
 export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string, label: string): Promise<void> {
-  const subject = `Confirm your address · #${refCode()}`;
+  const subject = `Confirmation link · #${refCode()}`;
   const lbl = label ? ` "${label}"` : "";
   const text =
     `You're setting up a file link${lbl} on receive.link.\n\n` +
