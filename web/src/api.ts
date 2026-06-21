@@ -39,11 +39,12 @@ export type UploadInit =
 export class DropApi {
   constructor(private readonly base: string) {}
 
-  private async postJson<T>(path: string, body: unknown): Promise<T> {
+  private async postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
     const res = await fetch(`${this.base}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     });
     if (!res.ok) throw await asError(res);
     return (await res.json()) as T;
@@ -70,8 +71,8 @@ export class DropApi {
   }
 
   /** Multipart: presign the next batch of UploadPart URLs on demand. */
-  uploadParts(payload: string, objectId: string, from: number, count: number): Promise<{ partUrls: PartUrl[] }> {
-    return this.postJson("/upload-parts", { payload, objectId, from, count });
+  uploadParts(payload: string, objectId: string, from: number, count: number, signal?: AbortSignal): Promise<{ partUrls: PartUrl[] }> {
+    return this.postJson("/upload-parts", { payload, objectId, from, count }, signal);
   }
 
   /** Upload step 2 (single): PUT the ciphertext straight to R2 (bytes never touch the Worker). */

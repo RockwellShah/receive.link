@@ -63,7 +63,11 @@ async function prfSecret(): Promise<Uint8Array> {
     const stored = localStorage.getItem("rl_cred"); // can throw in storage-blocked / private contexts
     if (stored) id = base64urlDecode(stored);
   } catch { /* no usable pin — fall through to an open prompt */ }
-  return getPrfSecret(id);
+  const { secret, credentialId } = await getPrfSecret(id);
+  // Self-heal: if nothing was pinned (an existing browser from before pinning, or a cleared cred),
+  // remember whichever passkey the user just used so the next assertion targets it directly — no picker.
+  if (!id) { try { localStorage.setItem("rl_cred", base64urlEncode(credentialId)); } catch { /* private mode */ } }
+  return secret;
 }
 
 // ---- Setup ----
@@ -304,7 +308,7 @@ async function uploadPart(
     if (opts?.signal?.aborted) throw new Error("aborted"); // cancelled (incl. during backoff) — stop before re-presigning
     let url = urls.get(partNumber);
     if (!url) {
-      const batch = await api.uploadParts(payload, init.objectId, partNumber, init.batchSize);
+      const batch = await api.uploadParts(payload, init.objectId, partNumber, init.batchSize, opts?.signal);
       for (const p of batch.partUrls) urls.set(p.partNumber, p.url);
       url = urls.get(partNumber);
     }

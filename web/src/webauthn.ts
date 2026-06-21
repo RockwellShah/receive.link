@@ -73,7 +73,7 @@ export async function enrollPasskey(displayName: string): Promise<Uint8Array> {
 }
 
 /** Perform a PRF assertion and return the 32-byte prf_secret. */
-export async function getPrfSecret(credentialId?: Uint8Array): Promise<Uint8Array> {
+export async function getPrfSecret(credentialId?: Uint8Array): Promise<{ secret: Uint8Array; credentialId: Uint8Array }> {
   const assertion = (await navigator.credentials.get({
     publicKey: {
       rpId: deploymentRpId(),
@@ -93,5 +93,5 @@ export async function getPrfSecret(credentialId?: Uint8Array): Promise<Uint8Arra
   if (!first) throw new Error("no PRF output (authenticator may not support PRF, or no passkey enrolled here)");
   const out = new Uint8Array(first);
   if (out.length !== 32) throw new Error(`PRF output is ${out.length} bytes, expected 32`);
-  return out;
+  return { secret: out, credentialId: new Uint8Array(assertion.rawId) }; // rawId lets the caller pin future gets
 }
