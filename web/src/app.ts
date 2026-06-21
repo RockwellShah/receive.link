@@ -51,6 +51,18 @@ async function requireConfig(): Promise<boolean> {
   return false;
 }
 
+// Derive the PRF secret, pinned to the passkey this browser enrolled (rl_cred) so the
+// authenticator uses THAT one instead of offering every receive.link passkey to pick from.
+// Falls back to an open prompt if the pinned passkey is gone, or none was pinned (e.g. a
+// different device opening a download link).
+async function prfSecret(): Promise<Uint8Array> {
+  const stored = localStorage.getItem("rl_cred");
+  if (stored) {
+    try { return await getPrfSecret(base64urlDecode(stored)); } catch { /* pinned passkey unusable — open prompt below */ }
+  }
+  return getPrfSecret();
+}
+
 // ---- Setup ----
 async function setupMode(): Promise<void> {
   await appMsg([
@@ -79,10 +91,13 @@ async function setupMode(): Promise<void> {
   const st = new StatusMsg("Setting up");
   try {
     if (firstPasskey) {
-      await enrollPasskey(email);
-      try { localStorage.setItem("rl_passkey", "1"); } catch { /* private mode: just enroll again next time */ }
+      const credId = await enrollPasskey(email);
+      try {
+        localStorage.setItem("rl_passkey", "1");
+        localStorage.setItem("rl_cred", base64urlEncode(credId)); // pin future gets to THIS passkey
+      } catch { /* private mode: just enroll again next time */ }
     }
-    const prf = await getPrfSecret();
+    const prf = await prfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
     const shareKey = encodeShareKey(identity.staticPkRaw, identity.namespace);
@@ -313,7 +328,7 @@ async function receiveMode(objectId: string): Promise<void> {
   const st = new StatusMsg("Opening your file");
   try {
     const { url } = await api.fetchUrl(objectId);
-    const prf = await getPrfSecret();
+    const prf = await prfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
     // Metadata only: fetch just the head + metadata prefix (a Range request) and decrypt it for the

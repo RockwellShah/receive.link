@@ -46,7 +46,7 @@ export function deploymentRpId(): string {
 }
 
 /** Enroll a new passkey with the PRF extension enabled. Throws if PRF is unsupported. */
-export async function enrollPasskey(displayName: string): Promise<void> {
+export async function enrollPasskey(displayName: string): Promise<Uint8Array> {
   const cred = (await navigator.credentials.create({
     publicKey: {
       rp: { id: deploymentRpId(), name: "receive.link" },
@@ -69,16 +69,20 @@ export async function enrollPasskey(displayName: string): Promise<void> {
   if (!cred) throw new Error("passkey creation returned null");
   const ext = cred.getClientExtensionResults() as { prf?: { enabled?: boolean } };
   if (!ext.prf?.enabled) throw new Error("this authenticator/browser does not support the PRF extension");
+  return new Uint8Array(cred.rawId); // credential id, so the caller can pin getPrfSecret to THIS passkey
 }
 
 /** Perform a PRF assertion and return the 32-byte prf_secret. */
-export async function getPrfSecret(): Promise<Uint8Array> {
+export async function getPrfSecret(credentialId?: Uint8Array): Promise<Uint8Array> {
   const assertion = (await navigator.credentials.get({
     publicKey: {
       rpId: deploymentRpId(),
       challenge: bs(randomBytes(32)),
       userVerification: "required", // MUST match enrollment (PRF differs without UV)
       timeout: 60_000,
+      // Pin to a specific passkey when the caller knows which one set up this browser, so the
+      // browser uses it directly instead of offering every receive.link passkey to choose from.
+      allowCredentials: credentialId ? [{ type: "public-key", id: bs(credentialId) }] : undefined,
       extensions: { prf: { eval: { first: bs(PRF_INPUT_SALT) } } } as AuthenticationExtensionsClientInputs,
     },
   })) as PublicKeyCredential | null;
