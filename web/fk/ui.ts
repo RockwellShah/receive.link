@@ -221,6 +221,7 @@ export async function saveDecryptedStream(
   mimeType: string,
   totalSize: number,
   chunks: AsyncGenerator<Uint8Array>,
+  onCancel?: () => void,
 ): Promise<void> {
   const name = sanitizeName(filename);
   const w = window as unknown as {
@@ -235,6 +236,7 @@ export async function saveDecryptedStream(
       const h = await w.showSaveFilePicker({ suggestedName: name });
       ws = await h.createWritable();
       st = new StatusMsg("Saving");
+      if (onCancel) st.enableCancel(onCancel);
       let written = 0;
       for await (const chunk of chunks) {
         await ws.write(chunk);
@@ -245,6 +247,7 @@ export async function saveDecryptedStream(
       st.finish("Saved ✓");
     } catch (e) {
       await ws?.abort?.().catch(() => {});
+      if (st?.cancelled) return; // user hit Cancel — "Saving… Cancelled" is already shown
       if ((e as Error).name === "AbortError") {
         st?.fail();
         return; // user dismissed the picker — leave the Save action in place to retry
@@ -256,6 +259,7 @@ export async function saveDecryptedStream(
   }
   // No File System Access API (Safari): assemble a disk-backed Blob, then download via object URL.
   const st = new StatusMsg("Decrypting");
+  if (onCancel) st.enableCancel(onCancel);
   try {
     const parts: Blob[] = [];
     let written = 0;
@@ -273,6 +277,7 @@ export async function saveDecryptedStream(
     void appMsg(["Saved to your downloads."], { speed: 6 });
     setTimeout(() => URL.revokeObjectURL(a.href), Math.min(600_000, Math.max(60_000, Math.ceil(blob.size / (1024 * 1024)) * 1000)));
   } catch (e) {
+    if (st.cancelled) return; // user hit Cancel
     st.fail();
     void appMsg(["Couldn't finish saving — the file may be corrupted or the transfer was interrupted."], ERR);
   }

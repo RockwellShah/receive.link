@@ -366,17 +366,19 @@ async function receiveMode(objectId: string): Promise<void> {
     saveCardWith(filename, "Decrypted file", async () => {
       if (saving) return; // one save at a time; ignore double-clicks
       saving = true;
+      const controller = new AbortController(); // the Save's Cancel button aborts this download
       try {
         // Stream the full ciphertext straight to disk (1x disk): fetch -> ReadableStream -> decrypt ->
         // write, never buffering the whole file. A fresh fetch per click is naturally re-startable, so a
         // failed/cancelled/double-clicked save just starts clean.
-        const resp = await fetch(url);
+        const resp = await fetch(url, { signal: controller.signal });
         if (!resp.ok || !resp.body) throw new Error("the file has expired or was already removed");
         const size = Number(resp.headers.get("content-length"));
         if (!Number.isFinite(size) || size <= 0) throw new Error("couldn't read the file size");
         const { chunks } = await openCiphertextSource(streamSource(resp.body, size), identity, NS);
-        await saveDecryptedStream(filename, metadata.mimeType, metadata.originalSize, chunks);
+        await saveDecryptedStream(filename, metadata.mimeType, metadata.originalSize, chunks, () => controller.abort());
       } catch (e) {
+        if (controller.signal.aborted) return; // user cancelled the download — already handled
         await appMsg([humanError(e)], ERR);
       } finally {
         saving = false;
