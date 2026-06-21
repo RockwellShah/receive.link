@@ -41,7 +41,7 @@ function humanError(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
   if (/not allowed|timed out|NotAllowed|AbortError|cancel/i.test(m)) return "The passkey prompt was dismissed or timed out. Reload and try again.";
   if (/no PRF|passkey|assertion/i.test(m)) return "Couldn't use your passkey. Make sure you have a receive.link passkey on this device, then reload.";
-  if (/auth_failed|wrong_namespace/i.test(m)) return "This file couldn't be decrypted. It may be corrupted, or not encrypted for you.";
+  if (/auth_failed|wrong_namespace|AEAD/i.test(m)) return "This file was encrypted for a different passkey, so yours can't open it. Make sure you're using the passkey for the link it was sent to.";
   return m;
 }
 
@@ -386,6 +386,21 @@ async function doRevoke(token: string): Promise<void> {
   }
 }
 
+// ---- QR (/qr#<link>): a public page that shows this link as a scannable QR (linked from the email) ----
+async function qrMode(payload: string): Promise<void> {
+  if (!payload) {
+    await appMsg([{ t: "Nothing to show.", b: true }, " This QR link is incomplete. Use the one from your email."], ERR);
+    return;
+  }
+  await linkReveal(
+    [
+      { t: "Your link.", b: true },
+      " Share it with anyone, or have them scan the QR. Only you can open what they send.",
+    ],
+    `${location.origin}/#${payload}`,
+  );
+}
+
 // ---- route ----
 void (async () => {
   initChrome();
@@ -413,6 +428,7 @@ void (async () => {
   const hash = location.hash.replace(/^#/, "");
   if (path === "/confirm") void confirmMode(hash); // nonce exchange — no passkey
   else if (path === "/revoke") void revokeMode(hash); // token — no passkey
+  else if (path === "/qr") void qrMode(hash); // show this link as a QR (no passkey)
   else if (path.startsWith("/d/")) void gated(() => void receiveMode(path.slice("/d/".length))); // decrypt — needs PRF
   else if (hash.length > 0) void uploadMode(hash); // sender — throwaway identity, no passkey
   else void gated(() => void setupMode()); // create a link — needs PRF
