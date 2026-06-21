@@ -80,13 +80,28 @@ export class DropApi {
     if (!res.ok) throw new DropApiError(`upload to storage failed (${res.status})`, res.status);
   }
 
-  /** Upload step 2 (multipart): PUT one part to R2; returns its ETag (needed to complete). */
-  async putPart(url: string, body: Blob | Uint8Array): Promise<string> {
-    const res = await fetch(url, { method: "PUT", body: body as BodyInit });
-    if (!res.ok) throw new DropApiError(`part upload failed (${res.status})`, res.status);
-    const etag = res.headers.get("ETag") ?? res.headers.get("etag");
-    if (!etag) throw new DropApiError("storage returned no ETag (CORS must expose ETag)", res.status);
-    return etag;
+  /** Upload step 2 (multipart): PUT one part to R2; returns its ETag (needed to complete). Uses XHR (not
+   *  fetch) so we get byte-level upload progress and a real mid-flight abort — both of which fetch lacks. */
+  async putPart(url: string, body: Blob | Uint8Array, opts?: { onProgress?: (sent: number) => void; signal?: AbortSignal }): Promise<string> {
+    return await new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url);
+      if (opts?.onProgress) xhr.upload.onprogress = (e) => opts.onProgress!(e.loaded);
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) { reject(new DropApiError(`part upload failed (${xhr.status})`, xhr.status)); return; }
+        const etag = xhr.getResponseHeader("ETag") ?? xhr.getResponseHeader("etag");
+        if (!etag) { reject(new DropApiError("storage returned no ETag (CORS must expose ETag)", xhr.status)); return; }
+        resolve(etag);
+      };
+      xhr.onerror = () => reject(new DropApiError("part upload network error", 0));
+      xhr.onabort = () => reject(new DropApiError("part upload aborted", 0));
+      const signal = opts?.signal;
+      if (signal) {
+        if (signal.aborted) { reject(new DropApiError("part upload aborted", 0)); return; }
+        signal.addEventListener("abort", () => xhr.abort(), { once: true });
+      }
+      xhr.send(body as XMLHttpRequestBodyInit);
+    });
   }
 
   /**

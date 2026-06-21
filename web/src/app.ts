@@ -207,7 +207,11 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
         active = new StatusMsg("Uploading");
         const parts = await uploadMultipart(payload, file, shareKey, sender, init, ctLen, active);
         active.done();
+        // Assembling the parts (R2 CompleteMultipartUpload) + verify + email takes a beat; show it instead
+        // of a dead gap between "Uploading... Done!" and "Sent!".
+        active = new StatusMsg("Finishing");
         await api.uploadComplete(payload, init.objectId, parts);
+        active.done();
       }
       await appMsg([{ t: "Sent!", b: true }, " We emailed them a secure download link. If you're done, you can close this tab now."]);
     } catch (e) {
@@ -244,16 +248,27 @@ async function uploadMultipart(
   status: StatusMsg,
 ): Promise<{ partNumber: number; etag: string }[]> {
   const urls = new Map<number, string>(init.partUrls.map((p) => [p.partNumber, p.url] as const));
+  // Byte-level progress: confirmed (completed parts) + bytes in flight across the concurrent parts, so the
+  // readout moves ~every MB instead of jumping a whole part (5 MiB+) at a time. The Cancel button aborts
+  // every in-flight part PUT through the shared AbortController.
+  const controller = new AbortController();
+  status.enableCancel(() => controller.abort());
   let confirmed = 0;
+  const live = new Map<number, number>(); // partNumber -> bytes sent so far, for parts still uploading
+  const report = () => {
+    let sum = confirmed;
+    for (const v of live.values()) sum += v;
+    status.progress(Math.min(sum, ctLen), ctLen);
+  };
   try {
     return await uploadPartsPool(
       encryptFileToParts(file, shareKey, NS, sender, init.partSize),
       uploadConcurrency(init.partSize),
-      (n, bytes) => uploadPart(payload, init, n, bytes, urls),
-      (bytes) => {
-        confirmed += bytes;
-        status.progress(confirmed, ctLen);
-      },
+      (n, bytes) =>
+        uploadPart(payload, init, n, bytes, urls, {
+          signal: controller.signal,
+          onProgress: (sent) => { live.set(n, sent); report(); },
+        }).then((etag) => { live.delete(n); confirmed += bytes.length; report(); return etag; }),
     );
   } catch (e) {
     await api.uploadAbort(payload, init.objectId).catch(() => {});
@@ -267,6 +282,7 @@ async function uploadPart(
   partNumber: number,
   bytes: Uint8Array,
   urls: Map<number, string>,
+  opts?: { onProgress?: (sent: number) => void; signal?: AbortSignal },
 ): Promise<string> {
   let delay = 500;
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -278,8 +294,9 @@ async function uploadPart(
     }
     if (!url) throw new Error(`no upload URL for part ${partNumber}`);
     try {
-      return await api.putPart(url, bytes);
+      return await api.putPart(url, bytes, opts);
     } catch (e) {
+      if (opts?.signal?.aborted) throw e; // user cancelled — don't retry
       urls.delete(partNumber); // force a fresh presign on retry (covers an expired URL)
       if (attempt === 4) throw e;
       await new Promise((r) => setTimeout(r, delay));
