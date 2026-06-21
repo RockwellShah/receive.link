@@ -8,7 +8,7 @@
 import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
 import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
-import { ERR, OK, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCardWith, saveDecryptedStream, showDropBar, uploadCard } from "../fk/ui";
+import { ERR, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCardWith, saveDecryptedStream, showDropBar, uploadCard } from "../fk/ui";
 import { ciphertextLength, encryptFileToParts, encryptFileToShareKey, openCiphertext, openCiphertextSource, streamSource } from "../fk/stream";
 import { uploadPartsPool } from "../fk/pool";
 import { bundleName, zipBundleToBlob, type BundleItem } from "../fk/bundle";
@@ -54,14 +54,17 @@ async function requireConfig(): Promise<boolean> {
 // ---- Setup ----
 async function setupMode(): Promise<void> {
   await appMsg([
-    { t: "Create a link people can use to send you files.", b: true },
-    " Only your passkey can open them, and we never see your files or store your email address.",
+    { t: "Receive files privately.", b: true },
+    " Share a link. Anyone can send you files. Only you can open them.",
   ], { speed: 12 });
-  await appMsg(["First, what email should we send your file links to? We email a link to each file, never the file itself."]);
+  await appMsg([
+    { t: "Where should we send notifications?", b: true },
+    " We email you a secure link when files arrive. Your email address is never stored.",
+  ]);
   const { email, label } = await inputPrompt(
     [
-      { key: "email", placeholder: "you@example.com", type: "email" },
-      { key: "label", placeholder: "A label senders will see (optional)" },
+      { key: "email", placeholder: "Email", type: "email" },
+      { key: "label", placeholder: "Link name (optional)" },
     ],
     (v) => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email) ? null : "Enter an email address like you@example.com."),
   );
@@ -91,8 +94,7 @@ async function setupMode(): Promise<void> {
       label,
     });
     st.fail();
-    await appMsg([{ t: "Check your email.", b: true }, ` We sent a confirmation link to ${email}. Click it to finish and get your link.`]);
-    await appMsg(["You can close this tab. After you confirm, your link can be shared from any device."]);
+    await appMsg([{ t: "Check your email.", b: true }, ` We sent a confirmation link to ${email}. Click it to finish and get your link. You can close this tab.`]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);
@@ -106,10 +108,13 @@ async function confirmMode(nonce: string): Promise<void> {
     const { link } = await api.confirm(nonce);
     st.fail();
     await linkReveal(
-      "Your link is ready. Share it with anyone, and we'll email you a download link whenever someone sends a file. The file stays encrypted until you open it with your passkey:",
+      [
+        { t: "Your private file link is ready.", b: true },
+        " Share it with anyone. When someone sends you a file, we'll email you a secure download link. Only you can open the file.",
+      ],
       `${location.origin}/#${link}`,
     );
-    await appMsg(["Save it somewhere. If you lose it, just set up again."]);
+    await appMsg(["We just emailed you this link, plus a private one to turn it off later."]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);
@@ -185,7 +190,7 @@ async function sendFiles(payload: string, items: BundleItem[]): Promise<void> {
         active.done();
         await api.uploadComplete(payload, init.objectId, parts);
       }
-      await appMsg([{ t: "Sent!", b: true }, " We emailed them a download link. If you're done, you can close this tab now."], OK);
+      await appMsg([{ t: "Sent!", b: true }, " We emailed them a secure download link. If you're done, you can close this tab now."]);
     } catch (e) {
       if (active?.cancelled) { await appMsg(["Upload cancelled."]); return; }
       active?.fail();
@@ -316,7 +321,7 @@ async function receiveMode(objectId: string): Promise<void> {
     // whole ciphertext just to read the filename.
     const { metadata } = await openCiphertext(new Blob([await readPrefix(headResp, METADATA_PREFIX)]), identity, NS);
     st.done();
-    await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you and decrypts on your device as you save it."], OK);
+    await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you, and the file itself only decrypts on your device when you save it."]);
     if (!(window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker && metadata.originalSize > 2 * 1024 * 1024 * 1024) {
       await appMsg(["For a file this large, Chrome or Edge can save it more reliably than this browser."]);
     }
@@ -369,7 +374,7 @@ async function doRevoke(token: string): Promise<void> {
   try {
     await api.revoke(token);
     st.fail();
-    const host = await appMsg([{ t: "This link is off.", b: true }, " People can no longer send files to it. You can create a new one anytime."], OK);
+    const host = await appMsg([{ t: "This link is off.", b: true }, " People can no longer send files to it. You can create a new one anytime."]);
     actionRow(host, [{ label: "Create a new link", icon: SVG.plus.replace("<svg", '<svg class="act_icon act_fill"'), onClick: () => void (location.href = "/") }]);
   } catch (e) {
     st.fail();
