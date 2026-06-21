@@ -5,6 +5,7 @@
 // card, and a couple of generic prompt/reveal helpers built from the same parts.
 
 import { collectFromInput, collectFromDrop, type BundleItem } from "./bundle";
+import encodeQR from "@paulmillr/qr";
 
 // ---- v1 icons (verbatim SVG paths from app.ts) ----
 export const SVG = {
@@ -297,14 +298,54 @@ export async function linkReveal(intro: Seg[], value: string): Promise<void> {
   const p = document.createElement("p"); p.textContent = value;
   p.style.cssText = "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;word-break:break-all;background:var(--fk-fill);border-radius:10px;padding:14px 16px;margin:12px 0 0;color:var(--fk-ink-soft)";
   msg.appendChild(p);
-  const copy = document.createElement("div"); copy.className = "copy_button no_select"; copy.style.marginTop = "14px";
+  // Actions row: Copy, Share (where the browser supports it), and a QR toggle.
+  const acts = document.createElement("div"); acts.className = "no_select";
+  acts.style.cssText = "display:flex;flex-wrap:wrap;gap:22px;margin-top:14px;";
+
+  const copy = document.createElement("div"); copy.className = "copy_button";
   copy.innerHTML = `${SVG.copy.replace("<svg", '<svg class="copy_icon"')}<span class="cp_lbl">Copy</span>`;
-  msg.appendChild(copy); scrollToBottom();
   copy.addEventListener("click", async () => {
     const l = copy.querySelector(".cp_lbl")!;
     try { await navigator.clipboard.writeText(value); l.textContent = "Copied!"; setTimeout(() => (l.textContent = "Copy"), 2000); }
     catch { l.textContent = "Couldn't copy. Select it above."; setTimeout(() => (l.textContent = "Copy"), 2500); }
   });
+  acts.appendChild(copy);
+
+  // Native share sheet — great on phones; hides itself where the browser doesn't support it.
+  if (typeof navigator.share === "function") {
+    const share = document.createElement("div"); share.className = "copy_button";
+    share.innerHTML = `<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;margin-right:4px"><path d="M12 16V4M8 8l4-4 4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg><span>Share</span>`;
+    share.addEventListener("click", () => void navigator.share({ url: value }).catch(() => { /* user dismissed */ }));
+    acts.appendChild(share);
+  }
+
+  // QR of the link, encoded in-browser (no third party ever sees it). Wrapped so a failure (e.g. an
+  // unexpectedly long link) just drops the QR — the link, Copy, and Share still work. Forced
+  // dark-on-white inside a white card so it scans in both light and dark mode.
+  let qr: HTMLElement | null = document.createElement("div");
+  try {
+    qr.style.cssText = "margin-top:16px;background:#fff;border-radius:12px;padding:12px;display:inline-block;line-height:0;";
+    qr.innerHTML = encodeQR(value, "svg", { ecc: "medium", border: 2 });
+    const svg = qr.querySelector("svg");
+    if (svg) { svg.setAttribute("fill", "#000"); svg.setAttribute("style", "width:200px;height:200px;display:block;"); }
+    else qr = null;
+  } catch { qr = null; }
+
+  if (qr) {
+    const qrEl = qr;
+    const qrBtn = document.createElement("div"); qrBtn.className = "copy_button";
+    qrBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:currentColor;margin-right:4px"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z"/></svg><span class="qr_lbl">Hide QR</span>`;
+    acts.appendChild(qrBtn);
+    qrBtn.addEventListener("click", () => {
+      const showing = qrEl.style.display !== "none";
+      qrEl.style.display = showing ? "none" : "inline-block";
+      (qrBtn.querySelector(".qr_lbl") as HTMLElement).textContent = showing ? "Show QR" : "Hide QR";
+    });
+  }
+
+  msg.appendChild(acts);
+  if (qr) msg.appendChild(qr);
+  scrollToBottom();
 }
 
 // ---- right-aligned input prompt with Confirm (v1 openRecipientPrompt parts) ----
