@@ -298,7 +298,7 @@ function marchingBorder(el: HTMLElement) {
 }
 
 // ---- reveal a copy-able string (v1 displayPublicKey) ----
-export async function linkReveal(intro: Seg[], value: string): Promise<void> {
+export async function linkReveal(intro: Seg[], value: string): Promise<boolean> {
   const msg = await appMsg(intro);
   const p = document.createElement("p"); p.textContent = value;
   p.style.cssText = "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;word-break:break-all;background:var(--fk-fill);border-radius:10px;padding:14px 16px;margin:12px 0 0;color:var(--fk-ink-soft)";
@@ -351,6 +351,7 @@ export async function linkReveal(intro: Seg[], value: string): Promise<void> {
   msg.appendChild(acts);
   if (qr) msg.appendChild(qr);
   scrollToBottom();
+  return qr !== null; // whether the QR rendered — lets a QR-only page (/qr) flag a failure
 }
 
 // ---- right-aligned input prompt with Confirm (v1 openRecipientPrompt parts) ----
@@ -491,7 +492,7 @@ export function initChrome(): void {
     });
   });
   themeMql.addEventListener("change", () => { if (themeMode === "auto") applyTheme("auto"); });
-  document.querySelectorAll(".plain_menu_link").forEach((a) => a.addEventListener("click", () => close()));
+  document.querySelectorAll("#chiz_list a").forEach((a) => a.addEventListener("click", () => close())); // every menu link closes the menu (was only the removed .plain_menu_link items)
 
   marchingBorder($("drop_container"));
 }

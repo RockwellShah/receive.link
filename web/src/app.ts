@@ -447,13 +447,28 @@ async function qrMode(payload: string): Promise<void> {
     await appMsg([{ t: "Nothing to show.", b: true }, " This QR link is incomplete. Use the one from your email."], ERR);
     return;
   }
-  await linkReveal(
+  if (!(await requireConfig())) return;
+  // Validate the link (same decode + signature check as the upload page) before showing it as a QR, so a
+  // tampered or truncated link is caught here, not only when a sender scans it.
+  try {
+    const bytes = base64urlDecode(payload);
+    const { signable, signature } = splitSignature(bytes);
+    const pub = await importSignPublicKey(cfg.serverSignPublicJwk!);
+    if (!(await verifyRegion(pub, signable, signature))) throw new Error("bad signature");
+  } catch {
+    await appMsg([{ t: "This link isn't valid.", b: true }, " It may be incomplete or tampered with. Use the most recent one from your email."], ERR);
+    return;
+  }
+  const qrShown = await linkReveal(
     [
       { t: "Your link.", b: true },
       " Share it with anyone, or have them scan the QR. Only you can open what they send.",
     ],
     `${location.origin}/#${payload}`,
   );
+  if (!qrShown) {
+    await appMsg([{ t: "Couldn't show the QR.", b: true }, " Your link is above — copy it or use Share instead."], ERR);
+  }
 }
 
 // Build-time app version (Bun.build define, sourced from package.json), stamped into the menu footer.
