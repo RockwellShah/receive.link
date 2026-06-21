@@ -1,6 +1,11 @@
 # receive.link - Worker config. Secrets (server keys, R2 creds) are set via wrangler, not here.
-# Staging is the default env; production overrides below.
-name = "filekey-drop-staging"
+#
+# DEFAULT env = the ISOLATED MONETIZATION worker. Monetization is experimental and lives on this branch;
+# it must NOT deploy to the shared "filekey-drop-staging" Worker — a prior `wrangler deploy` here once
+# did, leaving the v2 ReceiverAccount DO on staging and blocking the mainline email Worker. A distinct
+# Worker name gives monetization its OWN Durable Object namespace + migration history, so its deploys
+# never collide with staging again. Deploy: `wrangler deploy` (this env) / `--env production` for prod.
+name = "receive-link-monetization"
 main = "worker/src/worker.ts"
 compatibility_date = "2026-06-01"
 
@@ -42,11 +47,12 @@ tag = "v2"
 new_sqlite_classes = ["ReceiverAccount"]
 
 [vars]
-# This (default) env is the STAGING Worker, serving staging.receive.link. It must build its own
-# confirm/drop/download links from staging.receive.link so they land back on THIS Worker + KV.
-# receive.link is now the separate prod "receive-link" Worker (own KV/keys) - listing it here
-# would make staging links point at prod, and prod wouldn't find the confirm nonce.
-ALLOWED_ORIGIN = "https://staging.receive.link"
+# This (default) env is the isolated MONETIZATION worker (own DO namespace; see header). It still SHARES
+# the staging R2 bucket + KV below — that alone stops the Worker/DO collision. For FULL isolation, create
+# its own bucket + KV and repoint DROP_BUCKET / DROP_KV / R2_BUCKET (see the secrets/setup note).
+# ALLOWED_ORIGIN is the Worker's own route: add `mon.receive.link` in the dashboard, or use the
+# *.workers.dev URL for API/smoke testing. Email links point here, so they only resolve once routed.
+ALLOWED_ORIGIN = "https://mon.receive.link"
 MAIL_FROM = "files@drop.filekey.app"
 SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E","y":"3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE"}'
 # Id stamped into newly minted links. To rotate the signing key: bump this, set the new key as
@@ -65,13 +71,20 @@ MULTIPART_MIN_PART = "5242880"                      # 5 MiB
 REG_EMAIL_PER_DAY = "1000"
 REG_IP_PER_DAY = "1000"
 
-# Secrets (DO NOT put here) — set with (per env: add `--env production` for prod):
+# Secrets are PER-WORKER (DO NOT put here). This default env is now its own Worker
+# (receive-link-monetization), so set ALL of these ON IT before it can run (the old staging Worker's
+# secrets do NOT carry over to a new name). Use `--env production` for prod.
 #   wrangler secret put SERVER_KEM_PRIVATE_JWK    # from gen-keys
-#   wrangler secret put SERVER_SIGN_PRIVATE_JWK   # from gen-keys
+#   wrangler secret put SERVER_SIGN_PRIVATE_JWK   # from gen-keys (matches SERVER_SIGN_PUBLIC_JWK above)
 #   wrangler secret put R2_ACCESS_KEY_ID          # R2 > Manage API tokens
 #   wrangler secret put R2_SECRET_ACCESS_KEY
 #   wrangler secret put RECEIVER_ID_SECRET        # any long random string; keys recipient accounts to their
 #                                                 # confirmed email. Long-lived: rotating it re-keys every account.
+#
+# One-time setup for this Worker: set the 5 secrets above; (optional, for full isolation) create its own
+# bucket + KV — `wrangler r2 bucket create receive-link-monetization` and
+# `wrangler kv namespace create monetization-kv` — then repoint DROP_BUCKET / R2_BUCKET / DROP_KV id;
+# (optional, for web testing) add the `mon.receive.link` route in the Cloudflare dashboard.
 
 [env.production]
 name = "receive-link"
