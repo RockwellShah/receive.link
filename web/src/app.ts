@@ -51,16 +51,19 @@ async function requireConfig(): Promise<boolean> {
   return false;
 }
 
-// Derive the PRF secret, pinned to the passkey this browser enrolled (rl_cred) so the
-// authenticator uses THAT one instead of offering every receive.link passkey to pick from.
-// Falls back to an open prompt if the pinned passkey is gone, or none was pinned (e.g. a
-// different device opening a download link).
+// Derive the PRF secret, pinned to the passkey this browser enrolled (rl_cred) so the authenticator
+// uses THAT one instead of offering every receive.link passkey to pick from. When nothing is pinned
+// (e.g. a different device opening a download link) it's an open prompt. NO fallback to an open prompt
+// on a pinned failure: a different passkey is a DIFFERENT identity, so it can't recover a lost one — it
+// would only make a wrong link on setup or fail to decrypt on receive. Surface the error and let the
+// user retry instead.
 async function prfSecret(): Promise<Uint8Array> {
-  const stored = localStorage.getItem("rl_cred");
-  if (stored) {
-    try { return await getPrfSecret(base64urlDecode(stored)); } catch { /* pinned passkey unusable — open prompt below */ }
-  }
-  return getPrfSecret();
+  let id: Uint8Array | undefined;
+  try {
+    const stored = localStorage.getItem("rl_cred"); // can throw in storage-blocked / private contexts
+    if (stored) id = base64urlDecode(stored);
+  } catch { /* no usable pin — fall through to an open prompt */ }
+  return getPrfSecret(id);
 }
 
 // ---- Setup ----
@@ -276,6 +279,18 @@ async function uploadMultipart(
   }
 }
 
+// A setTimeout that also resolves the instant `signal` aborts, so a cancel during retry backoff doesn't
+// have to wait out the delay.
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted) { resolve(); return; }
+    let t: ReturnType<typeof setTimeout>;
+    const onAbort = () => { clearTimeout(t); resolve(); };
+    t = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function uploadPart(
   payload: string,
   init: Extract<UploadInit, { mode: "multipart" }>,
@@ -286,6 +301,7 @@ async function uploadPart(
 ): Promise<string> {
   let delay = 500;
   for (let attempt = 0; attempt < 5; attempt++) {
+    if (opts?.signal?.aborted) throw new Error("aborted"); // cancelled (incl. during backoff) — stop before re-presigning
     let url = urls.get(partNumber);
     if (!url) {
       const batch = await api.uploadParts(payload, init.objectId, partNumber, init.batchSize);
@@ -293,13 +309,14 @@ async function uploadPart(
       url = urls.get(partNumber);
     }
     if (!url) throw new Error(`no upload URL for part ${partNumber}`);
+    opts?.onProgress?.(0); // reset this part's reported progress so a retry doesn't leave stale bytes counted
     try {
       return await api.putPart(url, bytes, opts);
     } catch (e) {
       if (opts?.signal?.aborted) throw e; // user cancelled — don't retry
       urls.delete(partNumber); // force a fresh presign on retry (covers an expired URL)
       if (attempt === 4) throw e;
-      await new Promise((r) => setTimeout(r, delay));
+      await abortableSleep(delay, opts?.signal); // wake immediately if cancelled mid-backoff
       delay *= 2;
     }
   }

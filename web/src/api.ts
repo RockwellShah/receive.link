@@ -87,18 +87,24 @@ export class DropApi {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", url);
       if (opts?.onProgress) xhr.upload.onprogress = (e) => opts.onProgress!(e.loaded);
+      const signal = opts?.signal;
+      const onAbort = () => xhr.abort();
+      // Remove the abort listener once this PUT settles. {once:true} only fires on abort, so on success
+      // it would otherwise stay on the shared signal forever, retaining this XHR — thousands leak per
+      // large upload.
+      const cleanup = () => { if (signal) signal.removeEventListener("abort", onAbort); };
       xhr.onload = () => {
+        cleanup();
         if (xhr.status < 200 || xhr.status >= 300) { reject(new DropApiError(`part upload failed (${xhr.status})`, xhr.status)); return; }
         const etag = xhr.getResponseHeader("ETag") ?? xhr.getResponseHeader("etag");
         if (!etag) { reject(new DropApiError("storage returned no ETag (CORS must expose ETag)", xhr.status)); return; }
         resolve(etag);
       };
-      xhr.onerror = () => reject(new DropApiError("part upload network error", 0));
-      xhr.onabort = () => reject(new DropApiError("part upload aborted", 0));
-      const signal = opts?.signal;
+      xhr.onerror = () => { cleanup(); reject(new DropApiError("part upload network error", 0)); };
+      xhr.onabort = () => { cleanup(); reject(new DropApiError("part upload aborted", 0)); };
       if (signal) {
         if (signal.aborted) { reject(new DropApiError("part upload aborted", 0)); return; }
-        signal.addEventListener("abort", () => xhr.abort(), { once: true });
+        signal.addEventListener("abort", onAbort);
       }
       xhr.send(body as XMLHttpRequestBodyInit);
     });
