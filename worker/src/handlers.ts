@@ -616,15 +616,20 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
 
-    // Carry the receiver's manage/revoke link in the delivery email (best-effort).
-    const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
+    // Carry the receiver's manage/revoke link in the delivery email (best-effort): a KV blip fetching the
+    // token must NOT fail an otherwise-deliverable upload, so fall back to no manage link rather than
+    // throwing into the finally (which would orphan the object + fetchbind and 500 a deliverable send).
+    const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`).catch(() => null);
     const manageUrl = revokeToken ? `${linkOrigin(env)}/revoke#${revokeToken}` : undefined;
     try {
       await sendDownloadEmail(env, email, `${linkOrigin(env)}/d/${finalId}`, link.label, manageUrl);
     } catch {
       logEvent("delivery_failed", { link: linkIdHex });
-      await deleteObject(env, finalId); // no orphaned final; the client can retry (a fresh finalId)
-      await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {}); // and no orphaned binding for it
+      // Best-effort cleanup, each guarded independently so a throw in one can't skip the other (and
+      // neither masks the 502 the client retries on): drop the gate binding AND the final object. A
+      // residual of either is harmless and TTL-bounded (fetchbind ~8d; the object via the 7-day lifecycle).
+      await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {});
+      await deleteObject(env, finalId).catch(() => {});
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
     // The email is OUT — from here we must never release the completion lock (that would let a retry
