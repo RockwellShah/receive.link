@@ -632,7 +632,7 @@ test("receiver DO: caps are tier-aware (free gates on total, paid gates on at-re
   const acct = recv.get(recv.idFromName("rid-tier"));
   const h1 = await acct.reserve(200, 300, 1000); // free tier: freeCap=300, paidCap=1000
   expect(h1.ok).toBe(true);
-  if (h1.ok) await acct.commit(h1.token); // total=200, pending=200
+  if (h1.ok) await acct.commit(h1.token, "file-tier"); // total=200, pending=200
   expect((await acct.reserve(200, 300, 1000)).ok).toBe(false); // free: total 200 + 200 > 300
   await acct.credit(500, 0); // flip to paid (and add credit)
   const h2 = await acct.reserve(200, 300, 1000); // paid now gates on pending (200) vs 1000, not total vs 300
@@ -644,7 +644,7 @@ test("receiver DO: pending rises on delivery and falls once on the first paid do
   const acct = recv.get(recv.idFromName("rid-pending"));
   const h1 = await acct.reserve(500, 0, 0); // uncapped
   expect(h1.ok).toBe(true);
-  if (h1.ok) await acct.commit(h1.token);
+  if (h1.ok) await acct.commit(h1.token, "file-1"); // deliver file-1 (pending 500)
   expect((await acct.summary(1000)).pending).toBe(500);
   const r = await acct.charge("file-1", 500, 1000);
   expect(r.ok && !r.alreadyPaid).toBe(true);
@@ -664,4 +664,19 @@ test("receiver DO: credit is idempotent on the Stripe event id", async () => {
   expect((await acct.summary(0)).balance).toBe(1000);
   await acct.credit(1000, 0, "evt_2"); // a new event does credit
   expect((await acct.summary(0)).balance).toBe(2000);
+});
+
+test("billing: FREE_GRANT_BYTES=0 is honored (no free credit) -> the first download is 402", async () => {
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "0" });
+  const finalId = await deliver(h, await setupLink(h), 200);
+  expect((await download(h, finalId)).status).toBe(402); // balance seeded to 0, can't cover 200
+});
+
+test("billing: a legacy binding with no rid downloads free (backward compat)", async () => {
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "0" });
+  const finalId = await deliver(h, await setupLink(h), 200);
+  // Rewrite the binding to the pre-Phase-2 shape (pk + size, no rid): can't resolve an account to charge.
+  const b = JSON.parse((await h.kv.get(`fetchbind:${finalId}`))!) as { pk: string; size: number };
+  await h.kv.put(`fetchbind:${finalId}`, JSON.stringify({ pk: b.pk, size: b.size }));
+  expect((await download(h, finalId)).status).toBe(200); // no rid -> free, even at zero balance
 });

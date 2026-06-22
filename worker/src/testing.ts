@@ -177,7 +177,7 @@ export class MemoryCompletion {
 // exercised against the live DO), so tests never advance 10 days and paid flags need no expiry here.
 export class MemoryReceiver {
   private totals = new Map<string, number>();
-  private pendings = new Map<string, number>();
+  private pendingFiles = new Map<string, Map<string, number>>(); // rid -> finalId -> bytes (un-downloaded)
   private balances = new Map<string, number>(); // present once seeded/changed; absent = lazy-default to grant
   private tiers = new Map<string, Tier>();
   private paid = new Map<string, Set<string>>(); // rid -> finalIds already charged
@@ -188,15 +188,16 @@ export class MemoryReceiver {
   }
   get(id: DurableObjectId) {
     const name = id.toString();
-    const { totals, pendings, balances, tiers, paid, holds, events } = this;
+    const { totals, pendingFiles, balances, tiers, paid, holds, events } = this;
     const clamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
     const held = () => holds.get(name) ?? holds.set(name, new Map<string, number>()).get(name)!;
+    const pend = () => pendingFiles.get(name) ?? pendingFiles.set(name, new Map<string, number>()).get(name)!;
     const paidSet = () => paid.get(name) ?? paid.set(name, new Set<string>()).get(name)!;
     const tierOf = (): Tier => tiers.get(name) ?? "free";
     const bal = (grant: number) => balances.get(name) ?? clamp(grant);
-    const liveReserved = () => {
+    const sum = (m: Map<string, number>) => {
       let s = 0;
-      for (const b of held().values()) s += b;
+      for (const b of m.values()) s += b;
       return s;
     };
     return {
@@ -204,18 +205,18 @@ export class MemoryReceiver {
         const add = clamp(bytes);
         const isPaid = tierOf() === "paid";
         const cap = isPaid ? paidCap : freeCap;
-        const basis = isPaid ? (pendings.get(name) ?? 0) : (totals.get(name) ?? 0);
-        if (cap > 0 && basis + liveReserved() + add > cap) return { ok: false };
+        const basis = isPaid ? sum(pend()) : (totals.get(name) ?? 0);
+        if (cap > 0 && basis + sum(held()) + add > cap) return { ok: false };
         const token = crypto.randomUUID();
         held().set(token, add);
         return { ok: true, token };
       },
-      async commit(token: string): Promise<void> {
+      async commit(token: string, finalId: string): Promise<void> {
         const b = held().get(token);
         if (b === undefined) return;
         held().delete(token);
         totals.set(name, (totals.get(name) ?? 0) + b);
-        pendings.set(name, (pendings.get(name) ?? 0) + b);
+        pend().set(finalId, b); // delivered, un-downloaded
       },
       async release(token: string): Promise<void> {
         held().delete(token);
@@ -228,7 +229,7 @@ export class MemoryReceiver {
         paidSet().add(finalId);
         const newBalance = balance - need;
         balances.set(name, newBalance);
-        pendings.set(name, Math.max(0, (pendings.get(name) ?? 0) - need));
+        pend().delete(finalId); // downloaded -> no longer pending
         return { ok: true, alreadyPaid: false, balance: newBalance };
       },
       async credit(packBytes: number, grant: number, eventId?: string): Promise<{ balance: number }> {
@@ -246,9 +247,9 @@ export class MemoryReceiver {
         return {
           tier: tierOf(),
           total: totals.get(name) ?? 0,
-          pending: pendings.get(name) ?? 0,
+          pending: sum(pend()),
           balance: bal(grant),
-          reserved: liveReserved(),
+          reserved: sum(held()),
         };
       },
     };

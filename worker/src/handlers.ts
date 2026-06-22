@@ -155,9 +155,12 @@ const DEFAULT_FREE_GRANT_BYTES = 1024 * 1024 * 1024; // 1 GiB of free download c
 function paidAtRestCap(env: Env): number {
   return envInt(env.PAID_ATREST_CAP_BYTES, 0);
 }
-/** Free credit seeded into a new account when billing is on (default 1 GiB). */
+/** Free credit seeded into a new account when billing is on (default 1 GiB). Unlike envInt, an explicit
+ *  "0" is honored (a deliberate no-free-grant config), not coerced to the default. */
 function freeGrantBytes(env: Env): number {
-  return envInt(env.FREE_GRANT_BYTES, DEFAULT_FREE_GRANT_BYTES);
+  if (env.FREE_GRANT_BYTES === undefined) return DEFAULT_FREE_GRANT_BYTES;
+  const n = parseInt(env.FREE_GRANT_BYTES, 10);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_FREE_GRANT_BYTES;
 }
 /** Whether the per-file download charge is live. Off (default) = downloads are free (Phase 1 behavior). */
 function billingEnabled(env: Env): boolean {
@@ -680,7 +683,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
     const outcome = await guard.finish(claim.token);
-    if (outcome === "won") await acct.commit(hold.token);
+    if (outcome === "won") await acct.commit(hold.token, finalId); // accrue total + record finalId as pending-at-rest
     else { logEvent("delivery_duplicate", { link: linkIdHex }); await acct.release(hold.token); }
     logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {
@@ -734,7 +737,7 @@ async function loadFetchbind(env: Env, objectId: string): Promise<Fetchbind | nu
   if (!raw) return null;
   try {
     const b = JSON.parse(raw) as Partial<Fetchbind>;
-    if (typeof b.pk !== "string" || typeof b.size !== "number") return null;
+    if (typeof b.pk !== "string" || typeof b.size !== "number" || !Number.isFinite(b.size) || b.size < 0) return null;
     return { pk: b.pk, size: b.size, rid: typeof b.rid === "string" ? b.rid : undefined };
   } catch {
     return null;
@@ -812,8 +815,10 @@ export async function fetchPreview(req: Request, env: Env): Promise<Response> {
   if (!obj) return json({ error: "expired or not found" }, 404, origin);
   const buf = new Uint8Array(await obj.arrayBuffer());
   const metaLen = fileKeyMetadataPrefixLen(buf);
-  const bytes = metaLen !== null && metaLen <= buf.length ? buf.subarray(0, metaLen) : buf;
-  return new Response(bytes, { status: 200, headers: { ...cors(origin), "content-type": "application/octet-stream", "cache-control": "no-store" } });
+  // Fail CLOSED: if the header won't parse we can't tell metadata from payload, so serve nothing rather
+  // than risk leaking payload bytes for free. (A delivered object always has a valid header.)
+  if (metaLen === null || metaLen > buf.length) return json({ error: "expired or not found" }, 404, origin);
+  return new Response(buf.subarray(0, metaLen), { status: 200, headers: { ...cors(origin), "content-type": "application/octet-stream", "cache-control": "no-store" } });
 }
 
 // POST /fetch/download { challengeId, proof } -> { url, expiresInSec } | 402 { needBytes, balanceBytes }.
@@ -827,7 +832,9 @@ export async function fetchDownload(req: Request, env: Env): Promise<Response> {
   if (!(await objectInfo(env, v.objectId))) return json({ error: "expired or not found" }, 404, origin);
   if (billingEnabled(env)) {
     const bind = await loadFetchbind(env, v.objectId);
-    if (bind?.rid) {
+    // A challenge only mints for a bound object, so a missing bind here is anomalous (not a free pass) -> 404.
+    if (!bind) return json({ error: "expired or not found" }, 404, origin);
+    if (bind.rid) {
       const acct = env.RECEIVER.get(env.RECEIVER.idFromName(bind.rid));
       // charge() is exactly-once per finalId: a re-download (or a double-clicked/retried Save) sees the
       // file already paid and returns free, so a crash between charge and URL issue can't double-charge —
@@ -835,7 +842,7 @@ export async function fetchDownload(req: Request, env: Env): Promise<Response> {
       const result = await acct.charge(v.objectId, bind.size, freeGrantBytes(env));
       if (!result.ok) return json({ error: "needs funds", needBytes: result.need, balanceBytes: result.balance }, 402, origin);
     } else {
-      logEvent("billing_skipped_no_rid"); // pre-Phase-2 binding (or none): can't resolve an account -> free
+      logEvent("billing_skipped_no_rid"); // ONLY a legacy pre-Phase-2 binding (has pk+size, no rid) -> free
     }
   }
   const url = await presignGet(env, v.objectId, FETCH_URL_TTL_SEC);
