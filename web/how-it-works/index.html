@@ -188,7 +188,7 @@ footer a{color:var(--muted)}
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
           <div>
             <h3>You create a link</h3>
-            <p>Your passkey makes an encryption key right on your device. The private half never leaves; the public half is carried inside your link. Then you share the link wherever you like.</p>
+            <p>Your passkey makes an encryption key right on your device. The private half stays in your control; the public half is carried inside your link. Then you share the link wherever you like.</p>
           </div>
         </div>
         <div class="step">
@@ -249,7 +249,7 @@ footer a{color:var(--muted)}
         <h2>What we can, and can't, do</h2>
         <div class="tgrid">
           <div class="tpoint"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"/></svg></span><div><h3>Locked before it leaves</h3><p>Every file is encrypted in the sender's browser, before any of it is uploaded.</p></div></div>
-          <div class="tpoint"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"/></svg></span><div><h3>Only your passkey opens it</h3><p>The key lives on your device, behind your passkey. Not on our servers, not in the link.</p></div></div>
+          <div class="tpoint"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"/></svg></span><div><h3>Only your passkey opens it</h3><p>The key stays in your control, behind your passkey. Not on our servers, not in the link.</p></div></div>
           <div class="tpoint"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"/></svg></span><div><h3>We never see your files</h3><p>We only ever hold the locked version. Filenames included.</p></div></div>
           <div class="tpoint"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"/></svg></span><div><h3>We don't store your email</h3><p>It's sealed inside your link. We unseal it for a moment to notify you, then let it go.</p></div></div>
           <div class="tpoint"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"/></svg></span><div><h3>Files clean themselves up</h3><p>Anything sent to you auto-deletes after 7 days.</p></div></div>
@@ -263,7 +263,7 @@ footer a{color:var(--muted)}
     <div class="wrap">
       <div class="hood">
         <span class="tag">Under the hood, for the curious</span>
-        <div class="hrow"><h4>Your keys come from your passkey</h4><p>When you make a link, your passkey's secure hardware derives a private and public key pair using the WebAuthn <code>PRF</code> extension. The private key never leaves your device. Only the public half goes into your link.</p></div>
+        <div class="hrow"><h4>Your keys come from your passkey</h4><p>When you make a link, your passkey derives a private and public key pair using the WebAuthn <code>PRF</code> extension. The private key never leaves your control. Only the public half goes into your link.</p></div>
         <div class="hrow"><h4>Senders encrypt to your public key</h4><p>The sender's browser uses <code>HPKE</code> (RFC 9180) to lock the file to your public key, then <code>AES-256-GCM</code> to encrypt the contents and the metadata, including the filename, type, and size. Every chunk is authenticated, so tampering is detected.</p></div>
         <div class="hrow"><h4>The relay just routes</h4><p>Encrypted bytes land in Cloudflare R2 and are deleted on a 7-day lifecycle. Our worker checks your link's signature, forwards the locked file, and emails you. It never holds a key or a plaintext byte.</p></div>
       </div>
@@ -277,7 +277,7 @@ footer a{color:var(--muted)}
         <div class="spec-body">
           <div class="spec-grp">
             <h4>Identity</h4>
-            <p>Your keys are derived deterministically from your passkey, on your device, through the WebAuthn <code>PRF</code> extension. No key material is ever sent anywhere.</p>
+            <p>Your keys are derived deterministically from your passkey, on your device, through the WebAuthn <code>PRF</code> extension. None of it ever reaches our servers; your passkey itself syncs only through your platform's encrypted keychain, never through us.</p>
             <div class="bytes">master_prk   = HKDF-Extract(salt="FILEKEY-v1/master-prk", IKM=prf_secret)
 identity_ikm = HKDF-Expand(master_prk, "FILEKEY-v1/identity-kem" || canonical_rp_id, 32)
 (sk, pk)     = DHKEM(P-256)-DeriveKeyPair(identity_ikm)        // RFC 9180 §7.1.3</div>
@@ -337,7 +337,7 @@ AAD     = file_header || sender_pk || hpke_enc</div>
         </details>
         <details>
           <summary>What's a passkey?<svg class="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary>
-          <p>It's the same thing your phone or laptop already uses for Face ID, a fingerprint, or your screen lock. receive.link uses it to create an encryption key that never leaves your device. There's nothing new to invent or remember.</p>
+          <p>It's the same thing your phone or laptop already uses for Face ID, a fingerprint, or your screen lock. receive.link uses it to create an encryption key that never leaves your control. There's nothing new to invent or remember.</p>
         </details>
         <details>
           <summary>What if I lose my passkey?<svg class="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary>
