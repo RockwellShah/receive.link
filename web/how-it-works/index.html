@@ -105,9 +105,6 @@ html[data-theme="dark"] .chip.open{color:#06140c}
 .hrow p{margin:0;color:var(--muted);font-size:15.5px}
 .hrow code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
   background:var(--bg-soft);padding:1px 6px;border-radius:6px;color:var(--ink)}
-.honest{margin-top:18px;padding:16px 18px;border-radius:12px;background:var(--green-soft);
-  font-size:14.5px;color:var(--muted);line-height:1.55}
-.honest b{color:var(--ink);font-weight:600}
 
 /* faq */
 .faq details{border-bottom:1px solid var(--line);padding:4px 0}
@@ -269,7 +266,6 @@ footer a{color:var(--muted)}
         <div class="hrow"><h4>Your keys come from your passkey</h4><p>When you make a link, your passkey's secure hardware derives a private and public key pair using the WebAuthn <code>PRF</code> extension. The private key never leaves your device. Only the public half goes into your link.</p></div>
         <div class="hrow"><h4>Senders encrypt to your public key</h4><p>The sender's browser uses <code>HPKE</code> (RFC 9180) to lock the file to your public key, then <code>AES-256-GCM</code> to encrypt the contents and the metadata, including the filename, type, and size. Every chunk is authenticated, so tampering is detected.</p></div>
         <div class="hrow"><h4>The relay just routes</h4><p>Encrypted bytes land in Cloudflare R2 and are deleted on a 7-day lifecycle. Our worker checks your link's signature, forwards the locked file, and emails you. It never holds a key or a plaintext byte.</p></div>
-        <div class="honest"><b>Where we draw the line, honestly.</b> We use P-256 today, so we don't call this "quantum-proof." Like any relay, we can see a locked file's size and when it moves, the way a courier sees a sealed envelope's weight. And the design intentionally doesn't try to prove who sent a file. Your trust should come from what we can't do, not from promises, which is why the code is open.</p></div>
       </div>
     </div>
   </section>
