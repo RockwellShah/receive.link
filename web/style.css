@@ -57,7 +57,7 @@ body{margin:0;}
 .confirm_pub_key, .edit_pub_key, .copy_button{cursor:pointer;color:var(--fk-link);font-weight: 500;display:flex;align-items:center;line-height:1;}
 /* Email Confirm = filled green pill (primary CTA), matching the drop-zone primary button. Ink on
    green so it stays legible in both themes; double-class beats the shared text-link + dark rules. */
-.confirm_pub_key.confirm_cta{background:#23A267;color:#ffffff;font-size:13px;font-weight:600;padding:8px 14px;border-radius:999px;transition:transform .16s cubic-bezier(.4,0,.2,1),filter .16s;}
+.confirm_pub_key.confirm_cta{background:#0F7A45;color:#ffffff;font-size:13px;font-weight:600;padding:8px 14px;border-radius:999px;transition:transform .16s cubic-bezier(.4,0,.2,1),filter .16s;}
 .confirm_pub_key.confirm_cta .confirm_icon{width:15px;height:15px;padding:0;margin-right:6px;}
 .confirm_pub_key.confirm_cta:hover{color:#ffffff;transform:translateY(-1px);filter:brightness(1.06);}
 .confirm_pub_key.confirm_cta:active{transform:scale(.97);}
@@ -115,8 +115,8 @@ html[data-theme="dark"] .logo_tld{color:#8e8ca6;}
 .dc_txt_container .file_title{font-weight:600;}
 .dc_buttons{display:flex;align-items:center;gap:10px;flex-shrink:0;}
 .dc_btn{font-family:'Inter';font-size:15px;font-weight:600;line-height:1;padding:11px 18px;border-radius:10px;cursor:pointer;border:1px solid transparent;white-space:nowrap;transition:background .18s ease,transform .18s cubic-bezier(.4,0,.2,1),box-shadow .18s ease;}
-.dc_btn_primary{background:#23A267;color:#fff;}
-.dc_btn_primary:hover{background:#1c8a55;}
+.dc_btn_primary{background:#0F7A45;color:#fff;}
+.dc_btn_primary:hover{background:#0b5e35;}
 .dc_btn_ghost{background:#fff;color:#0d0d0d;border-color:#0000001f;font-weight:500;}
 .dc_btn_ghost:hover{background:#f4f4f4;}
 
@@ -475,6 +475,9 @@ html[data-theme="dark"] .fk_input{background:#161618;color:#f2f2f5;border-color:
 /* Browser autofill (notably the email field) forces its own light background + dark text via the UA stylesheet. Paint over it with an inset box-shadow so autofilled inputs keep their theme colors instead of flashing white. */
 .fk_input:-webkit-autofill,.fk_input:-webkit-autofill:hover,.fk_input:-webkit-autofill:focus{-webkit-text-fill-color:#0d0d0d;-webkit-box-shadow:0 0 0 1000px #fff inset;caret-color:#0d0d0d;transition:background-color 9999s ease-in-out 0s;}
 html[data-theme="dark"] .fk_input:-webkit-autofill,html[data-theme="dark"] .fk_input:-webkit-autofill:hover,html[data-theme="dark"] .fk_input:-webkit-autofill:focus{-webkit-text-fill-color:#f2f2f5;-webkit-box-shadow:0 0 0 1000px #161618 inset;caret-color:#f2f2f5;}
+/* iOS Safari ignores :-webkit-autofill for the background paint; the unprefixed :autofill is what it honors. Kept in its own rule so engines that don't know :autofill don't drop the webkit rule above (a comma-list is invalidated by one unknown selector). */
+.fk_input:autofill,.fk_input:autofill:hover,.fk_input:autofill:focus{-webkit-text-fill-color:#0d0d0d;-webkit-box-shadow:0 0 0 1000px #fff inset;box-shadow:0 0 0 1000px #fff inset;caret-color:#0d0d0d;}
+html[data-theme="dark"] .fk_input:autofill,html[data-theme="dark"] .fk_input:autofill:hover,html[data-theme="dark"] .fk_input:autofill:focus{-webkit-text-fill-color:#f2f2f5;-webkit-box-shadow:0 0 0 1000px #161618 inset;box-shadow:0 0 0 1000px #161618 inset;caret-color:#f2f2f5;}
 .ok_dp{border:1px #1f9d5721 solid;}
 .ok_filekey_icon{fill:#1f9d57;height:16px;width:13px;}
 /* Option 5: the setup input sits left (under the question) while you fill it; on Confirm each answer becomes its own right-aligned sent bubble (no avatar). */

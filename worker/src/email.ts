@@ -7,7 +7,7 @@
 
 import type { Env } from "./types";
 
-const BRAND = "#23A267"; // receive.link green
+const BRAND = "#0F7A45"; // deep receive.link green for the CTA button — white text clears contrast and survives Gmail dark-mode inversion
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

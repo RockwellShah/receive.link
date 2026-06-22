@@ -417,6 +417,7 @@ export function inputPrompt<K extends string>(
 
 // ---- drop bar ----
 export function showDropBar(text: string, onItems: (items: BundleItem[]) => void): void {
+  allowAutoScroll = true; // the upload feed follows new messages as files stream
   const bar = $("drop_container");
   (bar.querySelector(".file_title") as HTMLElement).textContent = text;
   (bar.querySelector(".dc_icon_container") as HTMLElement).innerHTML = SVG.plus;
@@ -455,7 +456,7 @@ export function hideDropBar(): void {
 // ---- chrome: logo + menu + appearance toggle (v1 init/initChiz) ----
 export function initChrome(): void {
   mainInner = $("main_inner");
-  allowAutoScroll = true;
+  allowAutoScroll = false; // only the upload feed auto-follows (showDropBar flips it on); setup/confirm/receive anchor at the top on load
   // receive.link branding (Drop delta): landing-point mark + wordmark with the green dot.
   $("logo_bar").innerHTML = `<svg class="rl_logo_icon" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span id="logo_txt">receive<span class="logo_dot">.</span><span class="logo_tld">link</span></span>`;
   $("logo_bar").addEventListener("click", () => (location.href = "/"));
