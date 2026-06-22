@@ -391,7 +391,7 @@ export function inputPrompt<K extends string>(
     const actions = document.createElement("div");
     actions.className = "pub_key_actions";
     const confirm = document.createElement("span");
-    confirm.className = "confirm_pub_key no_select";
+    confirm.className = "confirm_pub_key confirm_cta no_select";
     confirm.innerHTML = `${SVG.check.replace("<svg", '<svg class="confirm_icon"')} <span>Confirm</span>`;
     const submit = () => {
       const out: Record<string, string> = {};
