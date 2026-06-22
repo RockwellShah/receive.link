@@ -78,7 +78,7 @@ async function setupMode(): Promise<void> {
   ], { speed: 12 });
   await appMsg([
     { t: "Where should we send notifications?", b: true },
-    " We'll email you when files arrive. Senders never see your address, and we never store it. It's encrypted into your link.",
+    " We'll email you when files arrive. Senders never see your address, and we never store it.",
   ]);
   const { email, label } = await inputPrompt(
     [
