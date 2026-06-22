@@ -45,6 +45,14 @@ function humanError(e: unknown): string {
   return m;
 }
 
+// True when a passkey assertion failed because no usable passkey was found (deleted, cancelled, or
+// none enrolled on this device). Mirrors the passkey branches of humanError, plus the DOMException name.
+function isPasskeyError(e: unknown): boolean {
+  if ((e as { name?: string } | null)?.name === "NotAllowedError") return true;
+  const m = e instanceof Error ? e.message : String(e);
+  return /not allowed|timed out|NotAllowed|AbortError|cancel|no PRF|passkey|assertion/i.test(m);
+}
+
 async function requireConfig(): Promise<boolean> {
   if (isConfigured(cfg)) return true;
   await appMsg([{ t: "This build isn't configured yet.", b: true }, " Run gen-keys and fill web/src/config.ts with the server's public keys."], ERR);
@@ -88,10 +96,18 @@ async function setupMode(): Promise<void> {
     (v) => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email) ? null : "Enter an email address like you@example.com."),
   );
   if (!(await requireConfig())) return;
-  // New visitors have no passkey to "use" yet, so create one on this browser's first setup,
-  // then derive the identity from it; after that we reuse it. (Opening a download link always
-  // uses the existing passkey and never enrolls, so received files stay tied to one key.)
-  const firstPasskey = !localStorage.getItem("rl_passkey");
+  await runSetup(email, label);
+}
+
+// Acquire the passkey-derived identity and register the link. Split out of setupMode so a deleted
+// passkey can self-heal: if a "use your passkey" assertion fails because the pinned passkey was
+// removed from this device, we offer to enroll a fresh one instead of dead-ending on the browser's
+// "scan a QR / use a security key" dialog (which a get() can never turn into a create).
+async function runSetup(email: string, label: string, forceEnroll = false): Promise<void> {
+  // First setup on this browser (and "Create a new passkey" below) has no passkey to "use" yet, so
+  // enroll one, then derive the identity from it; after that we reuse it. (Opening a download link
+  // always uses the existing passkey and never enrolls, so received files stay tied to one key.)
+  const firstPasskey = forceEnroll || !localStorage.getItem("rl_passkey");
   if (firstPasskey) {
     await appMsg(["Now create your passkey. It's the key that unlocks your files, kept on this device (Face ID, a fingerprint, or a security key). No password, no account."]);
   }
@@ -119,7 +135,29 @@ async function setupMode(): Promise<void> {
     await appMsg([{ t: "Check your email.", b: true }, ` We sent a confirmation link to ${email}. Click it to finish and get your link. You can close this tab.`]);
   } catch (e) {
     st.fail();
-    await appMsg([humanError(e)], ERR);
+    // We were USING an existing passkey and the assertion failed: it was likely deleted from this
+    // device. Forget the stale pin and let the user enroll a fresh passkey, rather than getting
+    // stuck on the browser's passkey dialog with no way forward.
+    if (!firstPasskey && isPasskeyError(e)) {
+      const host = await appMsg([
+        { t: "Couldn't find your passkey on this device.", b: true },
+        " If you removed it, create a new one to keep going. A new passkey is a fresh identity, so links you made with the old one won't open.",
+      ], ERR);
+      actionRow(host, [
+        { label: "Try again", onClick: () => void runSetup(email, label) },
+        {
+          label: "Create a new passkey",
+          muted: true,
+          onClick: () => {
+            try { localStorage.removeItem("rl_passkey"); localStorage.removeItem("rl_cred"); } catch { /* private mode */ }
+            void runSetup(email, label, true);
+          },
+        },
+      ]);
+      return;
+    }
+    const host = await appMsg([humanError(e)], ERR);
+    actionRow(host, [{ label: "Try again", muted: true, onClick: () => void runSetup(email, label) }]);
   }
 }
 
