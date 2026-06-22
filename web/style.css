@@ -57,7 +57,8 @@ body{margin:0;}
 .confirm_pub_key, .edit_pub_key, .copy_button{cursor:pointer;color:var(--fk-link);font-weight: 500;display:flex;align-items:center;line-height:1;}
 /* Email Confirm = filled green pill (primary CTA), matching the drop-zone primary button. Ink on
    green so it stays legible in both themes; double-class beats the shared text-link + dark rules. */
-.confirm_pub_key.confirm_cta{background:#23A267;color:#08160e;font-weight:600;padding:11px 22px;border-radius:999px;transition:transform .16s cubic-bezier(.4,0,.2,1),filter .16s;}
+.confirm_pub_key.confirm_cta{background:#23A267;color:#08160e;font-size:15px;font-weight:600;padding:11px 18px;border-radius:10px;transition:transform .16s cubic-bezier(.4,0,.2,1),filter .16s;}
+.confirm_pub_key.confirm_cta .confirm_icon{width:16px;height:16px;padding:0;}
 .confirm_pub_key.confirm_cta:hover{color:#08160e;transform:translateY(-1px);filter:brightness(1.06);}
 .confirm_pub_key.confirm_cta:active{transform:scale(.97);}
 html[data-theme="dark"] .confirm_pub_key.confirm_cta,
