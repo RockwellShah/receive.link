@@ -405,5 +405,19 @@ AAD     = file_header || sender_pk || hpke_enc</div>
 <script>
 (function(){var b=document.getElementById('theme-btn');if(!b)return;var mq=matchMedia('(prefers-color-scheme: dark)');function mode(){try{return localStorage.getItem('filekey-theme')||'auto'}catch(e){return 'auto'}}function apply(m){var dark=m==='dark'||(m==='auto'&&mq.matches);if(dark)document.documentElement.setAttribute('data-theme','dark');else document.documentElement.removeAttribute('data-theme');var mt=document.querySelector('meta[name="theme-color"]');if(mt)mt.content=dark?'#0c0c0e':'#ffffff';b.setAttribute('data-mode',m);b.setAttribute('aria-label','Theme: '+m+'. Click to change.');}apply(mode());b.addEventListener('click',function(){var o=['light','dark','auto'],n=o[(o.indexOf(mode())+1)%3];try{localStorage.setItem('filekey-theme',n)}catch(e){}apply(n);});mq.addEventListener('change',function(){if(mode()==='auto')apply('auto');});})();
 </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type":"Question","name":"Do I need an account?","acceptedAnswer":{"@type":"Answer","text":"No. You create a link with your passkey, and the people sending you files just open the link in their browser. No app and no sign-up, on either side."}},
+    {"@type":"Question","name":"What's a passkey?","acceptedAnswer":{"@type":"Answer","text":"It's the same thing your phone or laptop already uses for Face ID, a fingerprint, or your screen lock. receive.link uses it to create an encryption key that never leaves your control. There's nothing new to invent or remember."}},
+    {"@type":"Question","name":"What if I lose my passkey?","acceptedAnswer":{"@type":"Answer","text":"Passkeys are looked after by your device and usually synced across them, through iCloud Keychain, Google Password Manager, and the like, so they follow you to a new phone or laptop. As long as you can sign in with your passkey, you can open your files. Keep it as safe as you'd keep the keys to a mailbox."}},
+    {"@type":"Question","name":"How is this different from email or Dropbox?","acceptedAnswer":{"@type":"Answer","text":"Those services can read what you send through them. receive.link can't. Files are locked on the sender's device before they ever reach us, and we only ever hold the locked version."}},
+    {"@type":"Question","name":"Can you read my files?","acceptedAnswer":{"@type":"Answer","text":"No. We never have the key. The most we can see is the size of a locked file and when it was sent, the same way the post office can see a sealed envelope's size without opening it."}},
+    {"@type":"Question","name":"How do you email me if you don't store my address?","acceptedAnswer":{"@type":"Answer","text":"Your address is sealed inside your link when you create it, encrypted so that only our server can briefly open it. When a file arrives, we unseal it just long enough to send you that one notification, then drop it. It's never written to a database, so there's nothing stored to lose or leak."}}
+  ]
+}
+</script>
 </body>
 </html>
