@@ -95,16 +95,13 @@ html[data-theme="dark"] .chip.open{color:#06140c}
 .tpoint h3{margin:0 0 2px;font-size:16.5px;font-weight:650;letter-spacing:-.01em}
 .tpoint p{margin:0;font-size:15px;color:var(--muted);line-height:1.5}
 
-/* under the hood */
-.hood{border:1px dashed var(--line);border-radius:18px;padding:30px 28px;background:var(--bg)}
-.hood .tag{display:inline-block;font-size:12.5px;font-weight:600;color:var(--faint);
-  border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin-bottom:18px}
-.hrow{padding:16px 0;border-top:1px solid var(--line)}
-.hrow:first-of-type{border-top:0;padding-top:4px}
-.hrow h4{margin:0 0 4px;font-size:16.5px;font-weight:650}
-.hrow p{margin:0;color:var(--muted);font-size:15.5px}
-.hrow code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
-  background:var(--bg-soft);padding:1px 6px;border-radius:6px;color:var(--ink)}
+/* round-trip steps (inside the spec section) */
+.rt{margin:8px 0 0;padding:0;list-style:none;counter-reset:rt}
+.rt li{position:relative;padding:0 0 16px 38px;color:var(--muted);font-size:15px;line-height:1.55;counter-increment:rt}
+.rt li:last-child{padding-bottom:0}
+.rt li::before{content:counter(rt);position:absolute;left:0;top:-1px;width:25px;height:25px;border-radius:50%;background:var(--green-soft);color:var(--green);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+.rt li:not(:last-child)::after{content:"";position:absolute;left:12px;top:26px;bottom:2px;width:1px;background:var(--line)}
+.rt li b{color:var(--ink);font-weight:650}
 
 /* faq */
 .faq details{border-bottom:1px solid var(--line);padding:4px 0}
@@ -261,20 +258,22 @@ footer a{color:var(--muted)}
 
   <section>
     <div class="wrap">
-      <div class="hood">
-        <span class="tag">Under the hood, for the curious</span>
-        <div class="hrow"><h4>Your keys come from your passkey</h4><p>When you make a link, your passkey derives a private and public key pair using the WebAuthn <code>PRF</code> extension. The private key never leaves your control. Only the public half goes into your link.</p></div>
-        <div class="hrow"><h4>Senders encrypt to your public key</h4><p>The sender's browser uses <code>HPKE</code> (RFC 9180) to lock the file to your public key, then <code>AES-256-GCM</code> to encrypt the contents and the metadata, including the filename, type, and size. Every chunk is authenticated, so tampering is detected.</p></div>
-        <div class="hrow"><h4>The relay just routes</h4><p>Encrypted bytes land in Cloudflare R2 and are deleted on a 7-day lifecycle. Our worker checks your link's signature, forwards the locked file, and emails you. It never holds a key or a plaintext byte.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap">
       <details class="spec">
         <summary><span><span class="spec-k">For cryptographers.</span> The whole construction, down to the bytes.</span><svg class="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></summary>
         <div class="spec-body">
+          <div class="spec-grp">
+            <h4>The full round-trip</h4>
+            <ol class="rt">
+              <li><b>Setup.</b> You enter an email and create a passkey. Your browser derives your identity keypair from it (PRF → HKDF → P-256), seals your email to the server's public key with HPKE, and registers <code>{sealed_email, share_key, label}</code> with the worker. Your private key is never sent.</li>
+              <li><b>Confirm.</b> The worker unseals your email, holds the unsigned link in KV for an hour, and emails you a one-time confirmation link. You click it; the worker signs the link with <code>ECDSA P-256</code> and hands back your permanent share link.</li>
+              <li><b>Share.</b> You post the link anywhere. It carries your public key, your sealed email, and the server's signature. There is no secret inside it, so it is safe to make public.</li>
+              <li><b>Send.</b> A sender opens your link and drops a file. Their browser mints a throwaway identity, runs <code>HPKE Auth</code> to your public key, and AES-256-GCM-encrypts the file and its metadata in 64 KiB authenticated chunks. Encryption completes before any upload starts.</li>
+              <li><b>Upload.</b> The worker verifies your link's signature and returns a presigned R2 URL (several, for multipart on large files). The sender's browser PUTs the ciphertext straight to R2 through it; the worker only signs URLs and verifies links, never handling the bytes. A Durable Object enforces exactly-once delivery.</li>
+              <li><b>Notify.</b> The worker unseals your email from the link, in memory only, sends you a delivery link to <code>/d/&lt;id&gt;</code>, then forgets the address. The link and the stored ciphertext both expire in 7 days.</li>
+              <li><b>Receive.</b> You open the delivery link. Your browser re-derives your identity from your passkey, fetches the ciphertext, and runs <code>HPKE SetupAuthR</code> + AES-256-GCM to verify and decrypt each chunk straight to disk. Only your passkey can complete this step.</li>
+              <li><b>Clean up.</b> The R2 object auto-deletes on its 7-day lifecycle. You can disable the link at any time; the worker flags it in KV and refuses further uploads.</li>
+            </ol>
+          </div>
           <div class="spec-grp">
             <h4>Identity</h4>
             <p>Your keys are derived deterministically from your passkey, on your device, through the WebAuthn <code>PRF</code> extension. None of it ever reaches our servers; your passkey itself syncs only through your platform's encrypted keychain, never through us.</p>
