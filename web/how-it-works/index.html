@@ -81,8 +81,6 @@ html[data-theme="dark"] .chip.open{color:#06140c}
 .chip svg{width:13px;height:13px}
 .arrow{display:flex;align-items:center;justify-content:center;color:var(--faint);width:46px}
 .arrow svg{width:24px;height:24px}
-.flow-note{margin:22px auto 0;max-width:560px;text-align:center;font-size:15px;color:var(--muted)}
-.flow-note b{color:var(--ink);font-weight:600}
 
 /* trust */
 .trust{background:var(--bg-soft);border-radius:24px;padding:40px 8px}
@@ -178,7 +176,7 @@ footer a{color:var(--muted)}
     <div class="wrap">
       <p class="eyebrow">The short version</p>
       <h2>Three steps</h2>
-      <p class="sub">No accounts, no software to install, on either side.</p>
+      <p class="sub">No accounts, no tracking, no software to install.</p>
       <div class="steps">
         <div class="step">
           <div class="num">1</div>
@@ -215,7 +213,7 @@ footer a{color:var(--muted)}
       <p class="sub">The only place it is ever readable is the sender's screen and yours.</p>
       <div class="flow">
         <div class="stage">
-          <svg class="glyph" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="9" width="36" height="30" rx="3"/><path d="M6 17h36"/><circle cx="10.5" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1" fill="currentColor" stroke="none"/><rect x="20" y="23" width="8" height="7" rx="1.5"/><path d="M21.5 23v-1.5a2.5 2.5 0 0 1 5 0V23"/></svg>
+          <svg class="glyph" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="9" width="36" height="30" rx="3"/><path d="M6 17h36"/><circle cx="10.5" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1" fill="currentColor" stroke="none"/><rect x="20" y="26" width="8" height="7" rx="1.5"/><path d="M21.5 26v-1.5a2.5 2.5 0 0 1 5 0V26"/></svg>
           <h4>Sender's browser</h4>
           <p>The file is encrypted here, on their device, before it uploads.</p>
           <span class="chip locked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Locked</span>
@@ -229,13 +227,12 @@ footer a{color:var(--muted)}
         </div>
         <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m14 6 6 6-6 6"/></svg></div>
         <div class="stage">
-          <svg class="glyph" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="5" width="20" height="38" rx="4"/><path d="M21 39h6"/><rect x="19" y="20" width="10" height="8" rx="1.5"/><path d="M21 20v-1.5a3 3 0 0 1 6 0V20"/></svg>
+          <svg class="glyph" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="5" width="20" height="38" rx="4"/><path d="M21 39h6"/><rect x="19" y="20" width="10" height="8" rx="1.5"/><path d="M21 20V15a3.5 3.5 0 0 1 6.5-1.5"/></svg>
           <h4>Your device</h4>
           <p>Your passkey unlocks it here, and only here. The file is finally readable.</p>
           <span class="chip open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-1.5"/></svg>Unlocked</span>
         </div>
       </div>
-      <p class="flow-note">In the middle, all we have is a sealed box. <b>We can't see what's inside, or even the file's name.</b></p>
     </div>
   </section>
 
@@ -318,7 +315,7 @@ AAD     = file_header || sender_pk || hpke_enc</div>
           </div>
           <div class="spec-grp">
             <h4>Verify it yourself</h4>
-            <p>The wire format is a published, versioned spec with known-answer test vectors, and the browser client and worker are both open source, so you can check every claim here for yourself. The repository link goes up the day we publish.</p>
+            <p>The exact byte format of an encrypted file is written down in a versioned spec, with test vectors so anyone can confirm their own implementation produces identical bytes. The browser client and the worker are open source, so you can check every claim here for yourself.</p>
           </div>
         </div>
       </details>
