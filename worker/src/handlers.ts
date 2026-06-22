@@ -683,7 +683,10 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
     const outcome = await guard.finish(claim.token);
-    if (outcome === "won") await acct.commit(hold.token, finalId, paidAtRestCap(env) > 0); // accrue total; track pending only when the at-rest cap is on
+    // Accrue total always; track per-file pending only when the at-rest cap is BOTH configured AND billing
+    // is on — i.e. only when downloads actually run through charge() to clear it. (Setting the cap without
+    // billing would otherwise let pending drift up with no downloads to decrement it.)
+    if (outcome === "won") await acct.commit(hold.token, finalId, billingEnabled(env) && paidAtRestCap(env) > 0);
     else { logEvent("delivery_duplicate", { link: linkIdHex }); await acct.release(hold.token); }
     logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {
