@@ -6,7 +6,7 @@
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
 import { confirm, fetchChallenge, fetchProve, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
-import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2 } from "../worker/src/testing";
+import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2, MemoryReceiver } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
 const ROOT = `${import.meta.dir}/`;
@@ -28,13 +28,16 @@ const kv = new MemoryKV();
 const r2 = new MemoryR2();
 const mail = new CapturingEmail();
 const completion = new MemoryCompletion();
+const receiver = new MemoryReceiver();
 const env: Env = {
   EMAIL: mail,
   DROP_BUCKET: r2 as unknown as R2Bucket,
   DROP_KV: kv as unknown as KVNamespace,
   COMPLETION: completion as unknown as Env["COMPLETION"],
+  RECEIVER: receiver as unknown as Env["RECEIVER"],
   SERVER_KEM_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", kem.privateKey)),
   SERVER_SIGN_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.privateKey)),
+  RECEIVER_ID_SECRET: "dev-receiver-id-secret",
   SERVER_SIGN_PUBLIC_JWK: JSON.stringify(signPubJwk),
   ALLOWED_ORIGIN: ORIGIN,
   MAIL_FROM: "files@drop.localhost",

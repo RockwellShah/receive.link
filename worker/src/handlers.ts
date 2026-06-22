@@ -571,6 +571,18 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
     reservation = { acct, token: hold.token };
 
+    // Decode the receiver's share key to a raw pubkey for the download gate, BEFORE the byte budgets — a
+    // malformed key (the only structural way this fails) then rejects without burning daily budget. The
+    // Worker only holds the signed link during completion, so this is the one place to do it. The
+    // fetchbind WRITE itself happens just before the email (below).
+    let recipientPk: Uint8Array;
+    try {
+      recipientPk = recipientPkFromShareKeyBytes(link.shareKey);
+    } catch {
+      await deleteObject(env, finalId);
+      return json({ error: "invalid link" }, 400, origin);
+    }
+
     // Byte budgets on the ACTUAL object size, after the recipient reservation (released by the finally
     // if a budget rejects here). Per-link + per-IP daily caps keep a multi-TB per-file cap from
     // becoming petabytes/day.
@@ -588,18 +600,10 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "rate limited" }, 429, origin);
     }
 
-    // Bind the delivered object to the receiver's key so the download gate can prove possession later
-    // (it seals a challenge to this key). Decode the share key ONCE here — the Worker only holds the
-    // signed link during completion — and store the raw pubkey + size keyed by finalId. FAIL-CLOSED: if
-    // the decode or the write fails, do NOT deliver, or the receiver gets a link the gate can't
-    // authenticate. No linkId/email stored alongside (correlation hygiene); never logged.
-    let recipientPk: Uint8Array;
-    try {
-      recipientPk = recipientPkFromShareKeyBytes(link.shareKey);
-    } catch {
-      await deleteObject(env, finalId);
-      return json({ error: "invalid link" }, 400, origin);
-    }
+    // Bind the delivered object to the receiver's (already-decoded) key so the download gate can prove
+    // possession later: store the raw pubkey + size keyed by finalId. FAIL-CLOSED: if the write fails, do
+    // NOT deliver, or the receiver gets a link the gate can't authenticate. No linkId/email stored
+    // alongside (correlation hygiene); never logged.
     try {
       await env.DROP_KV.put(
         `fetchbind:${finalId}`,
@@ -619,7 +623,8 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       await sendDownloadEmail(env, email, `${linkOrigin(env)}/d/${finalId}`, link.label, manageUrl);
     } catch {
       logEvent("delivery_failed", { link: linkIdHex });
-      await deleteObject(env, finalId); // no orphaned final; the client can retry
+      await deleteObject(env, finalId); // no orphaned final; the client can retry (a fresh finalId)
+      await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {}); // and no orphaned binding for it
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
     // The email is OUT — from here we must never release the completion lock (that would let a retry

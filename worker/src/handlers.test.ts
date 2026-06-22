@@ -538,4 +538,5 @@ test("upload-complete fails closed (no delivery) when the share key can't be dec
   const before = h.email.sent.length;
   expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(400); // decode failed -> no delivery
   expect(h.email.sent.length).toBe(before); // no delivery email
+  expect([...h.kv.store.keys()].some((k) => k.startsWith("rlb:up:bytes:"))).toBe(false); // decode (now pre-budget) didn't burn budget
 });
