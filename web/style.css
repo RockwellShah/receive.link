@@ -32,7 +32,7 @@ body{margin:0;}
 
 
 .std_msg{border-radius:10px;margin:0;color:#000;width:100%;}
-.std_msg strong{color:#23A267;} /* bold lead-in pops in brand green; brighter in dark (see dark block) */
+.std_msg strong{color:#15803d;} /* bold lead-in: deep green for contrast on white; brighter in dark (see dark block) */
 .std_status{margin:0;color:#00000080;font-variant-numeric:tabular-nums;}
 .std_uploaded, .std_download{border:1px solid #0000001a;padding:16px;border-radius:10px;margin:0;color:#000;display: flex;flex-direction: row;overflow:hidden;}
 
