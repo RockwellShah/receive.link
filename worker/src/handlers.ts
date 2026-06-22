@@ -683,7 +683,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
     const outcome = await guard.finish(claim.token);
-    if (outcome === "won") await acct.commit(hold.token, finalId); // accrue total + record finalId as pending-at-rest
+    if (outcome === "won") await acct.commit(hold.token, finalId, paidAtRestCap(env) > 0); // accrue total; track pending only when the at-rest cap is on
     else { logEvent("delivery_duplicate", { link: linkIdHex }); await acct.release(hold.token); }
     logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {

@@ -557,7 +557,7 @@ async function download(h: TestHarness, finalId: string): Promise<Response> {
 }
 
 test("billing: a download charges the file size once; a re-download does not double-charge", async () => {
-  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000" });
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000", PAID_ATREST_CAP_BYTES: "1000000" }); // cap on -> pending tracked
   const finalId = await deliver(h, await setupLink(h), 200);
   const acct = await defaultAccount(h);
   expect((await acct.summary(1000)).pending).toBe(200); // delivered, not yet downloaded
@@ -632,7 +632,7 @@ test("receiver DO: caps are tier-aware (free gates on total, paid gates on at-re
   const acct = recv.get(recv.idFromName("rid-tier"));
   const h1 = await acct.reserve(200, 300, 1000); // free tier: freeCap=300, paidCap=1000
   expect(h1.ok).toBe(true);
-  if (h1.ok) await acct.commit(h1.token, "file-tier"); // total=200, pending=200
+  if (h1.ok) await acct.commit(h1.token, "file-tier", true); // total=200, pending=200
   expect((await acct.reserve(200, 300, 1000)).ok).toBe(false); // free: total 200 + 200 > 300
   await acct.credit(500, 0); // flip to paid (and add credit)
   const h2 = await acct.reserve(200, 300, 1000); // paid now gates on pending (200) vs 1000, not total vs 300
@@ -644,7 +644,7 @@ test("receiver DO: pending rises on delivery and falls once on the first paid do
   const acct = recv.get(recv.idFromName("rid-pending"));
   const h1 = await acct.reserve(500, 0, 0); // uncapped
   expect(h1.ok).toBe(true);
-  if (h1.ok) await acct.commit(h1.token, "file-1"); // deliver file-1 (pending 500)
+  if (h1.ok) await acct.commit(h1.token, "file-1", true); // deliver file-1 (pending 500)
   expect((await acct.summary(1000)).pending).toBe(500);
   const r = await acct.charge("file-1", 500, 1000);
   expect(r.ok && !r.alreadyPaid).toBe(true);

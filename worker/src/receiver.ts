@@ -154,21 +154,29 @@ export class ReceiverAccount extends DurableObject {
   }
 
   /** Commit a held reservation into the permanent meters — only the exactly-once delivery winner calls
-   *  this. Accrues lifetime `total` and records the delivered file in `pendingf` (at-rest, removed on its
-   *  first download or dropped at expiry). All mutated keys are written in one atomic put. Idempotent: a
-   *  token already committed/released, or expired (pathological >TTL stall, dropped without charging — a
-   *  safe under-count, never over), is a no-op. */
-  async commit(token: string, finalId: string): Promise<void> {
+   *  this. Always accrues lifetime `total`. Records the delivered file in `pendingf` (at-rest, removed on
+   *  its first download or dropped at expiry) ONLY when `accruePending` is set — i.e. when the paid at-rest
+   *  cap is active. While that cap is off (Phase 2a's default), `pendingf` isn't touched, so the delivery
+   *  hot path stays as cheap and bounded as Phase 1 (no growing-map write that could hit the 128 KB DO
+   *  value limit). NOTE for 2b: before enabling the paid cap at scale, move `pendingf`/`paid` from a single
+   *  JSON value to per-file DO keys (storage.list) — a 100 GB cap implies far more entries than one value
+   *  holds. All mutated keys are written in one atomic put. Idempotent: a token already committed/released,
+   *  or expired (pathological >TTL stall, dropped without charging — a safe under-count), is a no-op. */
+  async commit(token: string, finalId: string, accruePending: boolean): Promise<void> {
     const now = Date.now();
     const res = await this.holds();
     const r = res[token];
     if (!r) return; // already committed/released, or pruned by the alarm
     delete res[token];
     if (r.expiresAt > now) {
-      const pf = await this.pendingFiles();
-      this.prunePending(pf, now);
-      pf[finalId] = { bytes: r.bytes, expiresAt: now + FILE_TTL_MS };
-      await this.ctx.storage.put({ total: (await this.committed()) + r.bytes, pendingf: pf, res });
+      const writes: Record<string, unknown> = { total: (await this.committed()) + r.bytes, res };
+      if (accruePending) {
+        const pf = await this.pendingFiles();
+        this.prunePending(pf, now);
+        pf[finalId] = { bytes: r.bytes, expiresAt: now + FILE_TTL_MS };
+        writes.pendingf = pf;
+      }
+      await this.ctx.storage.put(writes);
     } else {
       await this.ctx.storage.put("res", res);
     }

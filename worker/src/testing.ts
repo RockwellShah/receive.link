@@ -211,12 +211,12 @@ export class MemoryReceiver {
         held().set(token, add);
         return { ok: true, token };
       },
-      async commit(token: string, finalId: string): Promise<void> {
+      async commit(token: string, finalId: string, accruePending: boolean): Promise<void> {
         const b = held().get(token);
         if (b === undefined) return;
         held().delete(token);
         totals.set(name, (totals.get(name) ?? 0) + b);
-        pend().set(finalId, b); // delivered, un-downloaded
+        if (accruePending) pend().set(finalId, b); // delivered, un-downloaded (only tracked when the cap is on)
       },
       async release(token: string): Promise<void> {
         held().delete(token);
