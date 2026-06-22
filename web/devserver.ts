@@ -5,7 +5,7 @@
 // mail at /__mail so you can click the confirm + download links. Run: bun run web/devserver.ts
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
-import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
+import { confirm, fetchChallenge, fetchProve, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
 import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2 } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
@@ -49,10 +49,15 @@ const env: Env = {
   MULTIPART_MIN_PART: String(256 * 1024),
 };
 
-// Rewrite a handler's presigned-R2 URL to the local /__r2 stand-in.
-async function localizeUrl(res: Response, field: "uploadUrl" | "url", objectId: string): Promise<Response> {
+// Rewrite a handler's presigned-R2 URL to the local /__r2 stand-in (the objectId is the last path
+// segment of the real presigned URL, so callers that don't know it — e.g. /fetch/prove — still work).
+async function localizeUrl(res: Response, field: "uploadUrl" | "url"): Promise<Response> {
   const body = (await res.json()) as Record<string, unknown>;
-  if (body[field]) body[field] = `${ORIGIN}/__r2/${objectId}`;
+  const orig = body[field];
+  if (typeof orig === "string") {
+    const objectId = new URL(orig).pathname.split("/").pop() ?? "";
+    body[field] = `${ORIGIN}/__r2/${objectId}`;
+  }
   return Response.json(body, { status: res.status });
 }
 
@@ -91,10 +96,8 @@ async function handleApi(req: Request, sub: string): Promise<Response> {
   }
   if (req.method === "POST" && sub === "/upload-complete") return uploadComplete(req, env);
   if (req.method === "POST" && sub === "/upload-abort") return uploadAbort(req, env);
-  if (req.method === "GET" && sub.startsWith("/fetch/")) {
-    const id = sub.slice("/fetch/".length);
-    return localizeUrl(await fetchObject(req, env, id), "url", id);
-  }
+  if (req.method === "POST" && sub === "/fetch/challenge") return fetchChallenge(req, env);
+  if (req.method === "POST" && sub === "/fetch/prove") return localizeUrl(await fetchProve(req, env), "url");
   return new Response("not found", { status: 404 });
 }
 

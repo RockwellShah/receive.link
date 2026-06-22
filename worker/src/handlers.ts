@@ -20,10 +20,11 @@ import {
   splitSignature,
   type DropLink,
 } from "../../shared/codec";
-import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeSealTo, importKemPrivateKey, importKemPublicKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
+import { recipientPkFromShareKeyBytes } from "../../shared/sharekey";
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
 import { clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
-import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
+import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes } from "./kv";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import type { Env } from "./types";
 import { hex, hmacSha256hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
@@ -34,12 +35,20 @@ export const REG_IP_PER_DAY = 20; // confirmation emails one IP can trigger
 export const REG_EMAIL_PER_DAY = 5; // confirmation emails one address can receive (anti-bombing)
 export const UPLOAD_LINK_PER_DAY = 25; // files one Drop link accepts (anti-flood of the inbox)
 export const UPLOAD_IP_PER_DAY = 100; // files one IP can push across all links
+export const FETCH_IP_PER_DAY = 1000; // download-gate challenge + prove calls one IP can make per day
 export const REVOKE_IP_PER_DAY = 60; // revoke calls one IP can make (tokens are unguessable; this just caps probing)
 const UPLOAD_BYTES_LINK_FACTOR = 5; // per-link daily byte budget defaults to 5x the per-file cap
 const UPLOAD_BYTES_IP_FACTOR = 10; // per-IP daily byte budget defaults to 10x the per-file cap
 const DEFAULT_SIGN_KEY_ID = 1; // key id stamped into links when SERVER_SIGN_KEY_ID is unset
 const CONFIRM_TTL_SEC = HOUR; // pending registration lifetime
-const PRESIGN_TTL_SEC = HOUR; // presigned PUT/GET lifetime
+const PRESIGN_TTL_SEC = HOUR; // presigned upload PUT lifetime
+// Download gate (passkey-proof at /fetch). The download URL is short-lived + distinct from the 1h upload
+// presign; the binding outlives the 7-day R2 object lifecycle; the challenge is single-use within its window.
+const FETCH_URL_TTL_SEC = 5 * MINUTE; // post-proof presigned GET
+const FETCHBIND_TTL_SEC = 8 * DAY; // finalId -> { receiver pubkey, size }
+const CHALLENGE_TTL_SEC = 5 * MINUTE; // sealed-nonce challenge
+const FETCH_NONCE_BYTES = 32;
+const CHALLENGE_ID_BYTES = 16;
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 const OBJECT_ID_BYTES = 16;
 const REVOKE_TOKEN_BYTES = 16; // receiver-only secret that maps to a link_id for revocation
@@ -579,6 +588,30 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "rate limited" }, 429, origin);
     }
 
+    // Bind the delivered object to the receiver's key so the download gate can prove possession later
+    // (it seals a challenge to this key). Decode the share key ONCE here — the Worker only holds the
+    // signed link during completion — and store the raw pubkey + size keyed by finalId. FAIL-CLOSED: if
+    // the decode or the write fails, do NOT deliver, or the receiver gets a link the gate can't
+    // authenticate. No linkId/email stored alongside (correlation hygiene); never logged.
+    let recipientPk: Uint8Array;
+    try {
+      recipientPk = recipientPkFromShareKeyBytes(link.shareKey);
+    } catch {
+      await deleteObject(env, finalId);
+      return json({ error: "invalid link" }, 400, origin);
+    }
+    try {
+      await env.DROP_KV.put(
+        `fetchbind:${finalId}`,
+        JSON.stringify({ pk: base64urlEncode(recipientPk), size: finalInfo.size }),
+        { expirationTtl: FETCHBIND_TTL_SEC },
+      );
+    } catch {
+      logEvent("fetchbind_failed", { link: linkIdHex });
+      await deleteObject(env, finalId);
+      return json({ error: "delivery failed, try again" }, 502, origin);
+    }
+
     // Carry the receiver's manage/revoke link in the delivery email (best-effort).
     const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
     const manageUrl = revokeToken ? `${linkOrigin(env)}/revoke#${revokeToken}` : undefined;
@@ -618,11 +651,79 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
   }
 }
 
-// GET /fetch/:id -> { url } (presigned R2 GET for the receiver's decrypt page)
-export async function fetchObject(req: Request, env: Env, objectId: string): Promise<Response> {
+// ---- Download gate (passkey-proof at /fetch) ---------------------------------------------------------
+// The relay never sees plaintext, so it can't tell WHO is downloading — which it must know to charge the
+// right account (Phase 2). So a download is gated by an HPKE challenge-response that proves the requester
+// holds the receiver's passkey, without revealing anything: the Worker seals a random nonce to the
+// receiver's bound share key (only their passkey unseals it) and hands out a short-lived download URL
+// only once they prove they recovered it. Two POSTs: /fetch/challenge then /fetch/prove.
+
+/** Constant-time equality for two equal-length hex strings (used to compare proofs). */
+function constantTimeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// POST /fetch/challenge { objectId } -> { challengeId, sealed }
+export async function fetchChallenge(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
-  if (!isHex(objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
-  if (!(await objectInfo(env, objectId))) return json({ error: "expired or not found" }, 404, origin);
-  const url = await presignGet(env, objectId, PRESIGN_TTL_SEC);
-  return json({ url, expiresInSec: PRESIGN_TTL_SEC }, 200, origin);
+  const body = await readJson<{ objectId: string }>(req);
+  if (!body || typeof body.objectId !== "string") return json({ error: "missing fields" }, 400, origin);
+  if (!isHex(body.objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
+  const ipHash = await sha256hex(clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `fetch:ip:${ipHash}`, envInt(env.FETCH_IP_PER_DAY, FETCH_IP_PER_DAY), DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
+  // Hard cutover: only a delivered object has a binding; anything else is unauthenticated -> 404.
+  const bindRaw = await env.DROP_KV.get(`fetchbind:${body.objectId}`);
+  if (!bindRaw) return json({ error: "expired or not found" }, 404, origin);
+  let bind: { pk: string; size: number };
+  try {
+    bind = JSON.parse(bindRaw) as { pk: string; size: number };
+  } catch {
+    return json({ error: "expired or not found" }, 404, origin);
+  }
+
+  // Seal a fresh nonce to the receiver's pubkey (base mode); only the passkey holder can unseal it.
+  const recipientPk = await importKemPublicKey(base64urlDecode(bind.pk));
+  const nonce = randomBytes(FETCH_NONCE_BYTES);
+  const sealed = await hpkeSealTo(recipientPk, nonce, FETCH_CHALLENGE_INFO);
+  const challengeId = hex(randomBytes(CHALLENGE_ID_BYTES));
+  const expectedProof = await fetchProofHex(challengeId, body.objectId, nonce);
+  await env.DROP_KV.put(
+    `challenge:${challengeId}`,
+    JSON.stringify({ objectId: body.objectId, proof: expectedProof }),
+    { expirationTtl: CHALLENGE_TTL_SEC },
+  );
+  return json({ challengeId, sealed: base64urlEncode(sealed) }, 200, origin);
+}
+
+// POST /fetch/prove { challengeId, proof } -> { url } (short-lived presigned GET for the BOUND object)
+export async function fetchProve(req: Request, env: Env): Promise<Response> {
+  const origin = corsOrigin(env, req);
+  const body = await readJson<{ challengeId: string; proof: string }>(req);
+  if (!body || typeof body.challengeId !== "string" || typeof body.proof !== "string") {
+    return json({ error: "missing fields" }, 400, origin);
+  }
+  if (!isHex(body.challengeId, CHALLENGE_ID_BYTES) || !isHex(body.proof, 32)) return json({ error: "bad proof" }, 400, origin);
+  const ipHash = await sha256hex(clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `prove:ip:${ipHash}`, envInt(env.FETCH_IP_PER_DAY, FETCH_IP_PER_DAY), DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
+  const stored = await env.DROP_KV.get(`challenge:${body.challengeId}`);
+  if (!stored) return json({ error: "challenge expired" }, 404, origin);
+  await env.DROP_KV.delete(`challenge:${body.challengeId}`); // best-effort single-use (KV get+delete isn't atomic)
+  let ch: { objectId: string; proof: string };
+  try {
+    ch = JSON.parse(stored) as { objectId: string; proof: string };
+  } catch {
+    return json({ error: "challenge expired" }, 404, origin);
+  }
+  if (!constantTimeEqualHex(body.proof, ch.proof)) return json({ error: "proof failed" }, 403, origin);
+  // Proof good: issue a short-lived presigned GET for the STORED objectId (re-check it still exists).
+  if (!(await objectInfo(env, ch.objectId))) return json({ error: "expired or not found" }, 404, origin);
+  const url = await presignGet(env, ch.objectId, FETCH_URL_TTL_SEC);
+  return json({ url, expiresInSec: FETCH_URL_TTL_SEC }, 200, origin);
 }

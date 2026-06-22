@@ -2,12 +2,15 @@
 // through the real codec + crypto against in-memory bindings.
 import { expect, test } from "bun:test";
 import { base64urlDecode, base64urlEncode } from "../../shared/codec";
-import { importKemPublicKey, sealEmail } from "../../shared/crypto";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, generateKemKeyPair, hpkeUnseal, importKemPublicKey, sealEmail, serializeKemPublicKey } from "../../shared/crypto";
 import { hex } from "../../shared/util";
+import { p256 } from "@noble/curves/nist.js";
+import { bech32m } from "@scure/base";
 import {
   REG_EMAIL_PER_DAY,
   confirm,
-  fetchObject,
+  fetchChallenge,
+  fetchProve,
   parseAndVerify,
   register,
   uploadComplete,
@@ -34,7 +37,16 @@ async function sealed(h: TestHarness, email: string): Promise<string> {
   return base64urlEncode(await sealEmail(await importKemPublicKey(h.kemPublicRaw), email));
 }
 
-const SHARE_KEY = base64urlEncode(new Uint8Array(38).fill(9));
+// A real receiver KEM keypair whose public key we encode as a valid Bech32m "fkey" share key, so the
+// Worker can decode it + seal a download-gate challenge to it; RECEIVER unseals those challenges below.
+// (The namespace tag is irrelevant to the gate decode — it only extracts the public point — so a
+// placeholder 4-zero tag is fine.)
+const RECEIVER = await generateKemKeyPair();
+function shareKeyFor(pkRaw: Uint8Array): string {
+  const payload = new Uint8Array([0x01, 0, 0, 0, 0, ...p256.Point.fromBytes(pkRaw).toBytes(true)]); // version || nsTag(4) || compressed(33)
+  return base64urlEncode(new TextEncoder().encode(bech32m.encode("fkey", bech32m.toWords(payload), 1023)));
+}
+const SHARE_KEY = shareKeyFor(await serializeKemPublicKey(RECEIVER.publicKey));
 
 /** Run register + confirm, returning the finished signed Drop link. */
 async function setupLink(h: TestHarness, email = "receiver@example.com", label = "Tax inbox"): Promise<string> {
@@ -447,20 +459,83 @@ test("register rejects a sealed value that isn't an email", async () => {
   expect(res.status).toBe(400);
 });
 
-test("fetch returns a presigned GET url for an existing object", async () => {
+// ---- Download gate (passkey-proof at /fetch) ----
+
+/** Deliver a file to the default RECEIVER via `link`; return the /d/<finalId> object id for gate tests. */
+async function deliver(h: TestHarness, link: string, size = 200): Promise<string> {
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(size));
+  await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env);
+  return h.email.sent.at(-1)!.text!.match(/\/d\/([0-9a-f]{32})/)![1]!;
+}
+
+/** Client half of the gate: challenge for `finalId`, unseal the nonce with `identity`, derive the proof
+ *  (over `objectIdForProof`, default the real one). */
+async function challengeAndProof(h: TestHarness, finalId: string, identity: typeof RECEIVER, objectIdForProof = finalId): Promise<{ challengeId: string; proof: string }> {
+  const { challengeId, sealed } = (await (await fetchChallenge(post("/fetch/challenge", { objectId: finalId }), h.env)).json()) as { challengeId: string; sealed: string };
+  const nonce = await hpkeUnseal(identity, base64urlDecode(sealed), FETCH_CHALLENGE_INFO);
+  return { challengeId, proof: await fetchProofHex(challengeId, objectIdForProof, nonce) };
+}
+
+test("download gate: the receiver proves possession and gets a short-lived URL (real HPKE round-trip)", async () => {
   const h = await makeTestEnv();
-  const objectId = "00112233445566778899aabbccddeeff";
-  h.r2.putRaw(objectId, fkeyCiphertext(64));
-  const res = await fetchObject(new Request(`https://api.drop.test/fetch/${objectId}`), h.env, objectId);
+  const finalId = await deliver(h, await setupLink(h));
+  const { challengeId, proof } = await challengeAndProof(h, finalId, RECEIVER);
+  const res = await fetchProve(post("/fetch/prove", { challengeId, proof }), h.env);
   expect(res.status).toBe(200);
-  const { url } = (await res.json()) as { url: string };
-  expect(url).toContain(objectId);
+  const { url, expiresInSec } = (await res.json()) as { url: string; expiresInSec: number };
+  expect(url).toContain(finalId);
   expect(url).toContain("X-Amz-Signature=");
+  expect(expiresInSec).toBeLessThanOrEqual(600); // short, not the 1h upload presign
 });
 
-test("fetch 404s a missing object and 400s a malformed id", async () => {
+test("download gate: a proof is single-use (replay after success is 404)", async () => {
   const h = await makeTestEnv();
-  const missing = "ab".repeat(16);
-  expect((await fetchObject(new Request(`https://api/fetch/${missing}`), h.env, missing)).status).toBe(404);
-  expect((await fetchObject(new Request("https://api/fetch/xyz"), h.env, "xyz")).status).toBe(400);
+  const finalId = await deliver(h, await setupLink(h));
+  const { challengeId, proof } = await challengeAndProof(h, finalId, RECEIVER);
+  expect((await fetchProve(post("/fetch/prove", { challengeId, proof }), h.env)).status).toBe(200);
+  expect((await fetchProve(post("/fetch/prove", { challengeId, proof }), h.env)).status).toBe(404); // consumed
+});
+
+test("download gate: a different passkey identity cannot unseal the challenge", async () => {
+  const h = await makeTestEnv();
+  const finalId = await deliver(h, await setupLink(h));
+  const wrong = await generateKemKeyPair();
+  const { sealed } = (await (await fetchChallenge(post("/fetch/challenge", { objectId: finalId }), h.env)).json()) as { sealed: string };
+  await expect(hpkeUnseal(wrong, base64urlDecode(sealed), FETCH_CHALLENGE_INFO)).rejects.toThrow();
+});
+
+test("download gate: a wrong proof is rejected (403) and consumes the challenge", async () => {
+  const h = await makeTestEnv();
+  const finalId = await deliver(h, await setupLink(h));
+  const { challengeId, proof } = await challengeAndProof(h, finalId, RECEIVER);
+  expect((await fetchProve(post("/fetch/prove", { challengeId, proof: "00".repeat(32) }), h.env)).status).toBe(403);
+  expect((await fetchProve(post("/fetch/prove", { challengeId, proof }), h.env)).status).toBe(404); // even the real proof now: consumed
+});
+
+test("download gate: a proof bound to a different object is rejected (403)", async () => {
+  const h = await makeTestEnv();
+  const link = await setupLink(h);
+  const finalA = await deliver(h, link);
+  const finalB = await deliver(h, link);
+  // Challenge for A but compute the proof over B's id -> won't match A's stored expected proof.
+  const { challengeId, proof } = await challengeAndProof(h, finalA, RECEIVER, finalB);
+  expect((await fetchProve(post("/fetch/prove", { challengeId, proof }), h.env)).status).toBe(403);
+});
+
+test("download gate: a challenge for an unbound object id is 404 (hard cutover, no open fetch)", async () => {
+  const h = await makeTestEnv();
+  expect((await fetchChallenge(post("/fetch/challenge", { objectId: "ab".repeat(16) }), h.env)).status).toBe(404);
+});
+
+test("upload-complete fails closed (no delivery) when the share key can't be decoded for the gate", async () => {
+  const h = await makeTestEnv();
+  const badShareKey = base64urlEncode(new Uint8Array(38).fill(9)); // not a valid Bech32m "fkey" string
+  await register(post("/register", { sealedEmail: await sealed(h, "r@example.com"), shareKey: badShareKey, label: "x" }), h.env);
+  const link = ((await (await confirm(post("/confirm", { nonce: nonceFrom(h.email.sent.at(-1)!.text!) }), h.env)).json()) as { link: string }).link;
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  const before = h.email.sent.length;
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(400); // decode failed -> no delivery
+  expect(h.email.sent.length).toBe(before); // no delivery email
 });

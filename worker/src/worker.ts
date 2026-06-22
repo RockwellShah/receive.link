@@ -12,9 +12,10 @@
 //   POST /upload-parts     re-presign a batch of multipart UploadPart URLs (browser uploads direct)
 //   POST /upload-complete  assemble (multipart), verify it's real FileKey ciphertext, email the receiver
 //   POST /upload-abort     cancel an in-progress multipart upload
-//   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
+//   POST /fetch/challenge  download gate: seal a nonce to the receiver's key (passkey-proof)
+//   POST /fetch/prove      verify the proof, return a short-lived presigned R2 GET
 
-import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
+import { confirm, fetchChallenge, fetchProve, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
 import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
 
@@ -51,13 +52,12 @@ export default {
         return uploadComplete(req, env);
       case "POST /upload-abort":
         return uploadAbort(req, env);
-      default: {
-        const fetchId = req.method === "GET" && url.pathname.startsWith("/fetch/")
-          ? url.pathname.slice("/fetch/".length)
-          : null;
-        if (fetchId !== null) return fetchObject(req, env, fetchId);
+      case "POST /fetch/challenge":
+        return fetchChallenge(req, env);
+      case "POST /fetch/prove":
+        return fetchProve(req, env);
+      default:
         return json({ error: "not found" }, 404, origin);
-      }
     }
   },
 } satisfies ExportedHandler<Env>;

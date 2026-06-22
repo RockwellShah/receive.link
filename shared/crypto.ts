@@ -16,6 +16,7 @@
 // the same two-model loop run on the FileKey v1.1 core.
 
 import { Aes256Gcm, CipherSuite, DhkemP256HkdfSha256, HkdfSha256 } from "@hpke/core";
+import { hex } from "./util";
 
 const suite = new CipherSuite({
   kem: new DhkemP256HkdfSha256(),
@@ -67,19 +68,39 @@ export function importKemPrivateKey(jwk: JsonWebKey): Promise<CryptoKey> {
   return suite.kem.importKey("jwk", jwk as JsonWebKey, false);
 }
 
-// HPKE `info` for domain separation: binds the sealed-email ciphertext to THIS
-// purpose, so it can never be replayed against another HPKE context that happens
-// to use the same server key. Must match on seal + unseal.
+// HPKE `info` for domain separation: binds a sealed ciphertext to THIS purpose, so it can never be
+// replayed against another HPKE context that happens to use the same key. Must match on seal + unseal.
 const EMAIL_SEAL_INFO = new TextEncoder().encode("FILEKEY-DROP/email-seal/v1");
+/** Domain label for the download-gate challenge (a nonce sealed base-mode to the receiver's share key). */
+export const FETCH_CHALLENGE_INFO = new TextEncoder().encode("FILEKEY-DROP/fetch-challenge/v1");
+const FETCH_PROOF_LABEL = new TextEncoder().encode("FILEKEY-DROP/fetch-proof/v1");
 
 /**
- * Seal `email` to the server KEM public key. Returns enc(65) || ct, where ct is
- * AES-256-GCM ciphertext + tag. Randomized: call once at setup, then the sealed
- * bytes are immutable inside the signed link (never re-seal a signed payload).
+ * Download-gate proof = SHA-256(label || challengeId-hex || objectId-hex || nonce), as hex. The Worker
+ * computes the expected value when it mints the challenge; the client computes the response after
+ * unsealing the nonce. Both derive it identically; the hex ids are fixed-length, so the transcript is
+ * unambiguous. The proof is bound to one object so it can't be replayed against another.
  */
-export async function sealEmail(serverKemPublicKey: CryptoKey, email: string): Promise<Uint8Array> {
-  const sender = await suite.createSenderContext({ recipientPublicKey: serverKemPublicKey, info: EMAIL_SEAL_INFO });
-  const ct = new Uint8Array(await sender.seal(new TextEncoder().encode(email)));
+export async function fetchProofHex(challengeIdHex: string, objectIdHex: string, nonce: Uint8Array): Promise<string> {
+  const cid = new TextEncoder().encode(challengeIdHex);
+  const oid = new TextEncoder().encode(objectIdHex);
+  const buf = new Uint8Array(FETCH_PROOF_LABEL.length + cid.length + oid.length + nonce.length);
+  let o = 0;
+  buf.set(FETCH_PROOF_LABEL, o); o += FETCH_PROOF_LABEL.length;
+  buf.set(cid, o); o += cid.length;
+  buf.set(oid, o); o += oid.length;
+  buf.set(nonce, o);
+  return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", buf)));
+}
+
+/**
+ * Base-mode HPKE: seal `data` to `recipientPublicKey` under domain-separating `info`. Returns
+ * enc(65) || ct (AES-256-GCM ciphertext + tag), randomized per call. Recover it with {@link hpkeUnseal}
+ * and the same info.
+ */
+export async function hpkeSealTo(recipientPublicKey: CryptoKey, data: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
+  const sender = await suite.createSenderContext({ recipientPublicKey, info });
+  const ct = new Uint8Array(await sender.seal(toArrayBuffer(data)));
   const enc = new Uint8Array(sender.enc);
   if (enc.length !== HPKE_ENC_LEN) throw new Error(`unexpected enc length ${enc.length}`);
   const out = new Uint8Array(enc.length + ct.length);
@@ -88,17 +109,30 @@ export async function sealEmail(serverKemPublicKey: CryptoKey, email: string): P
   return out;
 }
 
-/** Unseal enc(65) || ct produced by {@link sealEmail}. Throws on tamper/wrong key. */
-export async function unsealEmail(serverKemPrivateKey: CryptoKey, sealed: Uint8Array): Promise<string> {
-  if (sealed.length <= HPKE_ENC_LEN) throw new Error("sealed_email too short");
+/**
+ * Base-mode HPKE: unseal enc(65) || ct from {@link hpkeSealTo}. `recipientKey` may be a bare private key
+ * or a full key pair — a non-extractable identity keyPair works (@hpke uses the provided public key
+ * directly; see web/core/src/identity.ts). Throws on tamper / wrong key. Same `info` as the seal.
+ */
+export async function hpkeUnseal(recipientKey: CryptoKey | CryptoKeyPair, sealed: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
+  if (sealed.length <= HPKE_ENC_LEN) throw new Error("sealed payload too short");
   const enc = sealed.subarray(0, HPKE_ENC_LEN);
   const ct = sealed.subarray(HPKE_ENC_LEN);
-  const recipient = await suite.createRecipientContext({
-    recipientKey: serverKemPrivateKey,
-    enc: toArrayBuffer(enc),
-    info: EMAIL_SEAL_INFO,
-  });
-  const pt = new Uint8Array(await recipient.open(toArrayBuffer(ct)));
+  const recipient = await suite.createRecipientContext({ recipientKey, enc: toArrayBuffer(enc), info });
+  return new Uint8Array(await recipient.open(toArrayBuffer(ct)));
+}
+
+/**
+ * Seal `email` to the server KEM public key (thin base-mode wrapper). Returns enc(65) || ct. Randomized:
+ * call once at setup; the sealed bytes are then immutable inside the signed link.
+ */
+export function sealEmail(serverKemPublicKey: CryptoKey, email: string): Promise<Uint8Array> {
+  return hpkeSealTo(serverKemPublicKey, new TextEncoder().encode(email), EMAIL_SEAL_INFO);
+}
+
+/** Unseal enc(65) || ct produced by {@link sealEmail}. Throws on tamper/wrong key. */
+export async function unsealEmail(serverKemPrivateKey: CryptoKey, sealed: Uint8Array): Promise<string> {
+  const pt = await hpkeUnseal(serverKemPrivateKey, sealed, EMAIL_SEAL_INFO);
   return new TextDecoder("utf-8", { fatal: true }).decode(pt);
 }
 

@@ -44,6 +44,7 @@ export interface Env {
   MULTIPART_MIN_PART?: string; // optional: minimum part size (R2 needs >=5 MiB for non-last parts)
   REG_IP_PER_DAY?: string; // optional per-day abuse-cap overrides (staging runs these high)
   REG_EMAIL_PER_DAY?: string;
+  FETCH_IP_PER_DAY?: string; // optional per-day cap on download-gate challenge + prove calls per IP
   UPLOAD_BYTES_PER_LINK_DAY?: string; // optional daily byte budget per link (default 5x the per-file cap)
   UPLOAD_BYTES_PER_IP_DAY?: string; // optional daily byte budget per IP (default 10x the per-file cap)
 }

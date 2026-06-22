@@ -7,7 +7,7 @@
 //   /d/<objectId>      -> Receive (receiver fetches + decrypts a delivered file)
 import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
-import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeUnseal, importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCardWith, saveDecryptedStream, showDropBar, uploadCard } from "../fk/ui";
 import { ciphertextLength, encryptFileToParts, encryptFileToShareKey, openCiphertext, openCiphertextSource, streamSource } from "../fk/stream";
 import { uploadPartsPool } from "../fk/pool";
@@ -306,13 +306,27 @@ async function readPrefix(resp: Response, max: number): Promise<Uint8Array<Array
   return out;
 }
 
+// Download gate: prove the passkey holder is the one downloading. Request a challenge (a nonce the Worker
+// sealed to the receiver's share key), unseal it with the identity, and return the proof-derived short-
+// lived URL. Reuses the in-memory identity, so re-proving on Save needs no second passkey prompt.
+async function proveDownload(objectId: string, identity: Awaited<ReturnType<typeof deriveIdentityFromPrf>>): Promise<string> {
+  const { challengeId, sealed } = await api.fetchChallenge(objectId);
+  const nonce = await hpkeUnseal(identity.keyPair, base64urlDecode(sealed), FETCH_CHALLENGE_INFO);
+  const proof = await fetchProofHex(challengeId, objectId, nonce);
+  const { url } = await api.fetchProve(challengeId, proof);
+  return url;
+}
+
 async function receiveMode(objectId: string): Promise<void> {
   const st = new StatusMsg("Opening your file");
   try {
-    const { url } = await api.fetchUrl(objectId);
+    // Derive the identity FIRST (one passkey prompt), then prove possession to the gate for a download
+    // URL — only the passkey holder can unseal the gate's challenge, so a stranger with the link can't
+    // even fetch the ciphertext.
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
+    const url = await proveDownload(objectId, identity);
     // Metadata only: fetch just the head + metadata prefix (a Range request) and decrypt it for the
     // filename. The full payload streams to disk on Save (below), so the whole ciphertext is never
     // buffered — true 1x disk, which is what makes receiving a multi-TB file feasible.
@@ -332,10 +346,11 @@ async function receiveMode(objectId: string): Promise<void> {
       if (saving) return; // one save at a time; ignore double-clicks
       saving = true;
       try {
-        // Stream the full ciphertext straight to disk (1x disk): fetch -> ReadableStream -> decrypt ->
-        // write, never buffering the whole file. A fresh fetch per click is naturally re-startable, so a
-        // failed/cancelled/double-clicked save just starts clean.
-        const resp = await fetch(url);
+        // Re-prove on Save (the metadata URL may have expired on its short TTL; re-proving reuses the
+        // in-memory identity, so no second passkey prompt), then stream the full ciphertext straight to
+        // disk (1x disk): fetch -> ReadableStream -> decrypt -> write, never buffering the whole file. A
+        // fresh prove+fetch per click is naturally re-startable, so a failed/double-clicked save restarts clean.
+        const resp = await fetch(await proveDownload(objectId, identity));
         if (!resp.ok || !resp.body) throw new Error("the file has expired or was already removed");
         const size = Number(resp.headers.get("content-length"));
         if (!Number.isFinite(size) || size <= 0) throw new Error("couldn't read the file size");

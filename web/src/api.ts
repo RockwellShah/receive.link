@@ -115,10 +115,15 @@ export class DropApi {
     return this.postJson("/upload-abort", { payload, objectId });
   }
 
-  /** Receive: get a presigned R2 GET URL for an object id. */
-  async fetchUrl(objectId: string): Promise<{ url: string }> {
-    const res = await fetch(`${this.base}/fetch/${objectId}`);
-    if (!res.ok) throw await asError(res);
-    return (await res.json()) as { url: string };
+  /** Download gate step 1: request a sealed-nonce challenge for a delivered object. The returned `sealed`
+   *  (base64url enc||ct) only the receiver's passkey identity can open. */
+  fetchChallenge(objectId: string): Promise<{ challengeId: string; sealed: string }> {
+    return this.postJson("/fetch/challenge", { objectId });
+  }
+
+  /** Download gate step 2: submit the proof (derived from the unsealed nonce) -> short-lived presigned
+   *  GET URL for the bound object. */
+  fetchProve(challengeId: string, proof: string): Promise<{ url: string; expiresInSec: number }> {
+    return this.postJson("/fetch/prove", { challengeId, proof });
   }
 }
