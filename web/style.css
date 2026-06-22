@@ -50,19 +50,19 @@ body{margin:0;}
 
 .pub_key_textarea{width:100%;resize:none;outline:none;border: 1px solid #0000001a;border-radius: 10px;margin:10px 0;padding:16px;overflow:hidden;line-height:1.5;font-size:16px;color:#0d0d0d;font-family: 'Inter';word-break:break-all;}
 .pub_key_textarea:focus{outline:none;}
-.pub_key_actions{display:flex;justify-content:flex-end;align-items:center;gap:20px;margin-bottom:15px;}
+.pub_key_actions{display:flex;justify-content:flex-end;align-items:center;gap:20px;margin-top:18px;margin-bottom:15px;}
 .msg_actions{display:flex;align-items:center;gap:24px;margin-top:10px;} /* choice row inside a chat-message bubble (duplicate-filekey heads-up, share) */
 .update_notes{margin:8px 0 0 0;padding-left:18px;} /* changelog bullets in the "new version available" notice */
 .update_notes li{margin:3px 0;line-height:1.45;}
 .confirm_pub_key, .edit_pub_key, .copy_button{cursor:pointer;color:var(--fk-link);font-weight: 500;display:flex;align-items:center;line-height:1;}
 /* Email Confirm = filled green pill (primary CTA), matching the drop-zone primary button. Ink on
    green so it stays legible in both themes; double-class beats the shared text-link + dark rules. */
-.confirm_pub_key.confirm_cta{background:#23A267;color:#08160e;font-size:12px;font-weight:600;padding:7px 13px;border-radius:999px;transition:transform .16s cubic-bezier(.4,0,.2,1),filter .16s;}
+.confirm_pub_key.confirm_cta{background:#23A267;color:#ffffff;font-size:12px;font-weight:600;padding:7px 13px;border-radius:999px;transition:transform .16s cubic-bezier(.4,0,.2,1),filter .16s;}
 .confirm_pub_key.confirm_cta .confirm_icon{width:14px;height:14px;padding:0;margin-right:6px;}
-.confirm_pub_key.confirm_cta:hover{color:#08160e;transform:translateY(-1px);filter:brightness(1.06);}
+.confirm_pub_key.confirm_cta:hover{color:#ffffff;transform:translateY(-1px);filter:brightness(1.06);}
 .confirm_pub_key.confirm_cta:active{transform:scale(.97);}
 html[data-theme="dark"] .confirm_pub_key.confirm_cta,
-html[data-theme="dark"] .confirm_pub_key.confirm_cta:hover{color:#08160e;}
+html[data-theme="dark"] .confirm_pub_key.confirm_cta:hover{color:#ffffff;}
 .cancel_pub_key{cursor:pointer;color:#00000080;font-weight:500;line-height:1;display:flex;align-items:center;}
 .edit_pub_key{display:none;}
 
