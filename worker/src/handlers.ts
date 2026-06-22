@@ -47,7 +47,7 @@ const REVOKE_TOKEN_BYTES = 16; // receiver-only secret that maps to a link_id fo
 // ---- Multipart sizing (large uploads). The cap is policy (MAX_UPLOAD_BYTES, up to
 // R2's ~5 TiB object ceiling); these shape how a big ciphertext splits into <=10k
 // parts and keep client RAM bounded (part size grows with file size). ----
-const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // ciphertext above this uses multipart; below, single PUT
+const MULTIPART_THRESHOLD = 64 * 1024 * 1024; // ciphertext above this uses multipart (byte progress + cancel); below, single PUT. 64 MiB matches filekey.app's STREAM_THRESHOLD: AES-GCM runs ~1 GB/s, so the byte-progress + cancel UI only earns its keep past ~64 MB.
 const MIN_PART_SIZE = 16 * 1024 * 1024; // R2 needs >=5 MiB for non-last parts; 16 MiB is a comfortable floor
 const MAX_PART_SIZE = 1024 * 1024 * 1024; // 1 GiB ceiling per part (keeps one in-flight part's RAM sane)
 const TARGET_PARTS = 9000; // aim under R2's 10k-part hard limit, with headroom
