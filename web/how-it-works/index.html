@@ -284,7 +284,7 @@ identity_ikm = HKDF-Expand(master_prk, "FILEKEY-v1/identity-kem" || canonical_rp
           </div>
           <div class="spec-grp">
             <h4>Cipher suite</h4>
-            <p>One suite, no negotiation: <code>HPKE Auth</code> mode over <code>DHKEM(P-256, HKDF-SHA-256)</code>, with <code>HKDF-SHA-256</code> and <code>AES-256-GCM</code> (RFC 9180). Built on <code>@hpke/core</code> and <code>@noble/curves</code> for a Safari-compatible <code>DeriveKeyPair</code>, and checked byte-for-byte against the spec's known-answer vectors.</p>
+            <p>Every file uses the same fixed cipher suite, so there's no algorithm negotiation and nothing to downgrade. It's <code>HPKE Auth</code> mode over <code>DHKEM(P-256, HKDF-SHA-256)</code>, with <code>HKDF-SHA-256</code> and <code>AES-256-GCM</code>, per RFC 9180. The implementation uses <code>@hpke/core</code> and <code>@noble/curves</code> (the latter for a Safari-compatible <code>DeriveKeyPair</code>), verified byte-for-byte against the spec's known-answer vectors.</p>
           </div>
           <div class="spec-grp">
             <h4>File format</h4>
@@ -318,7 +318,7 @@ AAD     = file_header || sender_pk || hpke_enc</div>
           </div>
           <div class="spec-grp">
             <h4>Verify it yourself</h4>
-            <p>None of this should be taken on faith. The wire format is a published, versioned specification with known-answer test vectors, and both the browser client and the worker are open source. The repository link lands here the day we publish.</p>
+            <p>The wire format is a published, versioned spec with known-answer test vectors, and the browser client and worker are both open source, so you can check every claim here for yourself. The repository link goes up the day we publish.</p>
           </div>
         </div>
       </details>
