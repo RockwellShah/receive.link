@@ -13,9 +13,10 @@
 //   POST /upload-complete  assemble (multipart), verify it's real FileKey ciphertext, email the receiver
 //   POST /upload-abort     cancel an in-progress multipart upload
 //   POST /fetch/challenge  download gate: seal a nonce to the receiver's key (passkey-proof)
-//   POST /fetch/prove      verify the proof, return a short-lived presigned R2 GET
+//   POST /fetch/preview    verify the proof, serve the head+metadata bytes (free; filename + size)
+//   POST /fetch/download   verify the proof, charge the per-file price, return a short-lived presigned GET
 
-import { confirm, fetchChallenge, fetchProve, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
+import { confirm, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
 import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
 
@@ -54,8 +55,10 @@ export default {
         return uploadAbort(req, env);
       case "POST /fetch/challenge":
         return fetchChallenge(req, env);
-      case "POST /fetch/prove":
-        return fetchProve(req, env);
+      case "POST /fetch/preview":
+        return fetchPreview(req, env);
+      case "POST /fetch/download":
+        return fetchDownload(req, env);
       default:
         return json({ error: "not found" }, 404, origin);
     }

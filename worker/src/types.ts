@@ -39,7 +39,13 @@ export interface Env {
   R2_ACCOUNT_ID: string; // <id>.r2.cloudflarestorage.com
   R2_BUCKET: string; // bucket name for S3 presigning
   MAX_UPLOAD_BYTES?: string; // optional per-file cap override (default 2 GiB)
-  RECEIVER_INBOUND_CAP_BYTES?: string; // optional per-recipient cumulative inbound ceiling (unset/<=0 = uncapped; the free-tier cap, dialed in at monetization launch)
+  RECEIVER_INBOUND_CAP_BYTES?: string; // optional FREE-tier cumulative inbound ceiling (unset/<=0 = uncapped; dialed in at monetization launch)
+  PAID_ATREST_CAP_BYTES?: string; // optional PAID-tier at-rest (un-downloaded) ceiling (unset/<=0 = uncapped; the 100 GB safety cap)
+  // Phase 2 billing (download charge). Ships INERT: with BILLING_ENABLED unset, /fetch/download issues a
+  // free URL exactly like Phase 1 ("prove then download"), so deploying 2a changes nothing until Stripe
+  // (2b) is live and this is flipped on together with the caps above.
+  BILLING_ENABLED?: string; // "1"/"true" turns on the per-file download charge; unset/false = downloads free
+  FREE_GRANT_BYTES?: string; // free credit seeded into a new account when billing is on (default 1 GB)
   MULTIPART_THRESHOLD?: string; // optional: ciphertext bytes above which multipart kicks in
   MULTIPART_MIN_PART?: string; // optional: minimum part size (R2 needs >=5 MiB for non-last parts)
   REG_IP_PER_DAY?: string; // optional per-day abuse-cap overrides (staging runs these high)

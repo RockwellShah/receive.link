@@ -5,7 +5,7 @@
 // mail at /__mail so you can click the confirm + download links. Run: bun run web/devserver.ts
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
-import { confirm, fetchChallenge, fetchProve, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
+import { confirm, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
 import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2, MemoryReceiver } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
@@ -53,7 +53,7 @@ const env: Env = {
 };
 
 // Rewrite a handler's presigned-R2 URL to the local /__r2 stand-in (the objectId is the last path
-// segment of the real presigned URL, so callers that don't know it — e.g. /fetch/prove — still work).
+// segment of the real presigned URL, so callers that don't know it — e.g. /fetch/download — still work).
 async function localizeUrl(res: Response, field: "uploadUrl" | "url"): Promise<Response> {
   const body = (await res.json()) as Record<string, unknown>;
   const orig = body[field];
@@ -100,7 +100,8 @@ async function handleApi(req: Request, sub: string): Promise<Response> {
   if (req.method === "POST" && sub === "/upload-complete") return uploadComplete(req, env);
   if (req.method === "POST" && sub === "/upload-abort") return uploadAbort(req, env);
   if (req.method === "POST" && sub === "/fetch/challenge") return fetchChallenge(req, env);
-  if (req.method === "POST" && sub === "/fetch/prove") return localizeUrl(await fetchProve(req, env), "url");
+  if (req.method === "POST" && sub === "/fetch/preview") return fetchPreview(req, env); // binary head+metadata, served as-is
+  if (req.method === "POST" && sub === "/fetch/download") return localizeUrl(await fetchDownload(req, env), "url");
   return new Response("not found", { status: 404 });
 }
 

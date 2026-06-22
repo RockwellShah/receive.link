@@ -79,6 +79,22 @@ const FK_GCM_TAG = 16; // a payload chunk's GCM tag — even a 0-byte file has o
 const FK_MIN_PREFIX = FK_META_LEN_OFFSET + 4; // 146: smallest prefix we read + validate
 
 /**
+ * Length of the head + metadata-ciphertext prefix (FK_META_LEN_OFFSET + 4 + metaLen) of a FileKey
+ * container, parsed from its first bytes (must be >= FK_MIN_PREFIX). Validates magic + format version +
+ * suite id + a sane metadata-length field; returns null if any check fails. The download preview uses
+ * this to serve EXACTLY the metadata and never any payload (a fixed prefix would leak the start of the
+ * payload for files with small metadata).
+ */
+export function fileKeyMetadataPrefixLen(head: Uint8Array): number | null {
+  if (head.length < FK_MIN_PREFIX) return null; // too small to be a real FileKey ciphertext
+  if (!FILEKEY_MAGIC.every((b, i) => head[i] === b)) return null;
+  if (head[4] !== FK_VERSION || head[5] !== FK_SUITE) return null;
+  const metaLen = ((head[FK_META_LEN_OFFSET]! << 24) | (head[FK_META_LEN_OFFSET + 1]! << 16) | (head[FK_META_LEN_OFFSET + 2]! << 8) | head[FK_META_LEN_OFFSET + 3]!) >>> 0;
+  if (metaLen < FK_META_CT_MIN || metaLen > FK_META_CT_MAX) return null;
+  return FK_META_LEN_OFFSET + 4 + metaLen;
+}
+
+/**
  * Validate the FileKey container's fixed (unencrypted) header via a ranged GET of the first ~146
  * bytes — not just the 4-byte magic: magic + format version + suite id + a sane metadata-length
  * field, and (using the known object size) that the object is actually large enough to contain that
@@ -88,15 +104,11 @@ const FK_MIN_PREFIX = FK_META_LEN_OFFSET + 4; // 146: smallest prefix we read + 
 export async function validateFileKeyHeader(env: Env, objectId: string, totalSize: number): Promise<boolean> {
   const obj = await env.DROP_BUCKET.get(objectId, { range: { offset: 0, length: FK_MIN_PREFIX } });
   if (!obj) return false;
-  const h = new Uint8Array(await obj.arrayBuffer());
-  if (h.length < FK_MIN_PREFIX) return false; // too small to be a real FileKey ciphertext
-  if (!FILEKEY_MAGIC.every((b, i) => h[i] === b)) return false;
-  if (h[4] !== FK_VERSION || h[5] !== FK_SUITE) return false;
-  const metaLen = ((h[FK_META_LEN_OFFSET]! << 24) | (h[FK_META_LEN_OFFSET + 1]! << 16) | (h[FK_META_LEN_OFFSET + 2]! << 8) | h[FK_META_LEN_OFFSET + 3]!) >>> 0;
-  if (metaLen < FK_META_CT_MIN || metaLen > FK_META_CT_MAX) return false;
+  const prefixLen = fileKeyMetadataPrefixLen(new Uint8Array(await obj.arrayBuffer()));
+  if (prefixLen === null) return false;
   // The object must actually hold the declared metadata + at least one payload chunk tag — rejects
   // header-shaped-but-truncated junk that passes the field checks.
-  return totalSize >= FK_META_LEN_OFFSET + 4 + metaLen + FK_GCM_TAG;
+  return totalSize >= prefixLen + FK_GCM_TAG;
 }
 
 // ---- Multipart (large uploads) -----------------------------------------------

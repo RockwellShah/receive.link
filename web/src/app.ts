@@ -272,69 +272,40 @@ async function uploadPart(
 }
 
 // ---- Receive (/d/<id>) ----
-// Enough of the ciphertext to cover the fixed head + the metadata (<= ~1 MiB), fetched as a Range
-// request so we can show the filename without downloading the whole file.
-const METADATA_PREFIX = 1_200_000;
-
-// Read at most `max` bytes from a response body, then cancel the rest — so opening a link to read just
-// the metadata never downloads the whole file, even if the server ignored our Range request (200).
-async function readPrefix(resp: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
-  if (!resp.body) return new Uint8Array(await resp.arrayBuffer()).subarray(0, max);
-  const reader = resp.body.getReader();
-  const parts: Uint8Array[] = [];
-  let len = 0;
-  try {
-    while (len < max) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value && value.length) {
-        parts.push(value);
-        len += value.length;
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
-  const out = new Uint8Array(Math.min(len, max));
-  let off = 0;
-  for (const p of parts) {
-    if (off >= out.length) break;
-    const take = p.subarray(0, out.length - off);
-    out.set(take, off);
-    off += take.length;
-  }
-  return out;
-}
-
 // Download gate: prove the passkey holder is the one downloading. Request a challenge (a nonce the Worker
-// sealed to the receiver's share key), unseal it with the identity, and return the proof-derived short-
-// lived URL. Reuses the in-memory identity, so re-proving on Save needs no second passkey prompt.
-async function proveDownload(objectId: string, identity: Awaited<ReturnType<typeof deriveIdentityFromPrf>>): Promise<string> {
+// sealed to the receiver's share key), unseal it with the identity, and derive the proof. Each outcome
+// (free preview, charged download) consumes its own single-use challenge; both reuse the in-memory
+// identity, so neither the preview nor a re-proven Save triggers a second passkey prompt.
+type Identity = Awaited<ReturnType<typeof deriveIdentityFromPrf>>;
+async function proveFetch(objectId: string, identity: Identity): Promise<{ challengeId: string; proof: string }> {
   const { challengeId, sealed } = await api.fetchChallenge(objectId);
   const nonce = await hpkeUnseal(identity.keyPair, base64urlDecode(sealed), FETCH_CHALLENGE_INFO);
   const proof = await fetchProofHex(challengeId, objectId, nonce);
-  const { url } = await api.fetchProve(challengeId, proof);
-  return url;
+  return { challengeId, proof };
+}
+/** Free preview: the head + metadata bytes (the Worker serves them directly; no payload, no charge). */
+async function fetchMetaPrefix(objectId: string, identity: Identity): Promise<Uint8Array<ArrayBuffer>> {
+  const { challengeId, proof } = await proveFetch(objectId, identity);
+  return api.fetchPreview(challengeId, proof);
+}
+/** Charged download: a short-lived URL for the full ciphertext, or a needs-funds signal. */
+async function fetchDownloadUrl(objectId: string, identity: Identity) {
+  const { challengeId, proof } = await proveFetch(objectId, identity);
+  return api.fetchDownload(challengeId, proof);
 }
 
 async function receiveMode(objectId: string): Promise<void> {
   const st = new StatusMsg("Opening your file");
   try {
-    // Derive the identity FIRST (one passkey prompt), then prove possession to the gate for a download
-    // URL — only the passkey holder can unseal the gate's challenge, so a stranger with the link can't
-    // even fetch the ciphertext.
+    // Derive the identity FIRST (one passkey prompt), then prove possession to the gate — only the passkey
+    // holder can unseal the gate's challenge, so a stranger with the link can't even see the filename.
     const prf = await getPrfSecret();
     const identity = await deriveIdentityFromPrf(prf, ns);
     prf.fill(0);
-    const url = await proveDownload(objectId, identity);
-    // Metadata only: fetch just the head + metadata prefix (a Range request) and decrypt it for the
-    // filename. The full payload streams to disk on Save (below), so the whole ciphertext is never
-    // buffered — true 1x disk, which is what makes receiving a multi-TB file feasible.
-    const headResp = await fetch(url, { headers: { Range: `bytes=0-${METADATA_PREFIX - 1}` } });
-    if (!headResp.ok) throw new Error("the file has expired or was already removed"); // 200 or 206 are ok
-    // Read only the prefix + cancel: even if the server ignored Range (200), we never download the
-    // whole ciphertext just to read the filename.
-    const { metadata } = await openCiphertext(new Blob([await readPrefix(headResp, METADATA_PREFIX)]), identity, NS);
+    // Free preview: the Worker serves just the head + metadata (never the payload, no charge), so we can
+    // show the filename before the receiver commits to (and pays for) the download. The full payload
+    // streams to disk on Save (below), so the whole ciphertext is never buffered — true 1x disk.
+    const { metadata } = await openCiphertext(new Blob([await fetchMetaPrefix(objectId, identity)]), identity, NS);
     st.done();
     await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you, and the file itself only decrypts on your device when you save it."]);
     if (!(window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker && metadata.originalSize > 2 * 1024 * 1024 * 1024) {
@@ -346,11 +317,16 @@ async function receiveMode(objectId: string): Promise<void> {
       if (saving) return; // one save at a time; ignore double-clicks
       saving = true;
       try {
-        // Re-prove on Save (the metadata URL may have expired on its short TTL; re-proving reuses the
-        // in-memory identity, so no second passkey prompt), then stream the full ciphertext straight to
-        // disk (1x disk): fetch -> ReadableStream -> decrypt -> write, never buffering the whole file. A
-        // fresh prove+fetch per click is naturally re-startable, so a failed/double-clicked save restarts clean.
-        const resp = await fetch(await proveDownload(objectId, identity));
+        // Re-prove on Save (reuses the in-memory identity, so no second passkey prompt) and request the
+        // charged download. Out of credit -> prompt to top up (re-clickable once funded; Stripe wires in
+        // Phase 2b). Otherwise stream the full ciphertext straight to disk (1x disk): fetch -> decrypt ->
+        // write, never buffering the whole file. A fresh prove+fetch per click is naturally re-startable.
+        const got = await fetchDownloadUrl(objectId, identity);
+        if ("needsFunds" in got) {
+          await appMsg([{ t: "Add credit to unlock this download.", b: true }, " You're out of download credit for this file."], ERR);
+          return;
+        }
+        const resp = await fetch(got.url);
         if (!resp.ok || !resp.body) throw new Error("the file has expired or was already removed");
         const size = Number(resp.headers.get("content-length"));
         if (!Number.isFinite(size) || size <= 0) throw new Error("couldn't read the file size");

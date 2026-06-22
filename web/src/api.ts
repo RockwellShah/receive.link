@@ -121,9 +121,32 @@ export class DropApi {
     return this.postJson("/fetch/challenge", { objectId });
   }
 
-  /** Download gate step 2: submit the proof (derived from the unsealed nonce) -> short-lived presigned
-   *  GET URL for the bound object. */
-  fetchProve(challengeId: string, proof: string): Promise<{ url: string; expiresInSec: number }> {
-    return this.postJson("/fetch/prove", { challengeId, proof });
+  /** Download gate (free preview): submit the proof -> the head+metadata bytes. The Worker serves them
+   *  directly (a presigned URL would be all-or-nothing, i.e. a free full download), so this returns raw
+   *  ciphertext prefix bytes for the client to decrypt into the filename + size. */
+  async fetchPreview(challengeId: string, proof: string): Promise<Uint8Array<ArrayBuffer>> {
+    const res = await fetch(`${this.base}/fetch/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ challengeId, proof }),
+    });
+    if (!res.ok) throw await asError(res);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  /** Download gate (charged download): submit the proof -> a short-lived presigned GET URL, or a
+   *  needs-funds signal (HTTP 402) the caller turns into the "add credit to unlock" prompt. */
+  async fetchDownload(challengeId: string, proof: string): Promise<{ url: string; expiresInSec: number } | { needsFunds: true; needBytes: number; balanceBytes: number }> {
+    const res = await fetch(`${this.base}/fetch/download`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ challengeId, proof }),
+    });
+    if (res.status === 402) {
+      const b = (await res.json().catch(() => ({}))) as { needBytes?: number; balanceBytes?: number };
+      return { needsFunds: true, needBytes: b.needBytes ?? 0, balanceBytes: b.balanceBytes ?? 0 };
+    }
+    if (!res.ok) throw await asError(res);
+    return (await res.json()) as { url: string; expiresInSec: number };
   }
 }

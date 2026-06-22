@@ -1,6 +1,7 @@
 // In-memory fakes for the Cloudflare bindings, so handlers can be exercised
 // end-to-end under `bun test` with no account. Test-only.
 import { base64urlDecode } from "../../shared/codec";
+import type { AccountSummary, ChargeResult, Tier } from "./receiver";
 import type { Env, SendEmailBinding } from "./types";
 
 export class MemoryKV {
@@ -171,30 +172,40 @@ export class MemoryCompletion {
 }
 
 // In-memory stand-in for the ReceiverAccount DO namespace. Single-threaded bun tests, so the atomic
-// reserve()/commit()/release() hold trivially. Mirrors worker/src/receiver.ts's accounting — minus the
-// time-based reservation expiry (that's the DO's crash-cleanup alarm, exercised against the live DO).
+// reserve()/commit()/release()/charge() hold trivially. Mirrors worker/src/receiver.ts's accounting —
+// minus the time-based expiry of reservations and paid-file flags (the DO's crash-cleanup alarm, which is
+// exercised against the live DO), so tests never advance 10 days and paid flags need no expiry here.
 export class MemoryReceiver {
   private totals = new Map<string, number>();
+  private pendings = new Map<string, number>();
+  private balances = new Map<string, number>(); // present once seeded/changed; absent = lazy-default to grant
+  private tiers = new Map<string, Tier>();
+  private paid = new Map<string, Set<string>>(); // rid -> finalIds already charged
   private holds = new Map<string, Map<string, number>>(); // rid -> token -> reserved bytes
+  private events = new Map<string, Set<string>>(); // rid -> stripe event ids already credited
   idFromName(name: string): DurableObjectId {
     return { toString: () => name } as unknown as DurableObjectId;
   }
   get(id: DurableObjectId) {
     const name = id.toString();
-    const totals = this.totals;
-    const allHolds = this.holds;
+    const { totals, pendings, balances, tiers, paid, holds, events } = this;
     const clamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
-    const held = () => allHolds.get(name) ?? allHolds.set(name, new Map<string, number>()).get(name)!;
+    const held = () => holds.get(name) ?? holds.set(name, new Map<string, number>()).get(name)!;
+    const paidSet = () => paid.get(name) ?? paid.set(name, new Set<string>()).get(name)!;
+    const tierOf = (): Tier => tiers.get(name) ?? "free";
+    const bal = (grant: number) => balances.get(name) ?? clamp(grant);
     const liveReserved = () => {
       let s = 0;
       for (const b of held().values()) s += b;
       return s;
     };
     return {
-      async reserve(bytes: number, cap: number): Promise<{ ok: true; token: string } | { ok: false }> {
+      async reserve(bytes: number, freeCap: number, paidCap: number): Promise<{ ok: true; token: string } | { ok: false }> {
         const add = clamp(bytes);
-        const t = totals.get(name) ?? 0;
-        if (cap > 0 && t + liveReserved() + add > cap) return { ok: false };
+        const isPaid = tierOf() === "paid";
+        const cap = isPaid ? paidCap : freeCap;
+        const basis = isPaid ? (pendings.get(name) ?? 0) : (totals.get(name) ?? 0);
+        if (cap > 0 && basis + liveReserved() + add > cap) return { ok: false };
         const token = crypto.randomUUID();
         held().set(token, add);
         return { ok: true, token };
@@ -204,9 +215,41 @@ export class MemoryReceiver {
         if (b === undefined) return;
         held().delete(token);
         totals.set(name, (totals.get(name) ?? 0) + b);
+        pendings.set(name, (pendings.get(name) ?? 0) + b);
       },
       async release(token: string): Promise<void> {
         held().delete(token);
+      },
+      async charge(finalId: string, size: number, grant: number): Promise<ChargeResult> {
+        const need = clamp(size);
+        const balance = bal(grant);
+        if (paidSet().has(finalId)) return { ok: true, alreadyPaid: true, balance };
+        if (balance < need) return { ok: false, balance, need };
+        paidSet().add(finalId);
+        const newBalance = balance - need;
+        balances.set(name, newBalance);
+        pendings.set(name, Math.max(0, (pendings.get(name) ?? 0) - need));
+        return { ok: true, alreadyPaid: false, balance: newBalance };
+      },
+      async credit(packBytes: number, grant: number, eventId?: string): Promise<{ balance: number }> {
+        if (eventId) {
+          const ev = events.get(name) ?? events.set(name, new Set<string>()).get(name)!;
+          if (ev.has(eventId)) return { balance: bal(grant) };
+          ev.add(eventId);
+        }
+        const newBalance = bal(grant) + clamp(packBytes);
+        balances.set(name, newBalance);
+        tiers.set(name, "paid");
+        return { balance: newBalance };
+      },
+      async summary(grant: number): Promise<AccountSummary> {
+        return {
+          tier: tierOf(),
+          total: totals.get(name) ?? 0,
+          pending: pendings.get(name) ?? 0,
+          balance: bal(grant),
+          reserved: liveReserved(),
+        };
       },
     };
   }
