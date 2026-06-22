@@ -26,6 +26,7 @@ import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email"
 import { cors, clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
 import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes } from "./kv";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, fileKeyMetadataPrefixLen, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
+import { createCheckoutSession, isPackId, parseCreditFromEvent, stripeConfigured, verifyStripeSignature } from "./stripe";
 import type { Env } from "./types";
 import { hex, hmacSha256hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
 
@@ -750,26 +751,26 @@ async function loadFetchbind(env: Env, objectId: string): Promise<Fetchbind | nu
 /** Verify a single-use challenge proof (shared by preview + download): validate + rate-limit, then
  *  consume the challenge (delete-before-compare, so a wrong guess can't be retried) and constant-time
  *  compare. Returns the bound objectId on success, else the error Response to return as-is. */
-async function verifyFetchProof(req: Request, env: Env, origin: string): Promise<{ ok: true; objectId: string } | { ok: false; resp: Response }> {
-  const body = await readJson<{ challengeId: string; proof: string }>(req);
+async function verifyFetchProof(req: Request, env: Env, origin: string, body: { challengeId?: unknown; proof?: unknown } | null): Promise<{ ok: true; objectId: string } | { ok: false; resp: Response }> {
   if (!body || typeof body.challengeId !== "string" || typeof body.proof !== "string") {
     return { ok: false, resp: json({ error: "missing fields" }, 400, origin) };
   }
-  if (!isHex(body.challengeId, CHALLENGE_ID_BYTES) || !isHex(body.proof, 32)) return { ok: false, resp: json({ error: "bad proof" }, 400, origin) };
+  const { challengeId, proof } = body;
+  if (!isHex(challengeId, CHALLENGE_ID_BYTES) || !isHex(proof, 32)) return { ok: false, resp: json({ error: "bad proof" }, 400, origin) };
   const ipHash = await sha256hex(clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `prove:ip:${ipHash}`, envInt(env.FETCH_IP_PER_DAY, FETCH_IP_PER_DAY), DAY))) {
     return { ok: false, resp: json({ error: "rate limited" }, 429, origin) };
   }
-  const stored = await env.DROP_KV.get(`challenge:${body.challengeId}`);
+  const stored = await env.DROP_KV.get(`challenge:${challengeId}`);
   if (!stored) return { ok: false, resp: json({ error: "challenge expired" }, 404, origin) };
-  await env.DROP_KV.delete(`challenge:${body.challengeId}`); // best-effort single-use (KV get+delete isn't atomic)
+  await env.DROP_KV.delete(`challenge:${challengeId}`); // best-effort single-use (KV get+delete isn't atomic)
   let ch: { objectId: string; proof: string };
   try {
     ch = JSON.parse(stored) as { objectId: string; proof: string };
   } catch {
     return { ok: false, resp: json({ error: "challenge expired" }, 404, origin) };
   }
-  if (!constantTimeEqualHex(body.proof, ch.proof)) return { ok: false, resp: json({ error: "proof failed" }, 403, origin) };
+  if (!constantTimeEqualHex(proof, ch.proof)) return { ok: false, resp: json({ error: "proof failed" }, 403, origin) };
   return { ok: true, objectId: ch.objectId };
 }
 
@@ -808,7 +809,7 @@ export async function fetchChallenge(req: Request, env: Env): Promise<Response> 
 // and the size bound cover.)
 export async function fetchPreview(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
-  const v = await verifyFetchProof(req, env, origin);
+  const v = await verifyFetchProof(req, env, origin, await readJson(req));
   if (!v.ok) return v.resp;
   const info = await objectInfo(env, v.objectId);
   if (!info) return json({ error: "expired or not found" }, 404, origin);
@@ -829,7 +830,7 @@ export async function fetchPreview(req: Request, env: Env): Promise<Response> {
 // presigned GET. When billing is off (default) it skips the charge and behaves exactly like Phase 1.
 export async function fetchDownload(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
-  const v = await verifyFetchProof(req, env, origin);
+  const v = await verifyFetchProof(req, env, origin, await readJson(req));
   if (!v.ok) return v.resp;
   // Confirm the object still exists BEFORE charging, so we never debit for a file that's already gone.
   if (!(await objectInfo(env, v.objectId))) return json({ error: "expired or not found" }, 404, origin);
@@ -850,4 +851,63 @@ export async function fetchDownload(req: Request, env: Env): Promise<Response> {
   }
   const url = await presignGet(env, v.objectId, FETCH_URL_TTL_SEC);
   return json({ url, expiresInSec: FETCH_URL_TTL_SEC }, 200, origin);
+}
+
+// ---- Billing (Stripe top-up) -------------------------------------------------------------------------
+// A receiver tops up prepaid credit through Stripe-hosted Checkout. The account to credit is the one that
+// owns the file being unlocked: the client proves passkey possession (same gate as a download), which
+// resolves the rid from the binding. The credit itself lands via the webhook, not the redirect, so it's
+// robust to the user closing the tab. Both endpoints 503 until Stripe is configured, so 2b ships inert.
+
+// POST /billing/checkout { challengeId, proof, pack } -> { url } (a Stripe-hosted Checkout URL)
+export async function billingCheckout(req: Request, env: Env): Promise<Response> {
+  const origin = corsOrigin(env, req);
+  if (!stripeConfigured(env)) return json({ error: "billing unavailable" }, 503, origin);
+  const body = await readJson<{ challengeId: string; proof: string; pack: string }>(req);
+  if (!body || typeof body.pack !== "string" || !isPackId(body.pack)) return json({ error: "unknown pack" }, 400, origin);
+  // Prove passkey possession on the file being unlocked -> the owning account (rid) to credit.
+  const v = await verifyFetchProof(req, env, origin, body);
+  if (!v.ok) return v.resp;
+  const bind = await loadFetchbind(env, v.objectId);
+  if (!bind?.rid) return json({ error: "expired or not found" }, 404, origin);
+  const base = linkOrigin(env);
+  try {
+    const url = await createCheckoutSession(env, {
+      rid: bind.rid,
+      pack: body.pack,
+      successUrl: `${base}/d/${v.objectId}?paid=1`, // back to the file; the client retries the download
+      cancelUrl: `${base}/d/${v.objectId}`,
+    });
+    return json({ url }, 200, origin);
+  } catch {
+    logEvent("stripe_checkout_failed");
+    return json({ error: "could not start checkout, try again" }, 502, origin);
+  }
+}
+
+// POST /billing/webhook (Stripe -> us; server-to-server, raw body, signature-verified) -> 200/400
+export async function billingWebhook(req: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_WEBHOOK_SECRET) {
+    logEvent("config_error", { what: "STRIPE_WEBHOOK_SECRET" });
+    return new Response("unconfigured", { status: 503 });
+  }
+  const sig = req.headers.get("stripe-signature") ?? "";
+  const raw = await req.text(); // RAW body: re-serialized JSON would break the signature
+  if (!(await verifyStripeSignature(raw, sig, env.STRIPE_WEBHOOK_SECRET, Math.floor(Date.now() / 1000)))) {
+    return new Response("bad signature", { status: 400 });
+  }
+  let event: unknown;
+  try {
+    event = JSON.parse(raw);
+  } catch {
+    return new Response("bad payload", { status: 400 });
+  }
+  const credit = parseCreditFromEvent(event);
+  if (credit) {
+    // credit() is idempotent on the Stripe event id, so a webhook retry can't double-credit.
+    const acct = env.RECEIVER.get(env.RECEIVER.idFromName(credit.rid));
+    await acct.credit(credit.bytes, freeGrantBytes(env), credit.eventId);
+    logEvent("billing_credited", { bytes: credit.bytes }); // bytes only — never the rid/email
+  }
+  return new Response("ok", { status: 200 }); // 200 even for ignored event types, so Stripe stops retrying
 }

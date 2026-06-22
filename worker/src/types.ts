@@ -28,6 +28,8 @@ export interface Env {
   R2_ACCESS_KEY_ID: string; // R2 S3 API token — presign uploads/downloads
   R2_SECRET_ACCESS_KEY: string;
   RECEIVER_ID_SECRET: string; // HMAC key deriving a recipient's account id (rid) from their confirmed email — stable + long-lived (rotating it re-keys every account)
+  STRIPE_SECRET_KEY?: string; // Stripe API secret (sk_test_… / sk_live_…); unset = billing/checkout 503s (ships inert)
+  STRIPE_WEBHOOK_SECRET?: string; // Stripe endpoint signing secret (whsec_…) for verifying webhook signatures
 
   // Vars (public, in wrangler.toml)
   SERVER_SIGN_PUBLIC_JWK: string; // verify Drop links on upload (public half)

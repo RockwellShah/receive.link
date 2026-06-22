@@ -15,8 +15,10 @@
 //   POST /fetch/challenge  download gate: seal a nonce to the receiver's key (passkey-proof)
 //   POST /fetch/preview    verify the proof, serve the head+metadata bytes (free; filename + size)
 //   POST /fetch/download   verify the proof, charge the per-file price, return a short-lived presigned GET
+//   POST /billing/checkout passkey-proof -> a Stripe Checkout URL to add prepaid credit
+//   POST /billing/webhook  Stripe -> us: verify the signature, credit the account on a paid session
 
-import { confirm, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
+import { billingCheckout, billingWebhook, confirm, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
 import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
 
@@ -59,6 +61,10 @@ export default {
         return fetchPreview(req, env);
       case "POST /fetch/download":
         return fetchDownload(req, env);
+      case "POST /billing/checkout":
+        return billingCheckout(req, env);
+      case "POST /billing/webhook":
+        return billingWebhook(req, env);
       default:
         return json({ error: "not found" }, 404, origin);
     }

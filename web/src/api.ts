@@ -149,4 +149,10 @@ export class DropApi {
     if (!res.ok) throw await asError(res);
     return (await res.json()) as { url: string; expiresInSec: number };
   }
+
+  /** Start a top-up: prove possession of the file being unlocked (so the server credits the owning
+   *  account) and get a Stripe-hosted Checkout URL to redirect to. */
+  billingCheckout(challengeId: string, proof: string, pack: string): Promise<{ url: string }> {
+    return this.postJson("/billing/checkout", { challengeId, proof, pack });
+  }
 }

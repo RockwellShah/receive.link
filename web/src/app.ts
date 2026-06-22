@@ -294,6 +294,36 @@ async function fetchDownloadUrl(objectId: string, identity: Identity) {
   return api.fetchDownload(challengeId, proof);
 }
 
+// Prepaid credit packs (labels only; the amounts + bytes are authoritative server-side in worker stripe.ts).
+const CREDIT_PACKS: { id: string; label: string }[] = [
+  { id: "p10", label: "$10 · 100 GB" },
+  { id: "p25", label: "$25 · 250 GB" },
+  { id: "p50", label: "$50 · 500 GB" },
+  { id: "p100", label: "$100 · 1 TB" },
+];
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** Hand off to Stripe-hosted Checkout for a top-up: prove possession of the file (so the server credits
+ *  the owning account), get the Checkout URL, and redirect. On return Stripe sends us back to ?paid=1. */
+async function startCheckout(objectId: string, identity: Identity, pack: string): Promise<void> {
+  try {
+    const { challengeId, proof } = await proveFetch(objectId, identity);
+    const { url } = await api.billingCheckout(challengeId, proof, pack);
+    window.location.href = url;
+  } catch (e) {
+    await appMsg([humanError(e)], ERR);
+  }
+}
+
+/** The out-of-funds wall: the only place money surfaces. Offer the prepaid packs; a tap starts checkout. */
+async function showTopUp(objectId: string, identity: Identity): Promise<void> {
+  const host = await appMsg([{ t: "Add credit to unlock this download.", b: true }, " Prepaid, pay only for what you download, never expires."]);
+  actionRow(
+    host,
+    CREDIT_PACKS.map((p) => ({ label: p.label, onClick: () => void startCheckout(objectId, identity, p.id) })),
+  );
+}
+
 async function receiveMode(objectId: string): Promise<void> {
   const st = new StatusMsg("Opening your file");
   try {
@@ -312,19 +342,28 @@ async function receiveMode(objectId: string): Promise<void> {
       await appMsg(["For a file this large, Chrome or Edge can save it more reliably than this browser."]);
     }
     const filename = metadata.filename || "file";
+    // Returning from a top-up (Stripe sends us back to ?paid=1): the crediting webhook can lag the redirect
+    // by a second or two, so on the first Save click we retry briefly before showing the wall again.
+    const justPaid = new URLSearchParams(location.search).has("paid");
+    let firstSave = true;
     let saving = false;
     saveCardWith(filename, "Decrypted file", async () => {
       if (saving) return; // one save at a time; ignore double-clicks
       saving = true;
       try {
         // Re-prove on Save (reuses the in-memory identity, so no second passkey prompt) and request the
-        // charged download. Out of credit -> prompt to top up (re-clickable once funded; Stripe wires in
-        // Phase 2b). Otherwise stream the full ciphertext straight to disk (1x disk): fetch -> decrypt ->
-        // write, never buffering the whole file. A fresh prove+fetch per click is naturally re-startable.
-        const got = await fetchDownloadUrl(objectId, identity);
+        // charged download. Out of credit -> the top-up wall. Otherwise stream the full ciphertext straight
+        // to disk (1x disk): fetch -> decrypt -> write, never buffering. A fresh prove+fetch per click is
+        // naturally re-startable.
+        let got = await fetchDownloadUrl(objectId, identity);
+        for (let i = 0; justPaid && firstSave && "needsFunds" in got && i < 4; i++) {
+          await sleep(1500); // wait for the webhook credit to land, then re-prove + retry
+          got = await fetchDownloadUrl(objectId, identity);
+        }
+        firstSave = false;
         if ("needsFunds" in got) {
-          await appMsg([{ t: "Add credit to unlock this download.", b: true }, " You're out of download credit for this file."], ERR);
-          return;
+          await showTopUp(objectId, identity);
+          return; // re-clickable once funded
         }
         const resp = await fetch(got.url);
         if (!resp.ok || !resp.body) throw new Error("the file has expired or was already removed");
@@ -338,6 +377,8 @@ async function receiveMode(objectId: string): Promise<void> {
         saving = false;
       }
     });
+    // The file picker needs a user click, so we can't auto-download on return — nudge them to tap Save.
+    if (justPaid) await appMsg(["Payment received. Tap Save to download your file."]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);
