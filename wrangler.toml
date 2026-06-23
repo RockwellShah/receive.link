@@ -81,6 +81,15 @@ REG_IP_PER_DAY = "1000"
 #   wrangler secret put RECEIVER_ID_SECRET        # any long random string; keys recipient accounts to their
 #                                                 # confirmed email. Long-lived: rotating it re-keys every account.
 #
+# Phase 2b billing (Stripe top-up) — set BOTH before checkout activates (it 503s until both exist, so a
+# user can never pay before we can credit). Until then the worker runs inert (downloads free):
+#   wrangler secret put STRIPE_SECRET_KEY         # sk_test_… (then sk_live_…); Stripe > Developers > API keys
+#   wrangler secret put STRIPE_WEBHOOK_SECRET     # whsec_…; from the webhook endpoint you register (below)
+# Then flip the download charge on with the var BILLING_ENABLED = "1" (default off = downloads free). No
+# Stripe products/prices to create — the packs are defined in worker/src/stripe.ts (dynamic price_data).
+# Register a webhook endpoint in Stripe (Developers > Webhooks): URL https://mon.receive.link/billing/webhook,
+# event checkout.session.completed; copy its signing secret into STRIPE_WEBHOOK_SECRET above.
+#
 # One-time setup for this Worker: set the 5 secrets above; (optional, for full isolation) create its own
 # bucket + KV — `wrangler r2 bucket create receive-link-monetization` and
 # `wrangler kv namespace create monetization-kv` — then repoint DROP_BUCKET / R2_BUCKET / DROP_KV id;
