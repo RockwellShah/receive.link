@@ -26,7 +26,7 @@ import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email"
 import { cors, clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
 import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes } from "./kv";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, fileKeyMetadataPrefixLen, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
-import { createCheckoutSession, isPackId, parseCreditFromEvent, stripeConfigured, verifyStripeSignature } from "./stripe";
+import { createCheckoutSession, isPackId, packList, parseCreditFromEvent, priceCentsPerGb, stripeConfigured, verifyStripeSignature } from "./stripe";
 import type { Env } from "./types";
 import { hex, hmacSha256hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
 
@@ -150,7 +150,7 @@ function receiverInboundCap(env: Env): number {
 
 // ---- Phase 2 billing config (download charge). Ships INERT: billingEnabled() is false unless the env
 // var is set, so /fetch/download issues a free URL exactly like Phase 1 until Stripe (2b) is live. ----
-const DEFAULT_FREE_GRANT_BYTES = 1024 * 1024 * 1024; // 1 GiB of free download credit per new account
+const DEFAULT_FREE_GRANT_BYTES = 1_000_000_000; // 1 GB (decimal) of free download credit per new account
 
 /** Paid-tier at-rest (un-downloaded) ceiling in bytes (the 100 GB safety cap). Unset/<=0 => uncapped. */
 function paidAtRestCap(env: Env): number {
@@ -910,4 +910,12 @@ export async function billingWebhook(req: Request, env: Env): Promise<Response> 
     logEvent("billing_credited", { bytes: credit.bytes }); // bytes only — never the rid/email
   }
   return new Response("ok", { status: 200 }); // 200 even for ignored event types, so Stripe stops retrying
+}
+
+// GET /billing/packs -> { packs: [{ id, amountCents, bytes, label }], priceCentsPerGb }. The prepaid tiers
+// at the CURRENT price, so the client's top-up picker tracks the price knob with no client redeploy. Public
+// (just pricing info, no account data); the client only fetches it at the out-of-funds wall.
+export function billingPacks(req: Request, env: Env): Response {
+  const origin = corsOrigin(env, req);
+  return json({ packs: packList(env), priceCentsPerGb: priceCentsPerGb(env) }, 200, origin);
 }

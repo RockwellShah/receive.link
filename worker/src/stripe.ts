@@ -6,21 +6,53 @@
 import { hmacSha256hex } from "../../shared/util";
 import type { Env } from "./types";
 
-const GIB = 1024 * 1024 * 1024;
+const GB = 1_000_000_000; // decimal GB — the pricing/marketing unit (so $10 = 1 TB is clean, not 0.93 TiB)
 
-// Prepaid packs (SPEC-monetization §5): 10c/GB, clean round multiples; $1 = 10 GB. amountCents is what
-// Stripe charges, bytes is the credit granted. The $10 entry pack clears Stripe's 2.9% + $0.30 floor
-// comfortably (~$0.59 on $10). The bytes are authoritative server-side (set into session metadata), never
-// trusted from the client.
-export const PACKS = {
-  p10: { amountCents: 1_000, bytes: 100 * GIB, label: "$10 — 100 GB" },
-  p25: { amountCents: 2_500, bytes: 250 * GIB, label: "$25 — 250 GB" },
-  p50: { amountCents: 5_000, bytes: 500 * GIB, label: "$50 — 500 GB" },
-  p100: { amountCents: 10_000, bytes: 1024 * GIB, label: "$100 — 1 TB" },
-} as const;
-export type PackId = keyof typeof PACKS;
+// PRICE IS ONE KNOB. The prepaid DOLLAR tiers are fixed (set by Stripe's 2.9% + $0.30 floor — $10 is the
+// sensible minimum), but the GB each grants is DERIVED from PRICE_CENTS_PER_GB, so walking the price is a
+// single env change, not a table edit. Default 1¢/GB → $10 = 1 TB. The charge engine is byte-based, so
+// price only affects how many bytes a top-up grants; the per-download debit never changes.
+const PACK_CENTS = { p10: 1_000, p25: 2_500, p50: 5_000, p100: 10_000 } as const;
+export type PackId = keyof typeof PACK_CENTS;
 export function isPackId(s: string): s is PackId {
-  return Object.prototype.hasOwnProperty.call(PACKS, s);
+  return Object.prototype.hasOwnProperty.call(PACK_CENTS, s);
+}
+
+const DEFAULT_PRICE_CENTS_PER_GB = 1; // 1¢/GB
+const MAX_PRICE_CENTS_PER_GB = 1000; // $10/GB — a sanity clamp bounding the webhook's byte derivation
+
+const clampPrice = (n: number): number => (Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), MAX_PRICE_CENTS_PER_GB) : DEFAULT_PRICE_CENTS_PER_GB);
+
+/** Price in cents per GB, from PRICE_CENTS_PER_GB (clamped to a sane range; default 1¢/GB). Change it in
+ *  the Cloudflare dashboard to walk the price with no code change. */
+export function priceCentsPerGb(env: Env): number {
+  return clampPrice(env.PRICE_CENTS_PER_GB ? parseInt(env.PRICE_CENTS_PER_GB, 10) : NaN);
+}
+
+/** Bytes a dollar tier grants at a given price: tier_cents / price_cents_per_gb GB. */
+function bytesForCents(amountCents: number, priceCentsPerGb: number): number {
+  return Math.floor((amountCents / priceCentsPerGb) * GB);
+}
+
+/** Human pack size for labels (decimal GB/TB; no em dash per house style). */
+function humanSize(bytes: number): string {
+  const gb = bytes / GB;
+  if (gb >= 1000) {
+    const tb = gb / 1000;
+    return `${Number.isInteger(tb) ? tb : tb.toFixed(1)} TB`;
+  }
+  return `${Math.round(gb)} GB`;
+}
+
+/** The prepaid packs at the CURRENT price, for the client's top-up picker. Derived, so changing the price
+ *  knob updates these (and the labels) with no client redeploy. */
+export function packList(env: Env): { id: PackId; amountCents: number; bytes: number; label: string }[] {
+  const price = priceCentsPerGb(env);
+  return (Object.keys(PACK_CENTS) as PackId[]).map((id) => {
+    const amountCents = PACK_CENTS[id];
+    const bytes = bytesForCents(amountCents, price);
+    return { id, amountCents, bytes, label: `$${amountCents / 100} · ${humanSize(bytes)}` };
+  });
 }
 
 /** True only when BOTH the API secret and the webhook secret are set — checkout 503s until then. We need
@@ -30,12 +62,15 @@ export function stripeConfigured(env: Env): boolean {
   return !!env.STRIPE_SECRET_KEY && !!env.STRIPE_WEBHOOK_SECRET;
 }
 
-/** Form-encode the Checkout session params (pure; testable). One-time payment for prepaid credit. The rid
- *  is carried in BOTH client_reference_id and metadata so the webhook can credit the right account, and
- *  the granted bytes ride in metadata (server-set) so we never trust a client-supplied amount. We pass no
- *  customer email — Checkout collects whatever billing email the buyer types, in Stripe's scope, not ours. */
-export function checkoutSessionParams(opts: { rid: string; pack: PackId; successUrl: string; cancelUrl: string }): URLSearchParams {
-  const pack = PACKS[opts.pack];
+/** Form-encode the Checkout session params (testable). One-time payment for prepaid credit. The rid rides
+ *  in BOTH client_reference_id and metadata so the webhook can credit the right account, and the PRICE used
+ *  is LOCKED into metadata so the webhook credits at the price the buyer was quoted even if the global price
+ *  knob moves mid-payment (the credited bytes are re-derived from pack + locked price, never a raw client
+ *  amount). We pass no customer email — Checkout collects whatever billing email the buyer types, in
+ *  Stripe's scope, not ours. */
+export function checkoutSessionParams(env: Env, opts: { rid: string; pack: PackId; successUrl: string; cancelUrl: string }): URLSearchParams {
+  const price = priceCentsPerGb(env);
+  const amountCents = PACK_CENTS[opts.pack];
   const p = new URLSearchParams();
   p.set("mode", "payment");
   p.set("success_url", opts.successUrl);
@@ -43,11 +78,11 @@ export function checkoutSessionParams(opts: { rid: string; pack: PackId; success
   p.set("client_reference_id", opts.rid);
   p.set("metadata[rid]", opts.rid);
   p.set("metadata[pack]", opts.pack);
-  p.set("metadata[bytes]", String(pack.bytes));
+  p.set("metadata[price]", String(price)); // lock the price for the webhook credit
   p.set("line_items[0][quantity]", "1");
   p.set("line_items[0][price_data][currency]", "usd");
-  p.set("line_items[0][price_data][unit_amount]", String(pack.amountCents));
-  p.set("line_items[0][price_data][product_data][name]", `receive.link credit — ${pack.label}`);
+  p.set("line_items[0][price_data][unit_amount]", String(amountCents));
+  p.set("line_items[0][price_data][product_data][name]", `receive.link credit · ${humanSize(bytesForCents(amountCents, price))}`);
   return p;
 }
 
@@ -56,7 +91,7 @@ export async function createCheckoutSession(env: Env, opts: { rid: string; pack:
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "content-type": "application/x-www-form-urlencoded" },
-    body: checkoutSessionParams(opts).toString(),
+    body: checkoutSessionParams(env, opts).toString(),
   });
   if (!res.ok) throw new Error(`stripe checkout failed (${res.status})`);
   const body = (await res.json()) as { url?: string };
@@ -95,15 +130,15 @@ export async function verifyStripeSignature(rawBody: string, sigHeader: string, 
 }
 
 /** Pull the credit instruction out of a verified `checkout.session.completed` event, or null for any other
- *  event type / an unpaid or malformed session. The granted bytes are derived from the pack id in the
- *  metadata WE set (looked up in PACKS, the single source of truth) — never from a client- or event-supplied
- *  amount — so even an unexpected session in our Stripe account can only ever credit a known pack size. The
- *  event id makes the credit idempotent on a webhook retry. */
+ *  event type / an unpaid or malformed session. The granted bytes are RE-DERIVED from the pack id (a known
+ *  fixed dollar tier) and the price LOCKED into metadata at checkout — never a raw client/event byte amount,
+ *  and bounded by the price clamp — so even an unexpected session in our Stripe account can only ever credit
+ *  a known tier at a sane price. The event id makes the credit idempotent on a webhook retry. */
 export function parseCreditFromEvent(event: unknown): { rid: string; bytes: number; eventId: string } | null {
   const e = event as {
     id?: unknown;
     type?: unknown;
-    data?: { object?: { payment_status?: unknown; metadata?: { rid?: unknown; pack?: unknown } } };
+    data?: { object?: { payment_status?: unknown; metadata?: { rid?: unknown; pack?: unknown; price?: unknown } } };
   };
   if (typeof e?.id !== "string" || e.type !== "checkout.session.completed") return null;
   const o = e.data?.object;
@@ -111,5 +146,6 @@ export function parseCreditFromEvent(event: unknown): { rid: string; bytes: numb
   const rid = typeof o.metadata?.rid === "string" ? o.metadata.rid : "";
   const pack = typeof o.metadata?.pack === "string" ? o.metadata.pack : "";
   if (!rid || !isPackId(pack)) return null;
-  return { rid, bytes: PACKS[pack].bytes, eventId: e.id };
+  const price = clampPrice(typeof o.metadata?.price === "string" ? parseInt(o.metadata.price, 10) : NaN);
+  return { rid, bytes: bytesForCents(PACK_CENTS[pack], price), eventId: e.id };
 }

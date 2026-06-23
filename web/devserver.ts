@@ -5,7 +5,7 @@
 // mail at /__mail so you can click the confirm + download links. Run: bun run web/devserver.ts
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
-import { billingCheckout, billingWebhook, confirm, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
+import { billingCheckout, billingPacks, billingWebhook, confirm, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
 import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2, MemoryReceiver } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
@@ -109,6 +109,7 @@ async function handleApi(req: Request, sub: string): Promise<Response> {
   if (req.method === "POST" && sub === "/fetch/challenge") return fetchChallenge(req, env);
   if (req.method === "POST" && sub === "/fetch/preview") return fetchPreview(req, env); // binary head+metadata, served as-is
   if (req.method === "POST" && sub === "/fetch/download") return localizeUrl(await fetchDownload(req, env), "url");
+  if (req.method === "GET" && sub === "/billing/packs") return billingPacks(req, env);
   if (req.method === "POST" && sub === "/billing/checkout") return billingCheckout(req, env); // 503 locally unless STRIPE_SECRET_KEY is set
   if (req.method === "POST" && sub === "/billing/webhook") return billingWebhook(req, env);
   return new Response("not found", { status: 404 });

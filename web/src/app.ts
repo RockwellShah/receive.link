@@ -294,13 +294,6 @@ async function fetchDownloadUrl(objectId: string, identity: Identity) {
   return api.fetchDownload(challengeId, proof);
 }
 
-// Prepaid credit packs (labels only; the amounts + bytes are authoritative server-side in worker stripe.ts).
-const CREDIT_PACKS: { id: string; label: string }[] = [
-  { id: "p10", label: "$10 · 100 GB" },
-  { id: "p25", label: "$25 · 250 GB" },
-  { id: "p50", label: "$50 · 500 GB" },
-  { id: "p100", label: "$100 · 1 TB" },
-];
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Hand off to Stripe-hosted Checkout for a top-up: prove possession of the file (so the server credits
@@ -315,13 +308,19 @@ async function startCheckout(objectId: string, identity: Identity, pack: string)
   }
 }
 
-/** The out-of-funds wall: the only place money surfaces. Offer the prepaid packs; a tap starts checkout. */
+/** The out-of-funds wall: the only place money surfaces. Pull the prepaid tiers from the server (so the
+ *  labels always reflect the live price), then a tap starts checkout. */
 async function showTopUp(objectId: string, identity: Identity): Promise<void> {
   const host = await appMsg([{ t: "Add credit to unlock this download.", b: true }, " Prepaid, pay only for what you download, never expires."]);
-  actionRow(
-    host,
-    CREDIT_PACKS.map((p) => ({ label: p.label, onClick: () => void startCheckout(objectId, identity, p.id) })),
-  );
+  try {
+    const { packs } = await api.billingPacks();
+    actionRow(
+      host,
+      packs.map((p) => ({ label: p.label, onClick: () => void startCheckout(objectId, identity, p.id) })),
+    );
+  } catch (e) {
+    await appMsg([humanError(e)], ERR);
+  }
 }
 
 async function receiveMode(objectId: string): Promise<void> {

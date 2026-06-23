@@ -9,6 +9,7 @@ import { bech32m } from "@scure/base";
 import {
   REG_EMAIL_PER_DAY,
   billingCheckout,
+  billingPacks,
   billingWebhook,
   confirm,
   fetchChallenge,
@@ -21,7 +22,7 @@ import {
   uploadInit,
   uploadParts,
 } from "./handlers";
-import { PACKS, checkoutSessionParams, parseCreditFromEvent, verifyStripeSignature } from "./stripe";
+import { checkoutSessionParams, packList, parseCreditFromEvent, priceCentsPerGb, verifyStripeSignature } from "./stripe";
 import { CapturingEmail, MemoryCompletion, MemoryReceiver, makeTestEnv, type SentMail, type TestHarness } from "./testing";
 
 function post(path: string, body: unknown, ip = "1.2.3.4"): Request {
@@ -710,23 +711,43 @@ test("stripe: signature verify accepts any v1 during a secret rotation", async (
   expect(await verifyStripeSignature(body, `t=${now},v1=deadbeef,v1=${good}`, "whsec_new", now)).toBe(true);
 });
 
-test("stripe: parseCreditFromEvent credits only a PAID session with a known pack (bytes from PACKS, not the event)", async () => {
-  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid: "rid_x", pack: "p10" }, ...obj } } });
-  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: PACKS.p10.bytes, eventId: "evt_1" });
+test("stripe: parseCreditFromEvent credits only a PAID session with a known pack, bytes from the LOCKED price", async () => {
+  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid: "rid_x", pack: "p10", price: "1" }, ...obj } } });
+  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, eventId: "evt_1" }); // $10 @ 1c/GB = 1 TB
+  // The bytes follow the price LOCKED in the session, not the live knob: same $10 pack stamped at 10c/GB -> 100 GB.
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, eventId: "evt_1" });
   expect(parseCreditFromEvent(ev({ payment_status: "unpaid" }))).toBeNull(); // not paid
-  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x" } }))).toBeNull(); // no pack
-  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "nope" } }))).toBeNull(); // unknown pack
-  expect(parseCreditFromEvent(ev({ metadata: { pack: "p10" } }))).toBeNull(); // no rid
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", price: "1" } }))).toBeNull(); // no pack
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "nope", price: "1" } }))).toBeNull(); // unknown pack
+  expect(parseCreditFromEvent(ev({ metadata: { pack: "p10", price: "1" } }))).toBeNull(); // no rid
   expect(parseCreditFromEvent({ id: "x", type: "payment_intent.succeeded", data: { object: {} } })).toBeNull(); // wrong type
 });
 
-test("stripe: checkoutSessionParams encodes a one-time payment crediting the rid", () => {
-  const p = checkoutSessionParams({ rid: "rid_y", pack: "p10", successUrl: "https://x/s", cancelUrl: "https://x/c" });
+test("stripe: checkoutSessionParams encodes a one-time payment and LOCKS the current price", async () => {
+  const { env } = await makeTestEnv({ PRICE_CENTS_PER_GB: "1" });
+  const p = checkoutSessionParams(env, { rid: "rid_y", pack: "p10", successUrl: "https://x/s", cancelUrl: "https://x/c" });
   expect(p.get("mode")).toBe("payment");
   expect(p.get("client_reference_id")).toBe("rid_y");
   expect(p.get("metadata[rid]")).toBe("rid_y");
-  expect(p.get("metadata[bytes]")).toBe(String(PACKS.p10.bytes));
+  expect(p.get("metadata[pack]")).toBe("p10");
+  expect(p.get("metadata[price]")).toBe("1"); // locked for the webhook
   expect(p.get("line_items[0][price_data][unit_amount]")).toBe("1000"); // $10
+});
+
+test("billing: the price is one env knob; packs + labels derive from it", async () => {
+  const cheap = await makeTestEnv(); // default 1¢/GB
+  expect(priceCentsPerGb(cheap.env)).toBe(1);
+  const p10cheap = packList(cheap.env).find((p) => p.id === "p10")!;
+  expect(p10cheap.bytes).toBe(1_000_000_000_000); // $10 = 1 TB
+  expect(p10cheap.label).toContain("1 TB");
+  const dear = await makeTestEnv({ PRICE_CENTS_PER_GB: "10" }); // walk it to 10¢/GB
+  const p10dear = packList(dear.env).find((p) => p.id === "p10")!;
+  expect(p10dear.bytes).toBe(100_000_000_000); // same $10 now buys 100 GB
+  expect(p10dear.label).toContain("100 GB");
+  // /billing/packs serves the current tiers for the client picker.
+  const out = (await billingPacks(new Request("http://x/billing/packs"), cheap.env).json()) as { packs: { id: string }[]; priceCentsPerGb: number };
+  expect(out.priceCentsPerGb).toBe(1);
+  expect(out.packs.map((x) => x.id)).toEqual(["p10", "p25", "p50", "p100"]);
 });
 
 test("billing checkout: 503 unless BOTH Stripe secrets are set; 400 on an unknown pack", async () => {
@@ -764,14 +785,14 @@ test("billing webhook: a signed paid session credits the account, idempotent on 
   const secret = "whsec_test";
   const h = await makeTestEnv({ STRIPE_WEBHOOK_SECRET: secret, FREE_GRANT_BYTES: "0" });
   const rid = await receiverId(h.env, "receiver@example.com");
-  const body = JSON.stringify({ id: "evt_42", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid, pack: "p10" } } } });
+  const body = JSON.stringify({ id: "evt_42", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid, pack: "p10", price: "1" } } } });
   const now = Math.floor(Date.now() / 1000);
   const hook = async () => billingWebhook(new Request("http://x/billing/webhook", { method: "POST", headers: { "stripe-signature": await stripeSig(secret, body, now) }, body }), h.env);
   const acct = h.env.RECEIVER.get(h.env.RECEIVER.idFromName(rid));
   expect((await hook()).status).toBe(200);
-  expect((await acct.summary(0)).balance).toBe(PACKS.p10.bytes); // credited the p10 pack (grant 0)
+  expect((await acct.summary(0)).balance).toBe(1_000_000_000_000); // p10 @ 1c/GB = 1 TB (grant 0)
   expect((await hook()).status).toBe(200); // webhook retry, same event id
-  expect((await acct.summary(0)).balance).toBe(PACKS.p10.bytes); // not double-credited
+  expect((await acct.summary(0)).balance).toBe(1_000_000_000_000); // not double-credited
 });
 
 test("billing webhook: a bad signature is rejected (400) and credits nothing", async () => {

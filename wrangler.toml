@@ -87,6 +87,9 @@ REG_IP_PER_DAY = "1000"
 #   wrangler secret put STRIPE_WEBHOOK_SECRET     # whsec_…; from the webhook endpoint you register (below)
 # Then flip the download charge on with the var BILLING_ENABLED = "1" (default off = downloads free). No
 # Stripe products/prices to create — the packs are defined in worker/src/stripe.ts (dynamic price_data).
+# PRICE knob: PRICE_CENTS_PER_GB (a [vars] entry; default 1 = 1¢/GB, $10 = 1 TB). Edit it in the Cloudflare
+# dashboard to walk the price with NO code change; the fixed $10/$25/$50/$100 tiers re-derive their GB from
+# it, and the price is locked into each checkout so a change can't mis-credit an in-flight payment.
 # Register a webhook endpoint in Stripe (Developers > Webhooks): URL https://mon.receive.link/billing/webhook,
 # event checkout.session.completed; copy its signing secret into STRIPE_WEBHOOK_SECRET above.
 #

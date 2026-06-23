@@ -48,6 +48,7 @@ export interface Env {
   // (2b) is live and this is flipped on together with the caps above.
   BILLING_ENABLED?: string; // "1"/"true" turns on the per-file download charge; unset/false = downloads free
   FREE_GRANT_BYTES?: string; // free credit seeded into a new account when billing is on (default 1 GB)
+  PRICE_CENTS_PER_GB?: string; // price knob: cents per GB of download (default 1 = 1¢/GB, $10 = 1 TB). Tune in the dashboard to walk the price with no code change; fixed $10/$25/$50/$100 tiers derive their GB from it
   MULTIPART_THRESHOLD?: string; // optional: ciphertext bytes above which multipart kicks in
   MULTIPART_MIN_PART?: string; // optional: minimum part size (R2 needs >=5 MiB for non-last parts)
   REG_IP_PER_DAY?: string; // optional per-day abuse-cap overrides (staging runs these high)

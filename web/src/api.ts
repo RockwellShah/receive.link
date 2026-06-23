@@ -150,6 +150,13 @@ export class DropApi {
     return (await res.json()) as { url: string; expiresInSec: number };
   }
 
+  /** The prepaid credit tiers at the current price (for the top-up picker; labels track the price knob). */
+  async billingPacks(): Promise<{ packs: { id: string; label: string }[] }> {
+    const res = await fetch(`${this.base}/billing/packs`);
+    if (!res.ok) throw await asError(res);
+    return (await res.json()) as { packs: { id: string; label: string }[] };
+  }
+
   /** Start a top-up: prove possession of the file being unlocked (so the server credits the owning
    *  account) and get a Stripe-hosted Checkout URL to redirect to. */
   billingCheckout(challengeId: string, proof: string, pack: string): Promise<{ url: string }> {
