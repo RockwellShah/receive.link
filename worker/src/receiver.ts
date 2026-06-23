@@ -29,7 +29,7 @@
 //   balance  — prepaid credit in bytes; lazy-seeded to the free grant on first touch (Phase 2)
 //   tier     — "free" | "paid"; flips to "paid" on the first credit() (a Stripe top-up)
 //   paid     — finalId -> expiresAt for files already charged (free re-downloads); pruned past expiry
-//   events   — Stripe event ids already credited (webhook idempotency; Phase 2b)
+//   evt:<id> — one key per credited Stripe event (webhook idempotency; per-key, not a growing map; 2b)
 import { DurableObject } from "cloudflare:workers";
 
 // A reservation must outlive any LEGITIMATE completion (CompletionGuard RUNNING_TTL is 5 min, and a
@@ -224,20 +224,16 @@ export class ReceiverAccount extends DurableObject {
     return { ok: true, alreadyPaid: false, balance: balance - need };
   }
 
-  /** Add prepaid credit (a Stripe top-up) and mark the account paid. Idempotent on the Stripe event id so
-   *  a webhook retry can't double-credit; the event id, balance, and tier are written in one atomic put so
-   *  a crash can't mark the event seen while losing the credit. (Phase 2b.) */
+  /** Add prepaid credit (a Stripe top-up) and mark the account paid. Idempotent on the Stripe event id so a
+   *  webhook retry can't double-credit: each credited event is its OWN `evt:<id>` storage key (not a single
+   *  growing map — that would hit the 128 KB value limit for a high-volume account), and the seen-marker +
+   *  balance + tier are written in one atomic put so a crash can't mark the event credited while losing the
+   *  credit. (Phase 2b.) */
   async credit(packBytes: number, grant: number, eventId?: string): Promise<{ balance: number }> {
-    const writes: Record<string, unknown> = {};
-    if (eventId) {
-      const seen = (await this.ctx.storage.get<Record<string, true>>("events")) ?? {};
-      if (seen[eventId]) return { balance: await this.balance(grant) }; // already applied this event
-      seen[eventId] = true;
-      writes.events = seen;
-    }
+    if (eventId && (await this.ctx.storage.get(`evt:${eventId}`))) return { balance: await this.balance(grant) }; // already applied
     const newBalance = (await this.balance(grant)) + clampBytes(packBytes);
-    writes.balance = newBalance;
-    writes.tier = "paid" satisfies Tier;
+    const writes: Record<string, unknown> = { balance: newBalance, tier: "paid" satisfies Tier };
+    if (eventId) writes[`evt:${eventId}`] = true;
     await this.ctx.storage.put(writes);
     return { balance: newBalance };
   }

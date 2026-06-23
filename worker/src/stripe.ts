@@ -23,9 +23,11 @@ export function isPackId(s: string): s is PackId {
   return Object.prototype.hasOwnProperty.call(PACKS, s);
 }
 
-/** True once the Stripe secret key is configured; checkout 503s until then so the worker ships inert. */
+/** True only when BOTH the API secret and the webhook secret are set — checkout 503s until then. We need
+ *  the webhook secret too, because without it a paid session's credit could never land (the webhook would
+ *  503 forever), so a user must never be able to pay before we can credit them. Ships inert until both. */
 export function stripeConfigured(env: Env): boolean {
-  return !!env.STRIPE_SECRET_KEY;
+  return !!env.STRIPE_SECRET_KEY && !!env.STRIPE_WEBHOOK_SECRET;
 }
 
 /** Form-encode the Checkout session params (pure; testable). One-time payment for prepaid credit. The rid
@@ -93,19 +95,21 @@ export async function verifyStripeSignature(rawBody: string, sigHeader: string, 
 }
 
 /** Pull the credit instruction out of a verified `checkout.session.completed` event, or null for any other
- *  event type / an unpaid or malformed session. The granted bytes come from the metadata WE set at session
- *  creation, so the amount is never client-controlled. The event id makes the credit idempotent on retry. */
+ *  event type / an unpaid or malformed session. The granted bytes are derived from the pack id in the
+ *  metadata WE set (looked up in PACKS, the single source of truth) — never from a client- or event-supplied
+ *  amount — so even an unexpected session in our Stripe account can only ever credit a known pack size. The
+ *  event id makes the credit idempotent on a webhook retry. */
 export function parseCreditFromEvent(event: unknown): { rid: string; bytes: number; eventId: string } | null {
   const e = event as {
     id?: unknown;
     type?: unknown;
-    data?: { object?: { payment_status?: unknown; client_reference_id?: unknown; metadata?: { rid?: unknown; bytes?: unknown } } };
+    data?: { object?: { payment_status?: unknown; metadata?: { rid?: unknown; pack?: unknown } } };
   };
   if (typeof e?.id !== "string" || e.type !== "checkout.session.completed") return null;
   const o = e.data?.object;
   if (!o || o.payment_status !== "paid") return null; // only credit a fully-paid session
-  const rid = typeof o.metadata?.rid === "string" ? o.metadata.rid : typeof o.client_reference_id === "string" ? o.client_reference_id : "";
-  const bytes = parseInt(typeof o.metadata?.bytes === "string" ? o.metadata.bytes : "", 10);
-  if (!rid || !Number.isFinite(bytes) || bytes <= 0) return null;
-  return { rid, bytes, eventId: e.id };
+  const rid = typeof o.metadata?.rid === "string" ? o.metadata.rid : "";
+  const pack = typeof o.metadata?.pack === "string" ? o.metadata.pack : "";
+  if (!rid || !isPackId(pack)) return null;
+  return { rid, bytes: PACKS[pack].bytes, eventId: e.id };
 }

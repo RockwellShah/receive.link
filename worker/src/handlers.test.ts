@@ -710,14 +710,14 @@ test("stripe: signature verify accepts any v1 during a secret rotation", async (
   expect(await verifyStripeSignature(body, `t=${now},v1=deadbeef,v1=${good}`, "whsec_new", now)).toBe(true);
 });
 
-test("stripe: parseCreditFromEvent only credits a PAID checkout.session.completed", async () => {
-  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid: "rid_x", bytes: "1000" }, ...obj } } });
-  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1000, eventId: "evt_1" });
+test("stripe: parseCreditFromEvent credits only a PAID session with a known pack (bytes from PACKS, not the event)", async () => {
+  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid: "rid_x", pack: "p10" }, ...obj } } });
+  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: PACKS.p10.bytes, eventId: "evt_1" });
   expect(parseCreditFromEvent(ev({ payment_status: "unpaid" }))).toBeNull(); // not paid
-  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x" } }))).toBeNull(); // no bytes
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x" } }))).toBeNull(); // no pack
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "nope" } }))).toBeNull(); // unknown pack
+  expect(parseCreditFromEvent(ev({ metadata: { pack: "p10" } }))).toBeNull(); // no rid
   expect(parseCreditFromEvent({ id: "x", type: "payment_intent.succeeded", data: { object: {} } })).toBeNull(); // wrong type
-  // rid falls back to client_reference_id when metadata.rid is absent.
-  expect(parseCreditFromEvent({ id: "evt_2", type: "checkout.session.completed", data: { object: { payment_status: "paid", client_reference_id: "rid_z", metadata: { bytes: "50" } } } })).toEqual({ rid: "rid_z", bytes: 50, eventId: "evt_2" });
 });
 
 test("stripe: checkoutSessionParams encodes a one-time payment crediting the rid", () => {
@@ -734,14 +734,14 @@ test("billing checkout: 503 when Stripe unconfigured; 400 on an unknown pack", a
   const finalId = await deliver(h, await setupLink(h), 200);
   const cp = await challengeAndProof(h, finalId, RECEIVER);
   expect((await billingCheckout(post("/billing/checkout", { ...cp, pack: "p10" }), h.env)).status).toBe(503);
-  const h2 = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x" });
+  const h2 = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
   const f2 = await deliver(h2, await setupLink(h2), 200);
   const cp2 = await challengeAndProof(h2, f2, RECEIVER);
   expect((await billingCheckout(post("/billing/checkout", { ...cp2, pack: "nope" }), h2.env)).status).toBe(400);
 });
 
 test("billing checkout: a proven request returns a Stripe Checkout URL", async () => {
-  const h = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x" });
+  const h = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
   const finalId = await deliver(h, await setupLink(h), 200);
   const cp = await challengeAndProof(h, finalId, RECEIVER);
   const realFetch = globalThis.fetch;
@@ -759,14 +759,14 @@ test("billing webhook: a signed paid session credits the account, idempotent on 
   const secret = "whsec_test";
   const h = await makeTestEnv({ STRIPE_WEBHOOK_SECRET: secret, FREE_GRANT_BYTES: "0" });
   const rid = await receiverId(h.env, "receiver@example.com");
-  const body = JSON.stringify({ id: "evt_42", type: "checkout.session.completed", data: { object: { payment_status: "paid", client_reference_id: rid, metadata: { rid, bytes: "100" } } } });
+  const body = JSON.stringify({ id: "evt_42", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid, pack: "p10" } } } });
   const now = Math.floor(Date.now() / 1000);
   const hook = async () => billingWebhook(new Request("http://x/billing/webhook", { method: "POST", headers: { "stripe-signature": await stripeSig(secret, body, now) }, body }), h.env);
   const acct = h.env.RECEIVER.get(h.env.RECEIVER.idFromName(rid));
   expect((await hook()).status).toBe(200);
-  expect((await acct.summary(0)).balance).toBe(100); // credited (grant 0 -> 100)
+  expect((await acct.summary(0)).balance).toBe(PACKS.p10.bytes); // credited the p10 pack (grant 0)
   expect((await hook()).status).toBe(200); // webhook retry, same event id
-  expect((await acct.summary(0)).balance).toBe(100); // not double-credited
+  expect((await acct.summary(0)).balance).toBe(PACKS.p10.bytes); // not double-credited
 });
 
 test("billing webhook: a bad signature is rejected (400) and credits nothing", async () => {
