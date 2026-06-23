@@ -156,8 +156,8 @@ const DEFAULT_FREE_GRANT_BYTES = 1_000_000_000; // 1 GB (decimal) of free downlo
 function paidAtRestCap(env: Env): number {
   return envInt(env.PAID_ATREST_CAP_BYTES, 0);
 }
-/** Free credit seeded into a new account when billing is on (default 1 GiB). Unlike envInt, an explicit
- *  "0" is honored (a deliberate no-free-grant config), not coerced to the default. */
+/** Free credit seeded into a new account when billing is on (default 1 GB, decimal). Unlike envInt, an
+ *  explicit "0" is honored (a deliberate no-free-grant config), not coerced to the default. */
 function freeGrantBytes(env: Env): number {
   if (env.FREE_GRANT_BYTES === undefined) return DEFAULT_FREE_GRANT_BYTES;
   const n = parseInt(env.FREE_GRANT_BYTES, 10);

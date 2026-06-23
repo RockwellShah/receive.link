@@ -712,11 +712,14 @@ test("stripe: signature verify accepts any v1 during a secret rotation", async (
 });
 
 test("stripe: parseCreditFromEvent credits only a PAID session with a known pack, bytes from the LOCKED price", async () => {
-  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid: "rid_x", pack: "p10", price: "1" }, ...obj } } });
+  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid: "rid_x", pack: "p10", price: "1" }, ...obj } } });
   expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, eventId: "evt_1" }); // $10 @ 1c/GB = 1 TB
   // The bytes follow the price LOCKED in the session, not the live knob: same $10 pack stamped at 10c/GB -> 100 GB.
   expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, eventId: "evt_1" });
   expect(parseCreditFromEvent(ev({ payment_status: "unpaid" }))).toBeNull(); // not paid
+  expect(parseCreditFromEvent(ev({ amount_total: 100 }))).toBeNull(); // underpaid for p10 ($1 < $10)
+  expect(parseCreditFromEvent(ev({ currency: "eur" }))).toBeNull(); // wrong currency
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10" } }))).toBeNull(); // no locked price -> reject (not max-bytes)
   expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", price: "1" } }))).toBeNull(); // no pack
   expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "nope", price: "1" } }))).toBeNull(); // unknown pack
   expect(parseCreditFromEvent(ev({ metadata: { pack: "p10", price: "1" } }))).toBeNull(); // no rid
@@ -785,7 +788,7 @@ test("billing webhook: a signed paid session credits the account, idempotent on 
   const secret = "whsec_test";
   const h = await makeTestEnv({ STRIPE_WEBHOOK_SECRET: secret, FREE_GRANT_BYTES: "0" });
   const rid = await receiverId(h.env, "receiver@example.com");
-  const body = JSON.stringify({ id: "evt_42", type: "checkout.session.completed", data: { object: { payment_status: "paid", metadata: { rid, pack: "p10", price: "1" } } } });
+  const body = JSON.stringify({ id: "evt_42", type: "checkout.session.completed", data: { object: { payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid, pack: "p10", price: "1" } } } });
   const now = Math.floor(Date.now() / 1000);
   const hook = async () => billingWebhook(new Request("http://x/billing/webhook", { method: "POST", headers: { "stripe-signature": await stripeSig(secret, body, now) }, body }), h.env);
   const acct = h.env.RECEIVER.get(h.env.RECEIVER.idFromName(rid));

@@ -21,7 +21,9 @@ export function isPackId(s: string): s is PackId {
 const DEFAULT_PRICE_CENTS_PER_GB = 1; // 1¢/GB
 const MAX_PRICE_CENTS_PER_GB = 1000; // $10/GB — a sanity clamp bounding the webhook's byte derivation
 
-const clampPrice = (n: number): number => (Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), MAX_PRICE_CENTS_PER_GB) : DEFAULT_PRICE_CENTS_PER_GB);
+// Floor to >= 1 so the divisor in bytesForCents can never be 0 (a fractional like 0.5 floors to 0, hence
+// the >= 1 guard, not > 0). Out-of-range / non-numeric -> the default.
+const clampPrice = (n: number): number => (Number.isFinite(n) && n >= 1 ? Math.min(Math.floor(n), MAX_PRICE_CENTS_PER_GB) : DEFAULT_PRICE_CENTS_PER_GB);
 
 /** Price in cents per GB, from PRICE_CENTS_PER_GB (clamped to a sane range; default 1¢/GB). Change it in
  *  the Cloudflare dashboard to walk the price with no code change. */
@@ -41,7 +43,7 @@ function humanSize(bytes: number): string {
     const tb = gb / 1000;
     return `${Number.isInteger(tb) ? tb : tb.toFixed(1)} TB`;
   }
-  return `${Math.round(gb)} GB`;
+  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
 }
 
 /** The prepaid packs at the CURRENT price, for the client's top-up picker. Derived, so changing the price
@@ -138,7 +140,7 @@ export function parseCreditFromEvent(event: unknown): { rid: string; bytes: numb
   const e = event as {
     id?: unknown;
     type?: unknown;
-    data?: { object?: { payment_status?: unknown; metadata?: { rid?: unknown; pack?: unknown; price?: unknown } } };
+    data?: { object?: { payment_status?: unknown; amount_total?: unknown; currency?: unknown; metadata?: { rid?: unknown; pack?: unknown; price?: unknown } } };
   };
   if (typeof e?.id !== "string" || e.type !== "checkout.session.completed") return null;
   const o = e.data?.object;
@@ -146,6 +148,12 @@ export function parseCreditFromEvent(event: unknown): { rid: string; bytes: numb
   const rid = typeof o.metadata?.rid === "string" ? o.metadata.rid : "";
   const pack = typeof o.metadata?.pack === "string" ? o.metadata.pack : "";
   if (!rid || !isPackId(pack)) return null;
-  const price = clampPrice(typeof o.metadata?.price === "string" ? parseInt(o.metadata.price, 10) : NaN);
+  // REQUIRE a valid locked price (do NOT default — a price-less/garbled session is anomalous, and
+  // defaulting to the floor price would credit the MOST bytes; reject it instead).
+  const price = typeof o.metadata?.price === "string" ? parseInt(o.metadata.price, 10) : NaN;
+  if (!Number.isInteger(price) || price < 1 || price > MAX_PRICE_CENTS_PER_GB) return null;
+  // Credit only if they actually paid (at least) this tier's price in USD — guards a forged same-account
+  // session that underpays but stamps a bigger pack. (We don't enable Stripe tax, so amount_total == tier.)
+  if (o.currency !== "usd" || typeof o.amount_total !== "number" || o.amount_total < PACK_CENTS[pack]) return null;
   return { rid, bytes: bytesForCents(PACK_CENTS[pack], price), eventId: e.id };
 }
