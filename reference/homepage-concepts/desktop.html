@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>receive.link — homepage concept (Poke-inspired)</title>
+<!--
+  receive.link homepage design concept, v3 (warm/editorial, Poke-inspired).
+  Self-contained: edit the <style> and the markup below freely.
+  Fonts: Spectral (serif headlines) + Nunito (rounded body). Icons: Tabler webfont.
+  Brand greens: #23A267 (mark + CTAs). Cream #EEEBE6, ink #1A1F2B.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#E5E0D6;padding:32px 16px;font-family:'Nunito',system-ui,sans-serif}
+.rk{max-width:720px;margin:0 auto;--cream:#EEEBE6;--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--g:#23A267;line-height:1.5}
+.rk .frame{border:1px solid #DED7C9;border-radius:16px;overflow:hidden;background:var(--cream);color:var(--ink);box-shadow:0 20px 60px rgba(26,31,43,.10)}
+.rk .rule{height:1px;background:#D7D0C1;border:0;max-width:600px;margin:0 auto}
+.rk .logo{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--ink)}
+.rk .logo svg{flex:none;color:var(--ink)}
+.rk .logo .wm{display:inline-flex;align-items:baseline;letter-spacing:-.01em}
+.rk .logo .dotp{color:var(--g)}
+.rk .logo .tld{color:#9499A3;font-weight:600}
+.rk .nav{display:flex;align-items:center;justify-content:space-between;padding:16px 26px}
+.rk .nav .logo{font-size:16px}
+.rk .navr{display:flex;align-items:center;gap:11px}
+.rk .menu{position:relative;outline:none}
+.rk .kebab{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;color:var(--mut);cursor:pointer;border:1px solid var(--ln);background:#fff}
+.rk .kebab .ti{font-size:18px}
+.rk .menu:hover .kebab,.rk .menu:focus-within .kebab{color:var(--ink);border-color:#D7D0C1}
+.rk .navmenu{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 34px rgba(26,31,43,.14);padding:6px;min-width:158px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .14s,transform .14s,visibility .14s;z-index:5}
+.rk .menu::after{content:"";position:absolute;right:0;top:100%;width:34px;height:10px}
+.rk .menu:hover .navmenu,.rk .menu:focus-within .navmenu{opacity:1;visibility:visible;transform:none}
+.rk .navmenu span{font-size:13px;font-weight:600;color:#56585F;padding:8px 11px;border-radius:8px;cursor:pointer}
+.rk .navmenu span:hover{background:var(--cream);color:var(--ink)}
+.rk .pill{background:var(--g);color:#fff;border-radius:22px;padding:9px 17px;font-size:13px;font-weight:700;display:inline-block;cursor:pointer}
+.rk .hero{text-align:center;padding:42px 24px 0}
+.rk .kick{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--mut);background:#fff;border:1px solid var(--ln);border-radius:20px;padding:5px 13px;margin-bottom:22px}
+.rk .kick .ti{color:var(--g);font-size:13px}
+.rk h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:46px;line-height:1.06;letter-spacing:-.01em;margin:0 auto 16px;max-width:540px}
+.rk .sub{font-size:15.5px;color:var(--mut);max-width:430px;margin:0 auto 24px;line-height:1.55;font-weight:500}
+.rk .hcta{display:flex;gap:12px;justify-content:center;align-items:center}
+.rk .ghost{font-size:13px;font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.rk .stage{position:relative;padding:34px 24px 56px;display:flex;justify-content:center}
+.rk .wash{position:absolute;left:-5%;right:-5%;bottom:0;height:270px;background:radial-gradient(60% 90% at 50% 100%,#bfe0cf 0%,#d6e6dd 32%,rgba(238,235,230,0) 72%);pointer-events:none}
+.rk .phone{position:relative;width:360px;max-width:100%;border:1px solid #ECE7DC;border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 18px 44px rgba(26,31,43,.13)}
+.rk .papp{padding:20px}
+.rk .pbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.rk .pbar .logo{font-size:14px}.rk .pbar .ti{color:var(--mut);font-size:14px}
+.rk .pnew{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--g);background:#E7F2EB;border-radius:20px;padding:4px 10px}
+.rk .phd{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:23px;color:var(--ink);margin:0 0 4px}
+.rk .psub{font-size:12.5px;color:var(--mut);font-weight:500;margin-bottom:16px}
+.rk .pfile{display:flex;align-items:center;gap:13px;border:1px solid #ECE8DE;border-radius:14px;padding:14px;background:#FAF8F3;margin-bottom:14px}
+.rk .pfile .pl{position:relative;width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid #ECE8DE;color:#9499A3;display:flex;align-items:center;justify-content:center;flex:none}
+.rk .pfile .pl .ti{font-size:21px}
+.rk .pfile .pl .plock{position:absolute;right:-6px;bottom:-6px;width:20px;height:20px;border-radius:50%;background:var(--g);color:#fff;border:2px solid #FAF8F3;display:flex;align-items:center;justify-content:center}
+.rk .pfile .pl .plock .ti{font-size:10px}
+.rk .pfx{flex:1;min-width:0}
+.rk .pfn{font-size:14.5px;font-weight:700;color:var(--ink)}
+.rk .pmeta{font-size:11.5px;color:var(--mut);margin-top:2px}
+.rk .pchev{color:#C9C3B4;font-size:18px;flex:none}
+.rk .popen{background:var(--ink);color:#fff;border-radius:12px;padding:14px;font-size:13.5px;font-weight:700;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px}
+.rk .popen .ti{font-size:17px}
+.rk .feat{display:flex;align-items:center;gap:38px;max-width:600px;margin:0 auto;padding:46px 24px}
+.rk .feat.rev{flex-direction:row-reverse}
+.rk .feat .txt{flex:1}
+.rk .feat .fn{font-size:12px;color:var(--mut);font-weight:700;margin-bottom:8px}
+.rk .feat h3{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:25px;line-height:1.1;margin:0 0 9px}
+.rk .feat p{margin:0 0 12px;font-size:14px;color:var(--mut);line-height:1.55;font-weight:500}
+.rk .feat .lm{font-size:13px;font-weight:700;color:var(--g);display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.rk .feat .vis{flex:1;height:172px;border-radius:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(26,31,43,.07)}
+.rk .v1{background:linear-gradient(150deg,#E7F2EB,#D4E8DB)}
+.rk .v2{background:linear-gradient(150deg,#F3ECE6,#ECE4F0)}
+.rk .v3{background:linear-gradient(150deg,#E6EEF4,#E9E6F2)}
+.rk .chip{background:#fff;border-radius:11px;padding:11px 13px;box-shadow:0 4px 14px rgba(26,31,43,.10);display:flex;align-items:center;gap:9px;font-size:12px;font-weight:600;color:var(--ink)}
+.rk .chip .ti{color:var(--g);font-size:16px}
+.rk .chip .lk{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--mut)}
+.rk .vrow{display:flex;align-items:center;gap:10px}
+.rk .vbox{width:44px;height:44px;border-radius:11px;background:#fff;box-shadow:0 4px 14px rgba(26,31,43,.10);display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.rk .vbox .ti{font-size:19px}.rk .vbox.gr .ti{color:var(--g)}
+.rk .vrow .ar{color:var(--mut);font-size:16px}
+.rk .who{max-width:600px;margin:0 auto;padding:46px 24px;text-align:center}
+.rk .who h2{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:28px;margin:0 0 8px}
+.rk .who .wsub{font-size:14px;color:var(--mut);margin:0 auto 24px;font-weight:500;max-width:380px}
+.rk .whogrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px}
+.rk .wcard{background:var(--card);border:1px solid var(--ln);border-radius:15px;padding:17px 15px;text-align:left}
+.rk .wcard .wic{width:33px;height:33px;border-radius:9px;background:#E7F2EB;color:var(--g);display:flex;align-items:center;justify-content:center;margin-bottom:11px}
+.rk .wcard .wic .ti{font-size:18px}
+.rk .wcard h4{font-size:13.5px;font-weight:700;margin:0 0 5px;color:var(--ink)}
+.rk .wcard p{margin:0;font-size:11.5px;color:var(--mut);line-height:1.45;font-weight:500}
+.rk .trust{max-width:600px;margin:0 auto;padding:42px 24px}
+.rk .trust .tlbl{text-align:center;font-family:'Spectral',serif;font-weight:500;font-size:24px;margin-bottom:28px}
+.rk .tgrid{display:grid;grid-template-columns:1fr 1fr;gap:26px 36px}
+.rk .tp{display:flex;align-items:flex-start;gap:12px}
+.rk .tp .tck{flex:none;width:24px;height:24px;border-radius:50%;background:#E7F2EB;color:var(--g);display:flex;align-items:center;justify-content:center;margin-top:1px}
+.rk .tp .tck .ti{font-size:14px}
+.rk .tp .ttx h4{margin:0 0 4px;font-size:14px;font-weight:700;color:var(--ink);line-height:1.25}
+.rk .tp .ttx p{margin:0;font-size:12.5px;color:var(--mut);line-height:1.5;font-weight:500;text-wrap:pretty}
+.rk .pricing{max-width:600px;margin:0 auto;padding:46px 24px;text-align:center}
+.rk .pricing .plbl{font-family:ui-monospace,monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--g);font-weight:700;margin-bottom:12px}
+.rk .pricing h2{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:32px;line-height:1.12;letter-spacing:-.01em;margin:0 auto 32px;max-width:440px}
+.rk .pricing .psub{font-size:14.5px;color:var(--mut);font-weight:500;max-width:440px;margin:0 auto 32px;line-height:1.55;text-wrap:pretty}
+.rk .pcard{background:#fff;border:1px solid var(--ln);border-radius:20px;box-shadow:0 18px 44px rgba(26,31,43,.08);padding:34px 32px;max-width:460px;margin:0 auto;text-align:left}
+.rk .ptag{display:inline-block;background:#E7F2EB;color:var(--g);font-weight:700;font-size:13px;border-radius:20px;padding:7px 15px;margin-bottom:26px}
+.rk .prow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-bottom:26px}
+.rk .pcol{text-align:center}
+.rk .pcol .pbig{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:40px;line-height:1;color:var(--ink);letter-spacing:-.01em}
+.rk .pcol .psm{font-size:13px;color:var(--mut);font-weight:500;margin-top:8px;line-height:1.35}
+.rk .pthen{font-family:'Spectral',Georgia,serif;font-style:italic;font-size:15px;color:var(--mut);padding:0 14px;border-left:1px solid var(--ln);border-right:1px solid var(--ln)}
+.rk .pdiv{border:none;border-top:1px solid var(--ln);margin:0 0 22px}
+.rk .pfeats{display:flex;flex-direction:column;gap:14px;margin-bottom:26px}
+.rk .pfeat{display:flex;align-items:center;gap:11px;font-size:14.5px;font-weight:600;color:var(--ink)}
+.rk .pfeat .ti{color:var(--g);font-size:18px;flex:none}
+.rk .pcard .pill{display:flex;width:100%;justify-content:center;padding:15px 0;font-size:15px}
+.rk .pnote{display:flex;align-items:center;justify-content:center;gap:9px;font-size:13px;color:var(--mut);font-weight:500;margin-top:22px}
+.rk .pnote .ti{color:var(--g);font-size:16px;flex:none}
+.rk .faq{max-width:600px;margin:0 auto;padding:46px 24px}
+.rk .faq .flbl{text-align:center;font-family:ui-monospace,monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--g);font-weight:700;margin-bottom:12px}
+.rk .faq h2{text-align:center;font-family:'Spectral',Georgia,serif;font-weight:500;font-size:32px;line-height:1.12;letter-spacing:-.01em;margin:0 auto 32px}
+.rk .faqi{border-top:1px solid var(--ln)}
+.rk .faqi:last-child{border-bottom:1px solid var(--ln)}
+.rk .faqi summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 4px;font-size:16px;font-weight:700;color:var(--ink)}
+.rk .faqi summary::-webkit-details-marker{display:none}
+.rk .faqi summary .ti{color:var(--g);font-size:20px;flex:none;transition:transform .2s}
+.rk .faqi[open] summary .ti{transform:rotate(45deg)}
+.rk .faqi .fa{padding:0 4px 20px;margin:-4px 0 0;font-size:14.5px;color:var(--mut);font-weight:500;line-height:1.6;max-width:520px;text-wrap:pretty}
+.rk .closing{position:relative;text-align:center;padding:60px 24px 68px;overflow:hidden}
+.rk .cwash{position:absolute;left:0;right:0;bottom:0;height:240px;background:radial-gradient(60% 100% at 50% 120%,#c6e2d4,rgba(238,235,230,0) 70%);pointer-events:none}
+.rk .closing h2{position:relative;font-family:'Spectral',Georgia,serif;font-weight:500;font-size:34px;margin:0 0 20px}
+.rk .closing .pill{position:relative}
+.rk .foot{padding:30px 26px;display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:18px}
+.rk .foot .logo{font-size:14px;margin-bottom:9px}
+.rk .foot .brand{font-size:11.5px;color:var(--mut);font-weight:600;line-height:1.6}
+.rk .foot h5{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:0 0 10px;font-weight:700}
+.rk .foot a{display:block;font-size:12.5px;color:#56585F;margin-bottom:7px;font-weight:600;text-decoration:none;cursor:pointer}
+@media (max-width:620px){
+  .rk h1{font-size:34px}
+  .rk .feat,.rk .feat.rev{flex-direction:column;gap:20px;text-align:center}
+  .rk .feat .vis{width:100%}
+  .rk .whogrid{grid-template-columns:1fr 1fr}
+  .rk .tgrid{grid-template-columns:1fr}
+  .rk .foot{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div class="rk">
+<div class="frame">
+  <div class="nav">
+    <span class="logo"><svg width="19" height="19" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></span>
+    <div class="navr">
+      <span class="pill">Create your link</span>
+      <div class="menu" tabindex="0"><span class="kebab"><span class="ti ti-dots-vertical"></span></span>
+        <div class="navmenu"><span>How it works</span><span>Pricing</span><span>FAQ</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero">
+    <span class="kick"><span class="ti ti-lock"></span>E2E encrypted &middot; Free &middot; Open source</span>
+    <h1>Receive files privately<br>with one link.</h1>
+    <div class="sub">Anyone can send you files. Only you can open them. Encrypted to your passkey, no accounts.</div>
+    <div class="hcta"><span class="pill">Create your link</span><span class="ghost">See how it works <span class="ti ti-arrow-right"></span></span></div>
+  </div>
+  <div class="stage">
+    <div class="wash"></div>
+    <div class="phone">
+      <div class="papp">
+        <div class="pbar"><span class="logo"><svg width="14" height="14" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></span><span class="pnew">New</span></div>
+        <div class="phd">A file just arrived</div>
+        <div class="psub">Sent to your link &middot; locked to your key</div>
+        <div class="pfile"><div class="pl"><span class="ti ti-file-text"></span><span class="plock"><span class="ti ti-lock"></span></span></div><div class="pfx"><div class="pfn">Locked file</div><div class="pmeta">24 GB &middot; 2 min ago</div></div><span class="ti ti-chevron-right pchev"></span></div>
+        <div class="popen"><span class="ti ti-fingerprint"></span>Unlock with your passkey</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="rule">
+  <div class="feat">
+    <div class="txt"><div class="fn">(1)</div><h3>Create your link</h3><p>Use an email plus a passkey, done in seconds. Share the link however you like — text, email, a QR code.</p><span class="lm">Try it free <span class="ti ti-arrow-right"></span></span></div>
+    <div class="vis v1"><div class="chip"><span class="ti ti-link"></span><span>receive.link/<span class="lk">k3f9a2x7</span></span><span class="ti ti-lock"></span></div></div>
+  </div>
+  <hr class="rule">
+  <div class="feat rev">
+    <div class="txt"><div class="fn">(2)</div><h3>Anyone sends</h3><p>They drop a file through your link. It locks in their browser before it uploads. No account, no app.</p><span class="lm">Try it free <span class="ti ti-arrow-right"></span></span></div>
+    <div class="vis v2"><div class="vrow"><div class="vbox"><span class="ti ti-file"></span></div><span class="ar"><span class="ti ti-arrow-right"></span></span><div class="vbox gr"><span class="ti ti-lock"></span></div></div></div>
+  </div>
+  <hr class="rule">
+  <div class="feat">
+    <div class="txt"><div class="fn">(3)</div><h3>Only you can open</h3><p>We email you, you tap the link, and your passkey unlocks the file on your device. No one in between can read it.</p><span class="lm">Try it free <span class="ti ti-arrow-right"></span></span></div>
+    <div class="vis v3"><div class="vrow"><div class="vbox"><span class="ti ti-device-mobile"></span></div><span class="ar"><span class="ti ti-fingerprint" style="color:#23A267"></span></span><div class="vbox gr"><span class="ti ti-lock-open"></span></div></div></div>
+  </div>
+
+  <hr class="rule">
+  <div class="who">
+    <h2>Who needs this?</h2>
+    <div class="wsub">Anyone who collects sensitive files from other people, without the email risk.</div>
+    <div class="whogrid">
+      <div class="wcard"><div class="wic"><span class="ti ti-calculator"></span></div><h4>Accountants</h4><p>Collect tax docs and statements from clients without insecure email.</p></div>
+      <div class="wcard"><div class="wic"><span class="ti ti-gavel"></span></div><h4>Lawyers</h4><p>Take in contracts, evidence, and signed forms, privately.</p></div>
+      <div class="wcard"><div class="wic"><span class="ti ti-users"></span></div><h4>HR &amp; recruiters</h4><p>Receive IDs, offer letters, and onboarding docs safely.</p></div>
+      <div class="wcard"><div class="wic"><span class="ti ti-news"></span></div><h4>Journalists</h4><p>Accept tips and documents from sources, locked end to end.</p></div>
+      <div class="wcard"><div class="wic"><span class="ti ti-stethoscope"></span></div><h4>Clinics &amp; therapists</h4><p>Take intake forms and records without exposing private health info.</p></div>
+      <div class="wcard"><div class="wic"><span class="ti ti-briefcase"></span></div><h4>Freelancers</h4><p>Get briefs, assets, and big files from clients in one link.</p></div>
+    </div>
+  </div>
+
+  <hr class="rule">
+  <div class="trust">
+    <div class="tlbl">Built for Privacy</div>
+    <div class="tgrid">
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Locked before it leaves</h4><p>Every file is encrypted in the sender's browser, before any of it is uploaded.</p></div></div>
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Only your passkey opens it</h4><p>The key stays in your control, behind your passkey. Not on our servers, not in the link.</p></div></div>
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>We never see your files</h4><p>We only ever hold the locked version. Filenames included.</p></div></div>
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>We don't store your email</h4><p>It's sealed inside your link. We unseal it for a moment to notify you, then let it go.</p></div></div>
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Files clean themselves up</h4><p>Anything sent to you auto-deletes after 7 days.</p></div></div>
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>You stay in control</h4><p>Disable your link whenever you want, and new files stop arriving.</p></div></div>
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>You stay anonymous</h4><p>Senders never see your email or contact info.</p></div></div>
+      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Open source</h4><p>Our code is public, open for review and audit.</p></div></div>
+    </div>
+  </div>
+
+  <hr class="rule">
+  <div class="pricing" data-screen-label="Pricing">
+    <div class="plbl">Pricing</div>
+    <h2>Pay by the gigabyte,<br>not the month.</h2>
+    <div class="pcard">
+      <span class="ptag">Pay as you go</span>
+      <div class="prow">
+        <div class="pcol"><div class="pbig">1 GB</div><div class="psm">free to start</div></div>
+        <div class="pthen">then</div>
+        <div class="pcol"><div class="pbig">$0.01</div><div class="psm">per GB<br>you download</div></div>
+      </div>
+      <hr class="pdiv">
+      <div class="pfeats">
+        <div class="pfeat"><span class="ti ti-check"></span>Only pay for what you download.</div>
+        <div class="pfeat"><span class="ti ti-check"></span>Redownloads are free.</div>
+        <div class="pfeat"><span class="ti ti-check"></span>No subscription.</div>
+      </div>
+      <span class="pill">Create your link</span>
+    </div>
+    <div class="pnote"><span class="ti ti-check"></span>Top up with credits only when you need them.</div>
+  </div>
+
+  <hr class="rule">
+  <div class="faq" data-screen-label="FAQ">
+    <div class="flbl">FAQ</div>
+    <h2>Good things to ask</h2>
+    <details class="faqi"><summary>Do I need an account?<span class="ti ti-plus"></span></summary><p class="fa">No. You create a link with your passkey, and the people sending you files just open the link in their browser. No app and no sign-up, on either side.</p></details>
+    <details class="faqi"><summary>What's a passkey?<span class="ti ti-plus"></span></summary><p class="fa">It's the same thing your phone or laptop already uses for Face ID, a fingerprint, or your screen lock. receive.link uses it to create an encryption key that never leaves your control. There's nothing new to invent or remember.</p></details>
+    <details class="faqi"><summary>What if I lose my passkey?<span class="ti ti-plus"></span></summary><p class="fa">Passkeys are looked after by your device and usually synced across them, through iCloud Keychain, Google Password Manager, and the like, so they follow you to a new phone or laptop. As long as you can sign in with your passkey, you can open your files. Keep it as safe as you'd keep the keys to a mailbox.</p></details>
+    <details class="faqi"><summary>How is this different from email or Dropbox?<span class="ti ti-plus"></span></summary><p class="fa">Those services can read what you send through them. receive.link can't. Files are locked on the sender's device before they ever reach us, and we only ever hold the locked version.</p></details>
+    <details class="faqi"><summary>Can you read my files?<span class="ti ti-plus"></span></summary><p class="fa">No. We never have the key. The most we can see is the size of a locked file and when it was sent, the same way the post office can see a sealed envelope's size without opening it.</p></details>
+    <details class="faqi"><summary>How do you email me if you don't store my address?<span class="ti ti-plus"></span></summary><p class="fa">Your address is sealed inside your link when you create it, encrypted so that only our server can briefly open it. When a file arrives, we unseal it just long enough to send you that one notification, then drop it. It's never written to a database, so there's nothing stored to lose or leak.</p></details>
+  </div>
+
+  <hr class="rule">
+  <div class="closing">
+    <div class="cwash"></div>
+    <h2>Get started with just a link.</h2>
+    <span class="pill">Create your link</span>
+  </div>
+
+  <hr class="rule">
+  <div class="foot">
+    <div><span class="logo" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></span><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
+    <div><h5>Product</h5><a>How it works</a><a>Pricing</a><a>FAQ</a></div>
+    <div><h5>Resources</h5><a>Docs</a><a>Status</a><a>Contact</a></div>
+    <div><h5>Legal</h5><a>Privacy</a><a>Terms</a><a>License</a></div>
+  </div>
+</div>
+</div>
+</body>
+</html>
