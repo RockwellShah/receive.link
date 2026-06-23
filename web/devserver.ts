@@ -38,6 +38,13 @@ const env: Env = {
   SERVER_KEM_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", kem.privateKey)),
   SERVER_SIGN_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.privateKey)),
   RECEIVER_ID_SECRET: "dev-receiver-id-secret",
+  // Phase 2b billing — set via env to exercise the Stripe top-up flow locally, e.g.
+  //   STRIPE_SECRET_KEY=$(pbpaste) STRIPE_WEBHOOK_SECRET=whsec_… BILLING_ENABLED=1 FREE_GRANT_BYTES=0 bun run web/devserver.ts
+  // (FREE_GRANT_BYTES=0 forces every download to 402 so the pay flow always triggers; unset = downloads free.)
+  STRIPE_SECRET_KEY: Bun.env.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: Bun.env.STRIPE_WEBHOOK_SECRET,
+  BILLING_ENABLED: Bun.env.BILLING_ENABLED,
+  FREE_GRANT_BYTES: Bun.env.FREE_GRANT_BYTES,
   SERVER_SIGN_PUBLIC_JWK: JSON.stringify(signPubJwk),
   ALLOWED_ORIGIN: ORIGIN,
   MAIL_FROM: "files@drop.localhost",
