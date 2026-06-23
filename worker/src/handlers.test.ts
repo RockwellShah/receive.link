@@ -729,11 +729,16 @@ test("stripe: checkoutSessionParams encodes a one-time payment crediting the rid
   expect(p.get("line_items[0][price_data][unit_amount]")).toBe("1000"); // $10
 });
 
-test("billing checkout: 503 when Stripe unconfigured; 400 on an unknown pack", async () => {
-  const h = await makeTestEnv(); // no STRIPE_SECRET_KEY
+test("billing checkout: 503 unless BOTH Stripe secrets are set; 400 on an unknown pack", async () => {
+  const h = await makeTestEnv(); // neither secret
   const finalId = await deliver(h, await setupLink(h), 200);
   const cp = await challengeAndProof(h, finalId, RECEIVER);
   expect((await billingCheckout(post("/billing/checkout", { ...cp, pack: "p10" }), h.env)).status).toBe(503);
+  // API key set but webhook secret missing -> still 503, so a user can never pay before we can credit them.
+  const hk = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x" });
+  const fk = await deliver(hk, await setupLink(hk), 200);
+  const cpk = await challengeAndProof(hk, fk, RECEIVER);
+  expect((await billingCheckout(post("/billing/checkout", { ...cpk, pack: "p10" }), hk.env)).status).toBe(503);
   const h2 = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
   const f2 = await deliver(h2, await setupLink(h2), 200);
   const cp2 = await challengeAndProof(h2, f2, RECEIVER);
