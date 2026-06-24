@@ -7,12 +7,13 @@
 <meta name="description" content="Share one link and anyone can send you files, locked to your passkey so only you can open them. No account, end-to-end encrypted.">
 <meta name="robots" content="noindex">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<script>/* A share-link open is /#<code> (the code rides in the hash so the sealed email never hits a server log). The browser can read it — hand off to the upload view. Page anchors like #how stay put. */(function(){var h=location.hash.slice(1);if(h&&!/^(how|pricing|faq)$/.test(h))location.replace("/u"+location.hash);})();</script>
 <!-- Homepage redesign (responsive). CTAs → live app (/) + /how-it-works/. Fonts self-hosted + icons inlined: zero third-party requests. -->
 <style>
 /* Self-hosted fonts (latin subset) — no third-party requests. Nunito is one variable woff2 (400-700). */
-@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('fonts/nunito.woff2') format('woff2')}
-@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/spectral-400.woff2') format('woff2')}
-@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/spectral-500.woff2') format('woff2')}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
 .rk .ti{width:1em;height:1em;display:inline-block;vertical-align:-.125em;flex:none}
 *{box-sizing:border-box}
 a{text-decoration:none;color:inherit;cursor:pointer}
@@ -234,7 +235,7 @@ body.cmlock{overflow:hidden}
 <div class="frame">
   <div class="nav">
     <div class="navinner">
-    <a class="logo" href="/home/"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+    <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a>
     <div class="navr">
       <a class="pill" href="/" data-create>Create your link</a>
       <div class="menu" tabindex="0"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
@@ -348,7 +349,7 @@ body.cmlock{overflow:hidden}
 
   <hr class="rule">
   <div class="foot">
-    <div><a class="logo" href="/home/" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
+    <div><a class="logo" href="/" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
     <div><h5>Product</h5><a href="/how-it-works/">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
     <div><h5>Resources</h5><a>Docs</a><a>Status</a><a>Contact</a></div>
     <div><h5>Legal</h5><a>Privacy</a><a>Terms</a><a>License</a></div>

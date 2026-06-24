@@ -1,1 +1,10 @@
-/*    /index.html   200
+# receive.link routing. Use Cloudflare's CLEAN URLs as targets (/app, /home/) — referencing the
+# .html filename makes Pages 308-redirect to the clean URL and loop. The app (app.html -> /app) owns
+# the functional routes; the marketing homepage (home/index.html -> /home/) owns "/". A share-link
+# open (/#code) reaches "/" with the code in the hash, and home/index.html's inline script hands it
+# to /u (upload) client-side, so the code never leaves the hash.
+/confirm   /app      200
+/d/*       /app      200
+/u         /app      200
+/          /home/    200
+/*         /app      200
