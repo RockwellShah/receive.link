@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>receive.link — receive files only you can open</title>
 <meta name="description" content="Share one link and anyone can send you files, locked to your passkey so only you can open them. No account, end-to-end encrypted.">
+<link rel="canonical" href="https://receive.link/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="receive.link">
+<meta property="og:url" content="https://receive.link/">
+<meta property="og:title" content="Receive files only you can open">
+<meta property="og:description" content="Share one link. Anyone can send you files, locked to your passkey so only you can open them. No account, end-to-end encrypted.">
+<meta property="og:image" content="https://receive.link/og.png">
+<meta property="og:image:width" content="2400">
+<meta property="og:image:height" content="1260">
+<meta property="og:image:alt" content="receive.link — receive files privately">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Receive files only you can open">
+<meta name="twitter:description" content="Share one link. Anyone can send you files, locked to your passkey so only you can open them.">
+<meta name="twitter:image" content="https://receive.link/og.png">
+<!-- noindex while this rides staging; DROP at the prod cutover (when it becomes receive.link). -->
 <meta name="robots" content="noindex">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
 <script>/* A share-link open is /#<code> (the code rides in the hash so the sealed email never hits a server log). The browser can read it — hand off to the upload view. Page anchors like #how stay put. */(function(){var h=location.hash.slice(1);if(h&&!/^(how|pricing|faq)$/.test(h))location.replace("/u"+location.hash);})();</script>
@@ -420,7 +435,7 @@ body.cmlock{overflow:hidden}
   var echo=modal.querySelector('.cmemail'),errEl=modal.querySelector('.cmerr');
   var last={email:'',label:''};
   function show(st){modal.querySelectorAll('.cmstate').forEach(function(s){s.hidden=s.getAttribute('data-state')!==st;});}
-  function open(){show('form');modal.hidden=false;document.body.classList.add('cmlock');setTimeout(function(){emailIn.focus();},60);}
+  function open(){show('form');modal.hidden=false;document.body.classList.add('cmlock');loadRl();setTimeout(function(){emailIn.focus();},60);}
   function close(){modal.hidden=true;document.body.classList.remove('cmlock');form.reset();btn.disabled=false;}
   document.querySelectorAll('[data-create]').forEach(function(el){el.addEventListener('click',function(e){e.preventDefault();open();});});
   modal.querySelectorAll('[data-close]').forEach(function(el){el.addEventListener('click',close);});
@@ -436,12 +451,16 @@ body.cmlock{overflow:hidden}
     error:function(msg){if(errEl)errEl.textContent=msg||'Please try again.';show('error');},
     recovery:function(){show('recovery');}
   };
-  // forceEnroll=true is the "create a new passkey" path; the real rlCreate clears the stored pin and
-  // enrolls. The pass-1 stub just walks the happy path so the modal is reviewable without a worker.
+  // forceEnroll=true is the "create a new passkey" path; rlCreate clears the stored pin and re-enrolls.
+  var rlPromise=null;
+  // Lazy-load the ~620KB crypto bundle on demand (preloaded on modal open) so the homepage stays light.
+  function loadRl(){if(!rlPromise){rlPromise=import("/dist/home-create.js").catch(function(e){rlPromise=null;throw e;});}return rlPromise;}
   function doCreate(email,label,forceEnroll){
-    last={email:email,label:label};btn.disabled=true;
-    if(window.rlCreate){Promise.resolve(window.rlCreate(email,label,cb,!!forceEnroll)).catch(function(err){cb.error((err&&err.message)||'Something went wrong.');});}
-    else{cb.working();setTimeout(function(){cb.sent();},1600);}
+    last={email:email,label:label};btn.disabled=true;cb.working();
+    loadRl().then(function(){
+      if(!window.rlCreate)throw new Error("module not ready");
+      return window.rlCreate(email,label,cb,!!forceEnroll);
+    }).catch(function(err){cb.error((err&&err.message)||"Couldn't load the secure module. Reload and try again.");});
   }
   form.addEventListener('submit',function(e){
     e.preventDefault();
@@ -453,6 +472,5 @@ body.cmlock{overflow:hidden}
   window.rlPreviewState=function(s){show(s);modal.hidden=false;document.body.classList.add('cmlock');};
 })();
 </script>
-<script type="module" src="/dist/home-create.js"></script>
 </body>
 </html>
