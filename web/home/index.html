@@ -8,9 +8,12 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
 <!-- Homepage redesign (responsive). CTAs wired to the live app (/) + /how-it-works/. Fonts via CDN; self-host before shipping. -->
-<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
 <style>
+/* Self-hosted fonts (latin subset) — no third-party requests. Nunito is one variable woff2 (400-700). */
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/spectral-500.woff2') format('woff2')}
 *{box-sizing:border-box}
 a{text-decoration:none;color:inherit;cursor:pointer}
 body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
