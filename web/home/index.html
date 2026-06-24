@@ -142,9 +142,14 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
 .rk .foot a{display:block;font-size:13.5px;color:#56585F;margin-bottom:8px;font-weight:600;text-decoration:none;cursor:pointer}
 @media (max-width:920px){
   .rk h1{font-size:46px}
-  .rk .feat,.rk .feat.rev{flex-direction:column;gap:32px;max-width:560px;text-align:center}
+  .rk .feat,.rk .feat.rev{flex-direction:column;gap:32px;max-width:560px;text-align:left}
   .rk .feat .vis{width:100%;flex:none}
   .rk .whogrid{grid-template-columns:1fr 1fr}
+  /* Narrow screens: left-align section copy (centered headings read poorly when stacked). Wide screens keep the centered look. */
+  .rk .who,.rk .pricing{text-align:left}
+  .rk .trust .tlbl,.rk .faq .flbl,.rk .faq h2{text-align:left}
+  .rk .who .wsub,.rk .pricing h2{margin-left:0;margin-right:0}
+  .rk .pnote{justify-content:flex-start}
 }
 @media (max-width:620px){
   .rk .navinner{padding:14px 18px}
