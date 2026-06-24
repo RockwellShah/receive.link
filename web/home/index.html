@@ -208,6 +208,9 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
 .rk .cmbtn{font-family:inherit;background:var(--g);color:#fff;border:0;border-radius:22px;padding:14px 0;font-size:15px;font-weight:700;cursor:pointer;width:100%;transition:filter .15s}
 .rk .cmbtn:hover{filter:brightness(1.06)}
 .rk .cmbtn:disabled{opacity:.55;cursor:default}
+.rk .cmbtns{display:flex;flex-direction:column;gap:10px}
+.rk .cmbtn2{font-family:inherit;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:22px;padding:13px 0;font-size:14.5px;font-weight:700;cursor:pointer;width:100%;transition:border-color .15s,background .15s}
+.rk .cmbtn2:hover{border-color:#D7D0C1;background:var(--cream)}
 .rk .cmpk{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--mut);font-weight:500;line-height:1.45;text-align:left;background:var(--cream);border-radius:11px;padding:11px 13px}
 .rk .cmpk .ti{color:var(--g);font-size:16px;flex:none;margin-top:1px}
 .rk .cmspin{width:42px;height:42px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:8px auto 20px;animation:cmspin .8s linear infinite}
@@ -377,6 +380,15 @@ body.cmlock{overflow:hidden}
         <p class="cmsub cmerr">Please try again.</p>
         <button class="cmbtn" type="button" data-retry>Try again</button>
       </div>
+      <div class="cmstate" data-state="recovery" hidden>
+        <div class="cmlogo cmbad"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4" /><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" /><path d="M12 16h.01" /></svg></div>
+        <h2 class="cmh">Couldn't find your passkey</h2>
+        <p class="cmsub">If you removed it from this device, create a new one to keep going. A new passkey is a fresh identity, so links you made with the old one won't open.</p>
+        <div class="cmbtns">
+          <button class="cmbtn" type="button" data-rec-try>Try again</button>
+          <button class="cmbtn2" type="button" data-rec-new>Create a new passkey</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -394,22 +406,39 @@ body.cmlock{overflow:hidden}
   var form=modal.querySelector('.cmform');
   var emailIn=form.querySelector('[name=email]'),labelIn=form.querySelector('[name=label]'),btn=form.querySelector('.cmbtn');
   var echo=modal.querySelector('.cmemail'),errEl=modal.querySelector('.cmerr');
+  var last={email:'',label:''};
   function show(st){modal.querySelectorAll('.cmstate').forEach(function(s){s.hidden=s.getAttribute('data-state')!==st;});}
   function open(){show('form');modal.hidden=false;document.body.classList.add('cmlock');setTimeout(function(){emailIn.focus();},60);}
   function close(){modal.hidden=true;document.body.classList.remove('cmlock');form.reset();btn.disabled=false;}
   document.querySelectorAll('[data-create]').forEach(function(el){el.addEventListener('click',function(e){e.preventDefault();open();});});
   modal.querySelectorAll('[data-close]').forEach(function(el){el.addEventListener('click',close);});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!modal.hidden)close();});
-  modal.querySelectorAll('[data-retry]').forEach(function(el){el.addEventListener('click',function(){btn.disabled=false;show('form');});});
-  var cb={working:function(){show('working');},sent:function(){if(echo)echo.textContent=emailIn.value.trim()||'your email';show('sent');},error:function(msg){if(errEl)errEl.textContent=msg||'Please try again.';show('error');}};
+  modal.querySelectorAll('[data-retry]').forEach(function(el){el.onclick=function(){btn.disabled=false;show('form');};});
+  var recTry=modal.querySelector('[data-rec-try]'),recNew=modal.querySelector('[data-rec-new]');
+  if(recTry)recTry.onclick=function(){doCreate(last.email,last.label,false);};   // retry the same passkey
+  if(recNew)recNew.onclick=function(){doCreate(last.email,last.label,true);};    // forget it, enroll a fresh one
+  // The real flow (window.rlCreate, pass 2) drives these. recovery = pinned passkey gone (app.ts self-heal).
+  var cb={
+    working:function(){show('working');},
+    sent:function(){if(echo)echo.textContent=last.email||'your email';show('sent');},
+    error:function(msg){if(errEl)errEl.textContent=msg||'Please try again.';show('error');},
+    recovery:function(){show('recovery');}
+  };
+  // forceEnroll=true is the "create a new passkey" path; the real rlCreate clears the stored pin and
+  // enrolls. The pass-1 stub just walks the happy path so the modal is reviewable without a worker.
+  function doCreate(email,label,forceEnroll){
+    last={email:email,label:label};btn.disabled=true;
+    if(window.rlCreate){Promise.resolve(window.rlCreate(email,label,cb,!!forceEnroll)).catch(function(err){cb.error((err&&err.message)||'Something went wrong.');});}
+    else{cb.working();setTimeout(function(){cb.sent();},1600);}
+  }
   form.addEventListener('submit',function(e){
     e.preventDefault();
     var email=emailIn.value.trim();
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){emailIn.focus();emailIn.style.borderColor='#C0452A';return;}
-    emailIn.style.borderColor='';btn.disabled=true;
-    if(window.rlCreate){Promise.resolve(window.rlCreate(email,labelIn.value.trim(),cb)).catch(function(err){cb.error((err&&err.message)||'Something went wrong.');});}
-    else{/* Pass-1 preview: walk the states so the flow is reviewable. Real passkey + worker wiring is pass 2 (window.rlCreate). */cb.working();setTimeout(function(){cb.sent();},1600);}
+    emailIn.style.borderColor='';doCreate(email,labelIn.value.trim(),false);
   });
+  // Dev preview: rlPreviewState('form'|'working'|'sent'|'error'|'recovery') to eyeball any state.
+  window.rlPreviewState=function(s){show(s);modal.hidden=false;document.body.classList.add('cmlock');};
 })();
 </script>
 </body>
