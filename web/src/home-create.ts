@@ -79,7 +79,9 @@ async function rlCreate(email: string, label: string, cb: CreateCallbacks, force
   if (forceEnroll) {
     try { localStorage.removeItem("rl_passkey"); localStorage.removeItem("rl_cred"); } catch { /* private mode */ }
   }
-  const firstPasskey = forceEnroll || !localStorage.getItem("rl_passkey");
+  let hasStoredPasskey = false;
+  try { hasStoredPasskey = !!localStorage.getItem("rl_passkey"); } catch { /* storage blocked / private mode */ }
+  const firstPasskey = forceEnroll || !hasStoredPasskey;
   try {
     const cfg = await ensureConfig();
     if (!isConfigured(cfg)) { cb.error("This site isn't wired up for sign-up yet. Try again shortly."); return; }
@@ -89,8 +91,8 @@ async function rlCreate(email: string, label: string, cb: CreateCallbacks, force
       try { localStorage.setItem("rl_passkey", "1"); localStorage.setItem("rl_cred", base64urlEncode(credId)); } catch { /* private mode */ }
     }
     const prf = await prfSecret();
-    const identity = await deriveIdentityFromPrf(prf, ns);
-    prf.fill(0);
+    // Zero the PRF secret whether derivation succeeds or throws — don't leave it live on the error path.
+    const identity = await deriveIdentityFromPrf(prf, ns).finally(() => prf.fill(0));
     const shareKey = encodeShareKey(identity.staticPkRaw, identity.namespace);
     const kemPub = await importKemPublicKey(hexToBytes(cfg.serverKemPublicHex));
     const sealed = await sealEmail(kemPub, email);

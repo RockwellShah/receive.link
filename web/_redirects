@@ -1,8 +1,11 @@
-# receive.link routing. NO "/*" catch-all: a catch-all rewrite shadows REAL ASSETS (/dist/*.js,
-# /style.css were all served as the /app page = 4639b of HTML, so no JS/CSS loaded anywhere and the
-# create modal fell back to its stub). Only the explicit, non-file routes are rewritten; real assets
-# serve themselves; unknown paths 404. Targets are CLEAN URLs (/app, /home/), never the .html name.
+# receive.link routing. NO "/*" catch-all (it shadows real assets: /dist/*.js + /style.css would all
+# serve the /app HTML page, breaking every bundle). The app (app.html -> clean URL /app) owns the
+# explicit functional routes the Worker emails or app.ts dispatches: /confirm, /revoke, /qr, /d/<id>,
+# and /u (the upload view; a share-link open /#code is bounced to /u client-side, code staying in the
+# hash). Real assets serve themselves; the marketing homepage owns "/"; unknown paths 404.
 /confirm   /app      200
+/revoke    /app      200
+/qr        /app      200
 /d/*       /app      200
 /u         /app      200
 /          /home/    200
