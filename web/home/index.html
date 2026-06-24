@@ -11,15 +11,15 @@
 <meta property="og:url" content="https://receive.link/">
 <meta property="og:title" content="Receive files only you can open">
 <meta property="og:description" content="Share one link. Anyone can send you files, locked to your passkey so only you can open them. No account, end-to-end encrypted.">
-<meta property="og:image" content="https://receive.link/og.png">
+<meta property="og:image" content="https://staging.receive.link/og-v2.png">
 <meta property="og:image:width" content="2400">
 <meta property="og:image:height" content="1260">
 <meta property="og:image:alt" content="receive.link — receive files privately">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Receive files only you can open">
 <meta name="twitter:description" content="Share one link. Anyone can send you files, locked to your passkey so only you can open them.">
-<meta name="twitter:image" content="https://receive.link/og.png">
-<!-- noindex while this rides staging; DROP at the prod cutover (when it becomes receive.link). -->
+<meta name="twitter:image" content="https://staging.receive.link/og-v2.png">
+<!-- Staging cutover (when this becomes receive.link): drop the noindex below, and flip og:image + twitter:image from the staging.receive.link host to receive.link. -->
 <meta name="robots" content="noindex">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
 <script>/* A share-link open is /#<code> (the code rides in the hash so the sealed email never hits a server log). The browser can read it — hand off to the upload view. Page anchors like #how stay put. */(function(){var h=location.hash.slice(1);if(h&&!/^(how|pricing|faq)$/.test(h))location.replace("/u"+location.hash);})();</script>
