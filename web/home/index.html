@@ -200,7 +200,7 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
 .rk .cmsub{font-size:14.5px;color:var(--mut);font-weight:500;line-height:1.5;margin:0 auto 24px;max-width:336px}
 .rk .cmform{text-align:left;display:flex;flex-direction:column;gap:15px;margin-bottom:16px}
 .rk .cmlabel{font-size:12.5px;font-weight:700;color:var(--ink);display:flex;flex-direction:column;gap:7px}
-.rk .cmopt{color:var(--mut);font-weight:600}
+.rk .cmopt{color:var(--mut);font-weight:500}
 .rk .cmhint{font-size:11.5px;font-weight:500;color:var(--mut);line-height:1.45}
 .rk .cminput{font-family:inherit;font-size:15px;font-weight:500;color:var(--ink);background:#fff;border:1px solid var(--ln);border-radius:11px;padding:13px 14px;outline:none;transition:border-color .15s,box-shadow .15s;width:100%}
 .rk .cminput::placeholder{color:#A9A395}
@@ -215,7 +215,7 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
 .rk .cmpk .ti{color:var(--g);font-size:16px;flex:none;margin-top:1px}
 .rk .cmspin{width:42px;height:42px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:8px auto 20px;animation:cmspin .8s linear infinite}
 @keyframes cmspin{to{transform:rotate(360deg)}}
-.rk .cmemail{color:var(--ink);font-weight:700;word-break:break-all}
+.rk .cmemail{color:var(--ink);font-weight:700;overflow-wrap:break-word}
 .rk .cmaux{margin-top:18px;font-size:12.5px;color:var(--mut);font-weight:500}
 .rk .cmlink{background:none;border:0;font-family:inherit;font-size:13px;font-weight:700;color:var(--g);cursor:pointer;padding:4px}
 .rk .cmlink:hover{text-decoration:underline}
@@ -357,8 +357,8 @@ body.cmlock{overflow:hidden}
         <h2 class="cmh" id="cmh">Create your link</h2>
         <p class="cmsub">Your private link, ready in seconds.</p>
         <form class="cmform" novalidate>
-          <label class="cmlabel">Your email<input class="cminput" type="email" name="email" placeholder="you@email.com" autocomplete="email" inputmode="email" required><span class="cmhint">Only used to notify you when a file arrives. Senders never see it, and we don't store it.</span></label>
-          <label class="cmlabel">Link name <span class="cmopt">optional</span><input class="cminput" type="text" name="label" placeholder="e.g. Tax documents 2026" maxlength="60"></label>
+          <label class="cmlabel">Your email<span class="cmhint">We'll email you when files arrive. Senders never see it, and we never store it.</span><input class="cminput" type="email" name="email" placeholder="you@email.com" autocomplete="email" inputmode="email" required></label>
+          <label class="cmlabel"><span>Link name <span class="cmopt">(optional)</span></span><input class="cminput" type="text" name="label" placeholder="e.g. Tax documents 2026" maxlength="60"></label>
           <button class="cmbtn" type="submit">Create your link</button>
         </form>
         <div class="cmpk"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3" /><path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6" /><path d="M12 11v2a14 14 0 0 0 2.5 8" /><path d="M8 15a18 18 0 0 0 1.8 6" /><path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95" /></svg><span>You'll confirm with Face ID or a fingerprint. No password, no account to create.</span></div>
