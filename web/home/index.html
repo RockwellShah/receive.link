@@ -7,13 +7,13 @@
 <meta name="description" content="Share one link and anyone can send you files, locked to your passkey so only you can open them. No account, end-to-end encrypted.">
 <meta name="robots" content="noindex">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
-<!-- Homepage redesign (responsive). CTAs wired to the live app (/) + /how-it-works/. Fonts via CDN; self-host before shipping. -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+<!-- Homepage redesign (responsive). CTAs → live app (/) + /how-it-works/. Fonts self-hosted + icons inlined: zero third-party requests. -->
 <style>
 /* Self-hosted fonts (latin subset) — no third-party requests. Nunito is one variable woff2 (400-700). */
 @font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('fonts/nunito.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/spectral-400.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/spectral-500.woff2') format('woff2')}
+.rk .ti{width:1em;height:1em;display:inline-block;vertical-align:-.125em;flex:none}
 *{box-sizing:border-box}
 a{text-decoration:none;color:inherit;cursor:pointer}
 body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
@@ -193,7 +193,7 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
     <span class="logo"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></span>
     <div class="navr">
       <a class="pill" href="/">Create your link</a>
-      <div class="menu" tabindex="0"><span class="kebab"><span class="ti ti-dots-vertical"></span></span>
+      <div class="menu" tabindex="0"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
         <div class="navmenu"><a href="/how-it-works/">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a><a href="mailto:Contact@receive.link">Contact Us</a></div>
       </div>
     </div>
@@ -201,10 +201,10 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
   </div>
 
   <div class="hero">
-    <div class="kicks"><span class="kick"><span class="ti ti-lock"></span>End-to-end Encrypted</span></div>
+    <div class="kicks"><span class="kick"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg>End-to-end Encrypted</span></div>
     <h1>Receive files privately<br>with one link.</h1>
     <div class="sub">Anyone can send you files. Only you can open them. Encrypted to your passkey, no accounts.</div>
-    <div class="hcta"><a class="pill" href="/">Create your link</a><a class="ghost" href="/how-it-works/">See how it works <span class="ti ti-arrow-right"></span></a></div>
+    <div class="hcta"><a class="pill" href="/">Create your link</a><a class="ghost" href="/how-it-works/">See how it works <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /> <path d="M13 18l6 -6" /> <path d="M13 6l6 6" /></svg></a></div>
   </div>
   <div class="stage">
     <div class="wash"></div>
@@ -213,26 +213,26 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
         <div class="pbar"><span class="logo"><svg width="14" height="14" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></span><span class="pnew">New</span></div>
         <div class="phd">A file just arrived</div>
         <div class="psub">Sent to your link &middot; locked to your key</div>
-        <div class="pfile"><div class="pl"><span class="ti ti-file-text"></span><span class="plock"><span class="ti ti-lock"></span></span></div><div class="pfx"><div class="pfn">Locked file</div><div class="pmeta">24 GB &middot; 2 min ago</div></div><span class="ti ti-chevron-right pchev"></span></div>
-        <div class="popen"><span class="ti ti-fingerprint"></span>Unlock with your passkey</div>
+        <div class="pfile"><div class="pl"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span class="plock"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg></span></div><div class="pfx"><div class="pfn">Locked file</div><div class="pmeta">24 GB &middot; 2 min ago</div></div><svg class="ti pchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6l-6 6" /></svg></div>
+        <div class="popen"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3" /> <path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6" /> <path d="M12 11v2a14 14 0 0 0 2.5 8" /> <path d="M8 15a18 18 0 0 0 1.8 6" /> <path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95" /></svg>Unlock with your passkey</div>
       </div>
     </div>
   </div>
 
   <hr class="rule">
   <div class="feat">
-    <div class="txt"><div class="fn">(1)</div><h3>Create your link</h3><p>Use an email plus a passkey, done in seconds. Share the link however you like — text, email, a QR code.</p><a class="lm" href="/">Try it free <span class="ti ti-arrow-right"></span></a></div>
-    <div class="vis v1"><div class="chip"><span class="ti ti-link"></span><span>receive.link/<span class="lk">k3f9a2x7</span></span><span class="ti ti-lock"></span></div></div>
+    <div class="txt"><div class="fn">(1)</div><h3>Create your link</h3><p>Use an email plus a passkey, done in seconds. Share the link however you like — text, email, a QR code.</p><a class="lm" href="/">Try it free <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /> <path d="M13 18l6 -6" /> <path d="M13 6l6 6" /></svg></a></div>
+    <div class="vis v1"><div class="chip"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 15l6 -6" /> <path d="M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464" /> <path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463" /></svg><span>receive.link/<span class="lk">k3f9a2x7</span></span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg></div></div>
   </div>
   <hr class="rule">
   <div class="feat rev">
-    <div class="txt"><div class="fn">(2)</div><h3>Anyone sends</h3><p>They drop a file through your link. It locks in their browser before it uploads. No account, no app.</p><a class="lm" href="/">Try it free <span class="ti ti-arrow-right"></span></a></div>
-    <div class="vis v2"><div class="vrow"><div class="vbox"><span class="ti ti-file"></span></div><span class="ar"><span class="ti ti-arrow-right"></span></span><div class="vbox gr"><span class="ti ti-lock"></span></div></div></div>
+    <div class="txt"><div class="fn">(2)</div><h3>Anyone sends</h3><p>They drop a file through your link. It locks in their browser before it uploads. No account, no app.</p><a class="lm" href="/">Try it free <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /> <path d="M13 18l6 -6" /> <path d="M13 6l6 6" /></svg></a></div>
+    <div class="vis v2"><div class="vrow"><div class="vbox"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" /></svg></div><span class="ar"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /> <path d="M13 18l6 -6" /> <path d="M13 6l6 6" /></svg></span><div class="vbox gr"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg></div></div></div>
   </div>
   <hr class="rule">
   <div class="feat">
-    <div class="txt"><div class="fn">(3)</div><h3>Only you can open</h3><p>We email you, you tap the link, and your passkey unlocks the file on your device. No one in between can read it.</p><a class="lm" href="/">Try it free <span class="ti ti-arrow-right"></span></a></div>
-    <div class="vis v3"><div class="vrow"><div class="vbox"><span class="ti ti-device-mobile"></span></div><span class="ar"><span class="ti ti-fingerprint" style="color:#23A267"></span></span><div class="vbox gr"><span class="ti ti-lock-open"></span></div></div></div>
+    <div class="txt"><div class="fn">(3)</div><h3>Only you can open</h3><p>We email you, you tap the link, and your passkey unlocks the file on your device. No one in between can read it.</p><a class="lm" href="/">Try it free <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /> <path d="M13 18l6 -6" /> <path d="M13 6l6 6" /></svg></a></div>
+    <div class="vis v3"><div class="vrow"><div class="vbox"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14z" /> <path d="M11 4h2" /> <path d="M12 17v.01" /></svg></div><span class="ar"><svg class="ti" style="color:#23A267" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3" /> <path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6" /> <path d="M12 11v2a14 14 0 0 0 2.5 8" /> <path d="M8 15a18 18 0 0 0 1.8 6" /> <path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95" /></svg></span><div class="vbox gr"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z" /> <path d="M12 16m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M8 11v-5a4 4 0 0 1 8 0" /></svg></div></div></div>
   </div>
 
   <hr class="rule">
@@ -240,12 +240,12 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
     <h2>Who needs this?</h2>
     <div class="wsub">Anyone who collects sensitive files from other people, without the email risk.</div>
     <div class="whogrid">
-      <div class="wcard"><div class="wic"><span class="ti ti-calculator"></span></div><h4>Accountants</h4><p>Collect tax docs and statements from clients without insecure email.</p></div>
-      <div class="wcard"><div class="wic"><span class="ti ti-gavel"></span></div><h4>Lawyers</h4><p>Take in contracts, evidence, and signed forms, privately.</p></div>
-      <div class="wcard"><div class="wic"><span class="ti ti-users"></span></div><h4>HR &amp; recruiters</h4><p>Receive IDs, offer letters, and onboarding docs safely.</p></div>
-      <div class="wcard"><div class="wic"><span class="ti ti-news"></span></div><h4>Journalists</h4><p>Accept tips and documents from sources, locked end to end.</p></div>
-      <div class="wcard"><div class="wic"><span class="ti ti-stethoscope"></span></div><h4>Clinics &amp; therapists</h4><p>Take intake forms and records without exposing private health info.</p></div>
-      <div class="wcard"><div class="wic"><span class="ti ti-briefcase"></span></div><h4>Freelancers</h4><p>Get briefs, assets, and big files from clients in one link.</p></div>
+      <div class="wcard"><div class="wic"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" /> <path d="M8 7m0 1a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1v1a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1z" /> <path d="M8 14l0 .01" /> <path d="M12 14l0 .01" /> <path d="M16 14l0 .01" /> <path d="M8 17l0 .01" /> <path d="M12 17l0 .01" /> <path d="M16 17l0 .01" /></svg></div><h4>Accountants</h4><p>Collect tax docs and statements from clients without insecure email.</p></div>
+      <div class="wcard"><div class="wic"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 10l7.383 7.418c.823 .82 .823 2.148 0 2.967a2.11 2.11 0 0 1 -2.976 0l-7.407 -7.385" /> <path d="M6 9l4 4" /> <path d="M13 10l-4 -4" /> <path d="M3 21h7" /> <path d="M6.793 15.793l-3.586 -3.586a1 1 0 0 1 0 -1.414l2.293 -2.293l.5 .5l3 -3l-.5 -.5l2.293 -2.293a1 1 0 0 1 1.414 0l3.586 3.586a1 1 0 0 1 0 1.414l-2.293 2.293l-.5 -.5l-3 3l.5 .5l-2.293 2.293a1 1 0 0 1 -1.414 0z" /></svg></div><h4>Lawyers</h4><p>Take in contracts, evidence, and signed forms, privately.</p></div>
+      <div class="wcard"><div class="wic"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /> <path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" /> <path d="M16 3.13a4 4 0 0 1 0 7.75" /> <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" /></svg></div><h4>HR &amp; recruiters</h4><p>Receive IDs, offer letters, and onboarding docs safely.</p></div>
+      <div class="wcard"><div class="wic"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 6h3a1 1 0 0 1 1 1v11a2 2 0 0 1 -4 0v-13a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1v12a3 3 0 0 0 3 3h11" /> <path d="M8 8l4 0" /> <path d="M8 12l4 0" /> <path d="M8 16l4 0" /></svg></div><h4>Journalists</h4><p>Accept tips and documents from sources, locked end to end.</p></div>
+      <div class="wcard"><div class="wic"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h-1a2 2 0 0 0 -2 2v3.5h0a5.5 5.5 0 0 0 11 0v-3.5a2 2 0 0 0 -2 -2h-1" /> <path d="M8 15a6 6 0 1 0 12 0v-3" /> <path d="M11 3v2" /> <path d="M6 3v2" /> <path d="M20 10m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /></svg></div><h4>Clinics &amp; therapists</h4><p>Take intake forms and records without exposing private health info.</p></div>
+      <div class="wcard"><div class="wic"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" /> <path d="M8 7v-2a2 2 0 0 1 2 -2h4a2 2 0 0 1 2 2v2" /> <path d="M12 12l0 .01" /> <path d="M3 13a20 20 0 0 0 18 0" /></svg></div><h4>Freelancers</h4><p>Get briefs, assets, and big files from clients in one link.</p></div>
     </div>
   </div>
 
@@ -253,14 +253,14 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
   <div class="trust">
     <div class="tlbl">Built for Privacy</div>
     <div class="tgrid">
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Locked before it leaves</h4><p>Every file is encrypted in the sender's browser, before any of it is uploaded.</p></div></div>
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Only your passkey opens it</h4><p>The key stays in your control, behind your passkey. Not on our servers, not in the link.</p></div></div>
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>We never see your files</h4><p>We only ever hold the locked version. Filenames included.</p></div></div>
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>We don't store your email</h4><p>It's sealed inside your link. We unseal it for a moment to notify you, then let it go.</p></div></div>
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Files clean themselves up</h4><p>Anything sent to you auto-deletes after 7 days.</p></div></div>
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>You stay in control</h4><p>Disable your link whenever you want, and new files stop arriving.</p></div></div>
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>You stay anonymous</h4><p>Senders never see your email or contact info.</p></div></div>
-      <div class="tp"><div class="tck"><span class="ti ti-check"></span></div><div class="ttx"><h4>Open source</h4><p>Our code is public, open for review and audit.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>Locked before it leaves</h4><p>Every file is encrypted in the sender's browser, before any of it is uploaded.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>Only your passkey opens it</h4><p>The key stays in your control, behind your passkey. Not on our servers, not in the link.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>We never see your files</h4><p>We only ever hold the locked version. Filenames included.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>We don't store your email</h4><p>It's sealed inside your link. We unseal it for a moment to notify you, then let it go.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>Files clean themselves up</h4><p>Anything sent to you auto-deletes after 7 days.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>You stay in control</h4><p>Disable your link whenever you want, and new files stop arriving.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>You stay anonymous</h4><p>Senders never see your email or contact info.</p></div></div>
+      <div class="tp"><div class="tck"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg></div><div class="ttx"><h4>Open source</h4><p>Our code is public, open for review and audit.</p></div></div>
     </div>
   </div>
 
@@ -277,26 +277,26 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
       </div>
       <hr class="pdiv">
       <div class="pfeats">
-        <div class="pfeat"><span class="ti ti-check"></span>Only pay for what you download.</div>
-        <div class="pfeat"><span class="ti ti-check"></span>Redownloads are free.</div>
-        <div class="pfeat"><span class="ti ti-check"></span>No subscription.</div>
+        <div class="pfeat"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg>Only pay for what you download.</div>
+        <div class="pfeat"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg>Redownloads are free.</div>
+        <div class="pfeat"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg>No subscription.</div>
       </div>
       <a class="pill" href="/">Create your link</a>
     </div>
-    <div class="pnote"><span class="ti ti-check"></span>Top up with credits only when you need them.</div>
+    <div class="pnote"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg>Top up with credits only when you need them.</div>
   </div>
 
   <hr class="rule">
   <div class="faq" id="faq" data-screen-label="FAQ">
     <div class="flbl">FAQ</div>
     <h2>Good things to ask</h2>
-    <details class="faqi"><summary>Do I need an account?<span class="ti ti-plus"></span></summary><p class="fa">No. You create a link with your passkey, and the people sending you files just open the link in their browser. No app and no sign-up, on either side.</p></details>
-    <details class="faqi"><summary>What's the max file size?<span class="ti ti-plus"></span></summary><p class="fa">Up to 5 terabytes per file.</p></details>
-    <details class="faqi"><summary>What's a passkey?<span class="ti ti-plus"></span></summary><p class="fa">It's the same thing your phone or laptop already uses for Face ID, a fingerprint, or your screen lock. receive.link uses it to create an encryption key that never leaves your control. There's nothing new to invent or remember.</p></details>
-    <details class="faqi"><summary>What if I lose my passkey?<span class="ti ti-plus"></span></summary><p class="fa">Passkeys are looked after by your device and usually synced across them, through iCloud Keychain, Google Password Manager, and the like, so they follow you to a new phone or laptop. As long as you can sign in with your passkey, you can open your files. Keep it as safe as you'd keep the keys to a mailbox.</p></details>
-    <details class="faqi"><summary>How is this different from email or Dropbox?<span class="ti ti-plus"></span></summary><p class="fa">Those services can read what you send through them. receive.link can't. Files are locked on the sender's device before they ever reach us, and we only ever hold the locked version.</p></details>
-    <details class="faqi"><summary>Can you read my files?<span class="ti ti-plus"></span></summary><p class="fa">No. We never have the key. The most we can see is the size of a locked file and when it was sent, the same way the post office can see a sealed envelope's size without opening it.</p></details>
-    <details class="faqi"><summary>How do you email me if you don't store my address?<span class="ti ti-plus"></span></summary><p class="fa">Your address is sealed inside your link when you create it, encrypted so that only our server can briefly open it. When a file arrives, we unseal it just long enough to send you that one notification, then drop it. It's never written to a database, so there's nothing stored to lose or leak.</p></details>
+    <details class="faqi"><summary>Do I need an account?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">No. You create a link with your passkey, and the people sending you files just open the link in their browser. No app and no sign-up, on either side.</p></details>
+    <details class="faqi"><summary>What's the max file size?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">Up to 5 terabytes per file.</p></details>
+    <details class="faqi"><summary>What's a passkey?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">It's the same thing your phone or laptop already uses for Face ID, a fingerprint, or your screen lock. receive.link uses it to create an encryption key that never leaves your control. There's nothing new to invent or remember.</p></details>
+    <details class="faqi"><summary>What if I lose my passkey?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">Passkeys are looked after by your device and usually synced across them, through iCloud Keychain, Google Password Manager, and the like, so they follow you to a new phone or laptop. As long as you can sign in with your passkey, you can open your files. Keep it as safe as you'd keep the keys to a mailbox.</p></details>
+    <details class="faqi"><summary>How is this different from email or Dropbox?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">Those services can read what you send through them. receive.link can't. Files are locked on the sender's device before they ever reach us, and we only ever hold the locked version.</p></details>
+    <details class="faqi"><summary>Can you read my files?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">No. We never have the key. The most we can see is the size of a locked file and when it was sent, the same way the post office can see a sealed envelope's size without opening it.</p></details>
+    <details class="faqi"><summary>How do you email me if you don't store my address?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">Your address is sealed inside your link when you create it, encrypted so that only our server can briefly open it. When a file arrives, we unseal it just long enough to send you that one notification, then drop it. It's never written to a database, so there's nothing stored to lose or leak.</p></details>
   </div>
 
   <hr class="rule">
