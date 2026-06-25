@@ -1,0 +1,13 @@
+{
+  "name": "receive-link-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end suite for receive.link: a CDP virtual authenticator fakes the passkey+PRF so the flows run headless, the B1 inbox worker (e2e/inbox) captures the confirm/delivery emails, and each app feature is a pass/fail cell that gates deploys. Run: npm install && npm test.",
+  "scripts": {
+    "test": "node run.mjs",
+    "pretest": "playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

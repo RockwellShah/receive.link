@@ -1,0 +1,18 @@
+# E2E test inbox — a Cloudflare Email Worker. Receives mail routed to e2e[+tag]@receive.link and serves
+# it back to the E2E suite over a token-gated GET /inbox. TEST-ONLY; fully separate from the app Workers
+# (filekey-drop-staging / receive-link). It shares the receive.link zone only via an Email Routing rule.
+#
+# Deploy:  bunx wrangler deploy --config e2e/inbox/wrangler.toml
+# Secret:  printf '%s' "<token>" | bunx wrangler secret put E2E_TOKEN --config e2e/inbox/wrangler.toml
+# Routing: Cloudflare dash > receive.link > Email Routing > Routing rules > add a custom address
+#          e2e@receive.link with action "Send to a Worker" -> receive-link-e2e-inbox. (+tag addresses
+#          need the catch-all pointed at the same Worker; see the note we hand off after deploy.)
+name = "receive-link-e2e-inbox"
+main = "src/inbox.ts"
+compatibility_date = "2026-06-01"
+account_id = "30d5a45850ef3f60dcd4b75a5b5dd39b"
+
+# Captured test mail (keyed mail:<to>:<ts>, 1h TTL). Created via `wrangler kv namespace create E2E_INBOX`.
+[[kv_namespaces]]
+binding = "E2E_KV"
+id = "4bc15c352b924e18a46970364a15aa8a"
