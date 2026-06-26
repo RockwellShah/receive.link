@@ -76,6 +76,12 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
 .rk .pnew{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--g);background:#E7F2EB;border-radius:20px;padding:4px 10px}
 .rk .phd{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:23px;color:var(--ink);margin:0 0 4px}
 .rk .psub{font-size:12.5px;color:var(--mut);font-weight:500;margin-bottom:16px}
+/* Hero phone: email-arrival notification (swapped in for the .phd/.psub heading; revert restores those two markup lines). */
+.rk .pmail{display:flex;align-items:center;gap:13px;margin-bottom:16px}
+.rk .pmail .pmico{width:44px;height:44px;border-radius:50%;background:#E3EDFF;color:#3B7DF5;display:flex;align-items:center;justify-content:center;flex:none}
+.rk .pmail .pmico .ti{font-size:22px}
+.rk .pmail .pmt{font-size:15px;font-weight:700;color:var(--ink)}
+.rk .pmail .pms{font-size:12.5px;color:var(--mut);font-weight:500;margin-top:1px}
 .rk .pfile{display:flex;align-items:center;gap:13px;border:1px solid #ECE8DE;border-radius:14px;padding:14px;background:#FAF8F3;margin-bottom:14px}
 .rk .pfile .pl{position:relative;width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid #ECE8DE;color:#9499A3;display:flex;align-items:center;justify-content:center;flex:none}
 .rk .pfile .pl .ti{font-size:21px}
@@ -277,8 +283,7 @@ body.cmlock{overflow:hidden}
     <div class="phone">
       <div class="papp">
         <div class="pbar"><span class="logo"><svg width="14" height="14" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></span><span class="pnew">New</span></div>
-        <div class="phd">A file just arrived</div>
-        <div class="psub">Sent to your link &middot; locked to your key</div>
+        <div class="pmail"><div class="pmico"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" /><path d="M3 7l9 6l9 -6" /></svg></div><div><div class="pmt">New email</div><div class="pms">Someone sent you a file</div></div></div>
         <div class="pfile"><div class="pl"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span class="plock"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg></span></div><div class="pfx"><div class="pfn">Locked file</div><div class="pmeta">24 GB &middot; 2 min ago</div></div><svg class="ti pchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6l-6 6" /></svg></div>
         <div class="popen"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3" /> <path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6" /> <path d="M12 11v2a14 14 0 0 0 2.5 8" /> <path d="M8 15a18 18 0 0 0 1.8 6" /> <path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95" /></svg>Unlock with your passkey</div>
       </div>
@@ -354,6 +359,7 @@ body.cmlock{overflow:hidden}
     <h2>Good things to ask</h2>
     <details class="faqi"><summary>Do I need an account?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">No. You create a link with your passkey, and the people sending you files just open the link in their browser. No app and no sign-up, on either side.</p></details>
     <details class="faqi"><summary>What's the max file size?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">Up to 5 terabytes per file.</p></details>
+    <details class="faqi"><summary>If I turn off a link, do I lose my credits?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">No. Credits belong to you, not to any one link, and you top up by email, not through a link. Turning a link off just stops new files from arriving at it. Your balance stays untouched and works with any other link you create.</p></details>
     <details class="faqi"><summary>What's a passkey?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">It's the same thing your phone or laptop already uses for Face ID, a fingerprint, or your screen lock. receive.link uses it to create an encryption key that never leaves your control. There's nothing new to invent or remember.</p></details>
     <details class="faqi"><summary>What if I lose my passkey?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">Passkeys are looked after by your device and usually synced across them, through iCloud Keychain, Google Password Manager, and the like, so they follow you to a new phone or laptop. As long as you can sign in with your passkey, you can open your files. Keep it as safe as you'd keep the keys to a mailbox.</p></details>
     <details class="faqi"><summary>How is this different from email or Dropbox?<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></summary><p class="fa">Those services can read what you send through them. receive.link can't. Files are locked on the sender's device before they ever reach us, and we only ever hold the locked version.</p></details>
@@ -371,9 +377,9 @@ body.cmlock{overflow:hidden}
   <hr class="rule">
   <div class="foot">
     <div><a class="logo" href="/" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
-    <div><h5>Product</h5><a href="/how-it-works/">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
-    <div><h5>Resources</h5><a>Docs</a><a>Status</a><a>Contact</a></div>
-    <div><h5>Legal</h5><a>Privacy</a><a>Terms</a><a>License</a></div>
+    <div><h5>Product</h5><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
+    <div><h5>Resources</h5><a href="/technical/">Technical Info</a><a href="https://signal.group/#CjQKICNGSnaJLhHwrpK8FAEFkk80SJ3_iVj-vq3R3Ym_sU-TEhDjAFNXS0N12yazxAqdpGBX" target="_blank" rel="noopener noreferrer">Signal Group</a><a href="mailto:Contact@receive.link">Contact</a></div>
+    <div><h5>Legal</h5><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/license/">License</a></div>
   </div>
   <div class="cmodal" id="cmodal" hidden>
     <div class="cmback" data-close></div>
@@ -425,6 +431,7 @@ body.cmlock{overflow:hidden}
   var m=document.querySelector('.rk .menu');if(!m)return;
   var k=m.querySelector('.kebab');
   k.addEventListener('click',function(e){e.stopPropagation();m.classList.toggle('open');});
+  m.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();m.classList.toggle('open');}else if(e.key==='Escape'){m.classList.remove('open');}});
   document.addEventListener('click',function(e){if(!m.contains(e.target))m.classList.remove('open');});
   m.querySelectorAll('.navmenu a').forEach(function(a){a.addEventListener('click',function(){m.classList.remove('open');});});
 })();
