@@ -165,6 +165,7 @@ async function doSave(): Promise<void> {
     // the user back to the wall they just paid at.
     for (let i = 0; justPaid && firstSave && result === "needsFunds" && i < 4; i++) {
       await sleep(1500);
+      if (cancelBtn.disabled) { result = "stopped"; break; } // user hit Cancel during the post-payment wait (the button disables on click)
       result = await delivery.save(makeUI());
     }
     firstSave = false;

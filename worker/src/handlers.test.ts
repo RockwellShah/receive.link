@@ -344,6 +344,12 @@ test("reclaim race: a duplicate delivery that lost the exactly-once race release
   })();
   expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(200); // still delivered (a duplicate)
 
+  // The duplicate's gate binding + object are torn down, so opening its /d/<finalId> email can't trigger a
+  // SECOND download charge (billing is keyed by finalId; the winner's own finalId is distinct).
+  const dupFinalId = (h.env.EMAIL as CapturingEmail).sent.at(-1)!.text!.match(/\/d\/([0-9a-f]+)/)![1]!;
+  expect(await h.env.DROP_KV.get(`fetchbind:${dupFinalId}`)).toBeNull();
+  expect(await h.env.DROP_BUCKET.get(dupFinalId)).toBeNull();
+
   // The 200 bytes were RELEASED, not committed: a fresh 1000-byte upload to the same recipient fits the
   // 1000 cap. Had we wrongly committed, total would be 200 and this would be 1200 > 1000 -> 507.
   h.env.EMAIL = new CapturingEmail();

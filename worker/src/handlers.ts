@@ -689,7 +689,17 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // is on — i.e. only when downloads actually run through charge() to clear it. (Setting the cap without
     // billing would otherwise let pending drift up with no downloads to decrement it.)
     if (outcome === "won") await acct.commit(hold.token, finalId, billingEnabled(env) && paidAtRestCap(env) > 0);
-    else { logEvent("delivery_duplicate", { link: linkIdHex }); await acct.release(hold.token); }
+    else {
+      // "already"/"lost": a sibling completion is the authoritative delivery, so THIS attempt is a duplicate.
+      // Release the hold AND tear down this attempt's now-orphan artifacts — the gate binding + object behind
+      // its /d/<finalId> link — so opening the duplicate email can't trigger a SECOND download charge (billing
+      // is keyed by finalId, so the duplicate would otherwise be a separately-chargeable file). Best-effort +
+      // TTL-bounded; the winning attempt's finalId is distinct and untouched.
+      logEvent("delivery_duplicate", { link: linkIdHex });
+      await acct.release(hold.token);
+      await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {});
+      await deleteObject(env, finalId).catch(() => {});
+    }
     logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {
       await deleteObject(env, body.objectId);

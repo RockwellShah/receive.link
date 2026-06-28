@@ -135,6 +135,7 @@ async function saveToDisk(api: DropApi, objectId: string, identity: Identity, fi
     // download. Out of credit -> signal the top-up wall (before any save prompt). Otherwise open the
     // stream FIRST so a stale/expired link fails fast. 1x disk: never buffers the whole ciphertext.
     const { challengeId, proof } = await prove(api, objectId, identity);
+    if (cancelled) return "stopped"; // cancelled during the proof step, before the gate charges — never debit on a cancel
     const got = await api.fetchDownload(challengeId, proof);
     if ("needsFunds" in got) return "needsFunds";
     const chunks = await openStream(got.url, identity, ctrl.signal);
