@@ -42,6 +42,10 @@ let opening = false;
 let deleting = false;
 let api: DropApi | null = null;
 let objectId = "";
+// Returning from a top-up (Stripe -> ?paid=1): the crediting webhook can lag the redirect a second or two.
+const justPaid = new URLSearchParams(location.search).has("paid");
+let firstSave = true;
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // Offer the "try a different passkey" recovery only for failures a different passkey can fix (passkey
 // dismissed / not on this device, or a wrong-identity decrypt) — not for expired/network errors.
@@ -156,13 +160,49 @@ async function doSave(): Promise<void> {
   el("barfill").style.width = "0%"; el("barfill").parentElement!.classList.add("indet");
   show("saving");
   try {
-    const result = await delivery.save(makeUI());
+    let result = await delivery.save(makeUI());
+    // On the first Save after paying, re-prove + retry briefly so a lagging credit webhook doesn't bounce
+    // the user back to the wall they just paid at.
+    for (let i = 0; justPaid && firstSave && result === "needsFunds" && i < 4; i++) {
+      await sleep(1500);
+      result = await delivery.save(makeUI());
+    }
+    firstSave = false;
     if (result === "stopped") { showReady(); return; } // cancelled or dismissed the save dialog
+    if (result === "needsFunds") { await showTopUp(); return; } // out of credit -> the only money moment
     show("saved");
   } catch (e) {
     showError(humanError(e));
   } finally {
     saving = false;
+  }
+}
+
+// The out-of-funds wall (the only place money surfaces): pull the prepaid tiers from the server (labels
+// reflect the live price), render them, and on a tap prove possession + redirect to Stripe Checkout.
+async function showTopUp(): Promise<void> {
+  if (!delivery) return;
+  const list = el("packs");
+  list.replaceChildren();
+  show("topup");
+  try {
+    const packs = await delivery.packs();
+    for (const p of packs) {
+      const b = document.createElement("button");
+      b.className = "pack";
+      b.type = "button";
+      b.textContent = p.label;
+      b.onclick = () => {
+        list.querySelectorAll("button").forEach((x) => ((x as HTMLButtonElement).disabled = true));
+        void delivery!.checkout(p.id).catch((e) => {
+          list.querySelectorAll("button").forEach((x) => ((x as HTMLButtonElement).disabled = false));
+          showError(humanError(e));
+        });
+      };
+      list.appendChild(b);
+    }
+  } catch (e) {
+    showError(humanError(e));
   }
 }
 
@@ -225,4 +265,5 @@ el("reopen").onclick = () => doOpen(true); // explicit "try a different passkey"
 el("save").onclick = () => void doSave();
 el("saveagain").onclick = () => void doSave();
 el("delfile").onclick = () => void doDelete();
+el("topupback").onclick = () => showReady();
 void main();

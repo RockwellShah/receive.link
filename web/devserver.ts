@@ -5,8 +5,8 @@
 // mail at /__mail so you can click the confirm + download links. Run: bun run web/devserver.ts
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
-import { confirm, discardObject, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
-import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2 } from "../worker/src/testing";
+import { billingCheckout, billingPacks, billingWebhook, confirm, discardObject, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
+import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2, MemoryReceiver } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
 const ROOT = `${import.meta.dir}/`;
@@ -28,13 +28,23 @@ const kv = new MemoryKV();
 const r2 = new MemoryR2();
 const mail = new CapturingEmail();
 const completion = new MemoryCompletion();
+const receiver = new MemoryReceiver();
 const env: Env = {
   EMAIL: mail,
   DROP_BUCKET: r2 as unknown as R2Bucket,
   DROP_KV: kv as unknown as KVNamespace,
   COMPLETION: completion as unknown as Env["COMPLETION"],
+  RECEIVER: receiver as unknown as Env["RECEIVER"],
   SERVER_KEM_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", kem.privateKey)),
   SERVER_SIGN_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.privateKey)),
+  RECEIVER_ID_SECRET: "dev-receiver-id-secret",
+  // Phase 2b billing — set via env to exercise the Stripe top-up flow locally, e.g.
+  //   STRIPE_SECRET_KEY=$(pbpaste) STRIPE_WEBHOOK_SECRET=whsec_… BILLING_ENABLED=1 FREE_GRANT_BYTES=0 bun run web/devserver.ts
+  // (FREE_GRANT_BYTES=0 forces every download to 402 so the pay flow always triggers; unset = downloads free.)
+  STRIPE_SECRET_KEY: Bun.env.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: Bun.env.STRIPE_WEBHOOK_SECRET,
+  BILLING_ENABLED: Bun.env.BILLING_ENABLED,
+  FREE_GRANT_BYTES: Bun.env.FREE_GRANT_BYTES,
   SERVER_SIGN_PUBLIC_JWK: JSON.stringify(signPubJwk),
   ALLOWED_ORIGIN: ORIGIN,
   MAIL_FROM: "files@drop.localhost",
@@ -49,10 +59,15 @@ const env: Env = {
   MULTIPART_MIN_PART: String(256 * 1024),
 };
 
-// Rewrite a handler's presigned-R2 URL to the local /__r2 stand-in.
-async function localizeUrl(res: Response, field: "uploadUrl" | "url", objectId: string): Promise<Response> {
+// Rewrite a handler's presigned-R2 URL to the local /__r2 stand-in (the objectId is the last path
+// segment of the real presigned URL, so callers that don't know it — e.g. /fetch/download — still work).
+async function localizeUrl(res: Response, field: "uploadUrl" | "url"): Promise<Response> {
   const body = (await res.json()) as Record<string, unknown>;
-  if (body[field]) body[field] = `${ORIGIN}/__r2/${objectId}`;
+  const orig = body[field];
+  if (typeof orig === "string") {
+    const objectId = new URL(orig).pathname.split("/").pop() ?? "";
+    body[field] = `${ORIGIN}/__r2/${objectId}`;
+  }
   return Response.json(body, { status: res.status });
 }
 
@@ -92,10 +107,12 @@ async function handleApi(req: Request, sub: string): Promise<Response> {
   if (req.method === "POST" && sub === "/upload-complete") return uploadComplete(req, env);
   if (req.method === "POST" && sub === "/upload-abort") return uploadAbort(req, env);
   if (req.method === "POST" && sub === "/discard") return discardObject(req, env);
-  if (req.method === "GET" && sub.startsWith("/fetch/")) {
-    const id = sub.slice("/fetch/".length);
-    return localizeUrl(await fetchObject(req, env, id), "url", id);
-  }
+  if (req.method === "POST" && sub === "/fetch/challenge") return fetchChallenge(req, env);
+  if (req.method === "POST" && sub === "/fetch/preview") return fetchPreview(req, env); // binary head+metadata, served as-is
+  if (req.method === "POST" && sub === "/fetch/download") return localizeUrl(await fetchDownload(req, env), "url");
+  if (req.method === "GET" && sub === "/billing/packs") return billingPacks(req, env);
+  if (req.method === "POST" && sub === "/billing/checkout") return billingCheckout(req, env); // 503 locally unless STRIPE_SECRET_KEY is set
+  if (req.method === "POST" && sub === "/billing/webhook") return billingWebhook(req, env);
   return new Response("not found", { status: 404 });
 }
 

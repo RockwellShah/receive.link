@@ -27,14 +27,20 @@ id = "c277258851044785971403e8d458b76d"
 name = "COMPLETION"
 class_name = "CompletionGuard"
 
+# Per-recipient account: prepaid balance + the per-file download charge (monetization). SQLite-backed DO,
+# one instance per receiver id (an HMAC of the confirmed email; see RECEIVER_ID_SECRET).
+[[durable_objects.bindings]]
+name = "RECEIVER"
+class_name = "ReceiverAccount"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CompletionGuard"]
 
-# Staging-only cleanup. This Worker was briefly used to test the Phase 0 monetization feature, which
-# created a ReceiverAccount Durable Object (migration v2). That feature lives on its own `monetization`
-# branch now; v3 deletes the DO so this clean email/copy Worker can run on staging again. Prod never
-# got v2, so its migrations ([env.production], below) stay at v1.
+# Migration history on this staging Worker: v2 created the ReceiverAccount DO (a Phase-0 test), v3 deleted
+# it. The monetization merge brings it back, so v4 RE-creates it — fresh/empty (there was no billing data).
+# Keeping v2 + v3 is REQUIRED: they were already applied, so the tag list must match the deployed history.
+# (Prod never got v2/v3, so [env.production] goes straight v1 -> v2 to create it; see below.)
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["ReceiverAccount"]
@@ -42,6 +48,10 @@ new_sqlite_classes = ["ReceiverAccount"]
 [[migrations]]
 tag = "v3"
 deleted_classes = ["ReceiverAccount"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["ReceiverAccount"]
 
 [vars]
 # This (default) env is the STAGING Worker, serving staging.receive.link. It must build its own
@@ -66,12 +76,24 @@ MULTIPART_MIN_PART = "5242880"                      # 5 MiB
 # these (its [env.production.vars]) and falls back to the strict defaults in handlers.ts.
 REG_EMAIL_PER_DAY = "1000"
 REG_IP_PER_DAY = "1000"
+# Monetization (download charge). Ships INERT: leave BILLING_ENABLED unset so downloads stay free until
+# launch, then flip it to "1" + set the price. PRICE_CENTS_PER_GB is the price knob (default 1 = 1¢/GB ->
+# $10 = 1 TB); set it to your intended price (e.g. "10" = 10¢/GB -> $10 = 100 GB). Caps unset = uncapped.
+# All env-tunable in the dashboard, no code change.
+# BILLING_ENABLED = "1"
+# PRICE_CENTS_PER_GB = "10"
+# FREE_GRANT_BYTES = "1073741824"             # 1 GB free download credit/account (unset = code default)
+# RECEIVER_INBOUND_CAP_BYTES = "1073741824"   # free-tier lifetime inbound cap (unset = uncapped)
+# PAID_ATREST_CAP_BYTES = "107374182400"      # paid-tier at-rest cap = 100 GB (unset = uncapped)
 
 # Secrets (DO NOT put here) — set with:
 #   wrangler secret put SERVER_KEM_PRIVATE_JWK    # from gen-keys
 #   wrangler secret put SERVER_SIGN_PRIVATE_JWK   # from gen-keys
 #   wrangler secret put R2_ACCESS_KEY_ID          # R2 > Manage API tokens
 #   wrangler secret put R2_SECRET_ACCESS_KEY
+#   wrangler secret put RECEIVER_ID_SECRET        # long random; derives the per-recipient account id from the confirmed email
+#   wrangler secret put STRIPE_SECRET_KEY         # sk_*; checkout 503s until BOTH this + the webhook secret are set
+#   wrangler secret put STRIPE_WEBHOOK_SECRET     # whsec_*; from the Stripe webhook (event checkout.session.completed)
 
 [env.production]
 name = "receive-link"
@@ -92,9 +114,18 @@ id = "c639ae5f915d4dc1bbc11ef8ba26e4e6"
 name = "COMPLETION"
 class_name = "CompletionGuard"
 
+[[env.production.durable_objects.bindings]]
+name = "RECEIVER"
+class_name = "ReceiverAccount"
+
 [[env.production.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CompletionGuard"]
+
+# Prod was at v1 (CompletionGuard only — it never got the staging v2/v3). v2 creates ReceiverAccount here.
+[[env.production.migrations]]
+tag = "v2"
+new_sqlite_classes = ["ReceiverAccount"]
 
 [env.production.vars]
 ALLOWED_ORIGIN = "https://receive.link"
@@ -104,3 +135,11 @@ SERVER_SIGN_KEY_ID = "1"                                # see staging note on ke
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "receive-link-prod"
 MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (see staging note above)
+# Monetization (same as staging; INERT until launch). Flip BILLING_ENABLED + set PRICE_CENTS_PER_GB when
+# going live on prod. Caps unset = uncapped. Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET + RECEIVER_ID_SECRET
+# as prod secrets (`wrangler secret put --env production`).
+# BILLING_ENABLED = "1"
+# PRICE_CENTS_PER_GB = "10"
+# FREE_GRANT_BYTES = "1073741824"
+# RECEIVER_INBOUND_CAP_BYTES = "1073741824"
+# PAID_ATREST_CAP_BYTES = "107374182400"

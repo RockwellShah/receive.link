@@ -4,6 +4,7 @@
 // file). The page provides a ReceiveUI for save progress/cancel. Crypto/stream/api/webauthn reused.
 import { type Identity, NamespaceSet, deriveIdentityFromPrf } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode } from "../../shared/codec";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeUnseal } from "../../shared/crypto";
 import type { DropApi } from "../src/api";
 import { checkSupport, getPrfSecret, prfBrowserSupport } from "../src/webauthn";
 import { openCiphertext, openCiphertextSource, streamSource } from "./stream";
@@ -11,10 +12,6 @@ import { openCiphertext, openCiphertextSource, streamSource } from "./stream";
 // Same namespace as the app (interop with filekey.app).
 const NS = new NamespaceSet(["filekey.app"]);
 const ns = NS.namespaces[0]!;
-
-// Enough of the ciphertext to cover the fixed head + metadata (<= ~1 MiB), fetched as a Range request so
-// the filename shows without downloading the whole file.
-const METADATA_PREFIX = 1_200_000;
 
 // The page implements this to render save progress + wire the Cancel button.
 export interface ReceiveUI {
@@ -30,9 +27,15 @@ export interface Delivery {
   // For a multi-file bundle, the file list the sender packed into the encrypted metadata (undefined for
   // a single file or a link without it). `total` is the true count; `names` may be truncated for huge bundles.
   entries?: { total: number; names: string[] };
-  // Stream the full file to disk. "saved" on success; "stopped" if the user cancels or dismisses the
-  // OS save dialog (the page returns to ready); throws on a real failure.
-  save(ui: ReceiveUI): Promise<"saved" | "stopped">;
+  // Stream the full file to disk (the CHARGED download). "saved" on success; "stopped" if the user
+  // cancels or dismisses the OS save dialog (the page returns to ready); "needsFunds" when the receiver
+  // is out of credit (the page shows the top-up wall); throws on a real failure.
+  save(ui: ReceiveUI): Promise<"saved" | "stopped" | "needsFunds">;
+  // Out-of-funds top-up (the only place money surfaces): the prepaid tiers (server-priced) for the wall,
+  // and a tap that proves possession of this file (so the right account is credited) then redirects to
+  // Stripe-hosted Checkout.
+  packs(): Promise<{ id: string; label: string }[]>;
+  checkout(packId: string): Promise<void>;
 }
 
 // Read the bundle file list a Drop sender packed into metadata.extras ("rl.files"). undefined if absent
@@ -85,33 +88,6 @@ async function prfSecret(forceOpen: boolean): Promise<{ secret: Uint8Array; cred
   return await getPrfSecret(id);
 }
 
-// Read at most `max` bytes from a response body, then cancel the rest (so reading just the metadata never
-// downloads the whole file even if the server ignored our Range request). Ported from app.ts.
-async function readPrefix(resp: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
-  if (!resp.body) return new Uint8Array(await resp.arrayBuffer()).subarray(0, max);
-  const reader = resp.body.getReader();
-  const parts: Uint8Array[] = [];
-  let len = 0;
-  try {
-    while (len < max) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value && value.length) { parts.push(value); len += value.length; }
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
-  const out = new Uint8Array(Math.min(len, max));
-  let off = 0;
-  for (const p of parts) {
-    if (off >= out.length) break;
-    const take = p.subarray(0, out.length - off);
-    out.set(take, off);
-    off += take.length;
-  }
-  return out;
-}
-
 // Strip bidi-override/isolate + LRM/RLM chars (filename spoofing — "Trojan Source") and control chars,
 // map path separators to "_", cap length. Code-point comparisons so no invisible chars live in source.
 function sanitizeName(name: string): string {
@@ -135,8 +111,18 @@ async function openStream(url: string, identity: Identity, signal: AbortSignal):
   return chunks;
 }
 
-// Stream the full ciphertext to disk: a fresh fetch per call (naturally restartable), decrypt, write.
-async function saveToDisk(url: string, identity: Identity, filename: string, mimeType: string, totalSize: number, ui: ReceiveUI): Promise<"saved" | "stopped"> {
+// Prove possession of the file to the download gate: the Worker seals a one-time nonce to the receiver's
+// key (HPKE); only the passkey-derived identity can unseal it. A fresh challenge per call. Mirrors app.ts.
+async function prove(api: DropApi, objectId: string, identity: Identity): Promise<{ challengeId: string; proof: string }> {
+  const { challengeId, sealed } = await api.fetchChallenge(objectId);
+  const nonce = await hpkeUnseal(identity.keyPair, base64urlDecode(sealed), FETCH_CHALLENGE_INFO);
+  const proof = await fetchProofHex(challengeId, objectId, nonce);
+  return { challengeId, proof };
+}
+
+// Stream the full ciphertext to disk (the CHARGED download): re-prove, request the gated download URL
+// (or a needs-funds signal), then a fresh fetch per call (naturally restartable), decrypt, write.
+async function saveToDisk(api: DropApi, objectId: string, identity: Identity, filename: string, mimeType: string, totalSize: number, ui: ReceiveUI): Promise<"saved" | "stopped" | "needsFunds"> {
   const name = sanitizeName(filename);
   const ctrl = new AbortController();
   let cancelled = false;
@@ -145,9 +131,13 @@ async function saveToDisk(url: string, identity: Identity, filename: string, mim
     showSaveFilePicker?: (o: unknown) => Promise<{ createWritable: () => Promise<{ write: (b: Uint8Array) => Promise<void>; close: () => Promise<void>; abort?: () => Promise<void> }> }>;
   };
   try {
-    // Fetch + open the stream FIRST so a stale/expired link fails fast, before prompting for a save
-    // location (matches the original receive flow). 1x disk: never buffers the whole ciphertext.
-    const chunks = await openStream(url, identity, ctrl.signal);
+    // Re-prove on save (reuses the in-memory identity, no second passkey prompt) and request the CHARGED
+    // download. Out of credit -> signal the top-up wall (before any save prompt). Otherwise open the
+    // stream FIRST so a stale/expired link fails fast. 1x disk: never buffers the whole ciphertext.
+    const { challengeId, proof } = await prove(api, objectId, identity);
+    const got = await api.fetchDownload(challengeId, proof);
+    if ("needsFunds" in got) return "needsFunds";
+    const chunks = await openStream(got.url, identity, ctrl.signal);
     if (w.showSaveFilePicker) {
       // Chrome/Edge: pick a destination, then stream chunks straight to it.
       let ws: { write: (b: Uint8Array) => Promise<void>; close: () => Promise<void>; abort?: () => Promise<void> } | null = null;
@@ -194,10 +184,11 @@ export async function loadDelivery(api: DropApi, objectId: string, forceOpen = f
   const { secret, credentialId } = await prfSecret(forceOpen);
   // Zero the PRF secret whether derivation succeeds or throws, so it isn't left live on the error path.
   const identity = await deriveIdentityFromPrf(secret, ns).finally(() => secret.fill(0));
-  const { url } = await api.fetchUrl(objectId);
-  const headResp = await fetch(url, { headers: { Range: `bytes=0-${METADATA_PREFIX - 1}` } });
-  if (!headResp.ok) throw new Error("the file has expired or was already removed"); // 200 or 206 are ok
-  const prefix = await readPrefix(headResp, METADATA_PREFIX);
+  // Free preview through the gate: prove possession, then the Worker serves just the head + metadata
+  // bytes (never the payload, no charge), so the filename shows before the receiver commits to (and pays
+  // for) the download.
+  const { challengeId, proof } = await prove(api, objectId, identity);
+  const prefix = await api.fetchPreview(challengeId, proof);
   const { metadata } = await openCiphertext(new Blob([prefix]), identity, NS).catch((e) => {
     // This passkey didn't decrypt the file (wrong identity). Drop any stale pin so the next open
     // re-prompts cleanly instead of silently reusing the wrong passkey, then surface the failure.
@@ -212,6 +203,12 @@ export async function loadDelivery(api: DropApi, objectId: string, forceOpen = f
     mimeType: metadata.mimeType,
     originalSize: metadata.originalSize,
     entries: parseBundleEntries(metadata.extras),
-    save: (ui) => saveToDisk(url, identity, filename, metadata.mimeType, metadata.originalSize, ui),
+    save: (ui) => saveToDisk(api, objectId, identity, filename, metadata.mimeType, metadata.originalSize, ui),
+    packs: async () => (await api.billingPacks()).packs,
+    checkout: async (packId) => {
+      const { challengeId: cid, proof: pf } = await prove(api, objectId, identity);
+      const { url } = await api.billingCheckout(cid, pf, packId);
+      window.location.href = url;
+    },
   };
 }

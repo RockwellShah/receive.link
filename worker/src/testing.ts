@@ -1,6 +1,7 @@
 // In-memory fakes for the Cloudflare bindings, so handlers can be exercised
 // end-to-end under `bun test` with no account. Test-only.
 import { base64urlDecode } from "../../shared/codec";
+import type { AccountSummary, ChargeResult, Tier } from "./receiver";
 import type { Env, SendEmailBinding } from "./types";
 
 export class MemoryKV {
@@ -128,6 +129,11 @@ export class MemoryCompletion {
   idFromName(name: string): DurableObjectId {
     return { toString: () => name } as unknown as DurableObjectId;
   }
+  /** Test hook: simulate another attempt winning the exactly-once race for `name`, so the in-flight
+   *  owner's finish() returns "already" (its delivery becomes a duplicate). */
+  forceDone(name: string): void {
+    this.state.set(name, { phase: "done" });
+  }
   get(id: DurableObjectId) {
     const name = id.toString();
     const state = this.state;
@@ -148,18 +154,103 @@ export class MemoryCompletion {
         const s = state.get(name);
         return s?.phase === "running" && s.owner === token;
       },
-      async finish(token: string): Promise<boolean> {
+      async finish(token: string): Promise<"won" | "already" | "lost"> {
         const s = state.get(name);
-        if (s?.phase === "done") return true;
+        if (s?.phase === "done") return "already";
         if (s?.phase === "running" && s.owner === token) {
           state.set(name, { phase: "done" });
-          return true;
+          return "won";
         }
-        return false;
+        return "lost";
       },
       async release(token: string): Promise<void> {
         const s = state.get(name);
         if (s?.phase === "running" && s.owner === token) state.delete(name);
+      },
+    };
+  }
+}
+
+// In-memory stand-in for the ReceiverAccount DO namespace. Single-threaded bun tests, so the atomic
+// reserve()/commit()/release()/charge() hold trivially. Mirrors worker/src/receiver.ts's accounting —
+// minus the time-based expiry of reservations and paid-file flags (the DO's crash-cleanup alarm, which is
+// exercised against the live DO), so tests never advance 10 days and paid flags need no expiry here.
+export class MemoryReceiver {
+  private totals = new Map<string, number>();
+  private pendingFiles = new Map<string, Map<string, number>>(); // rid -> finalId -> bytes (un-downloaded)
+  private balances = new Map<string, number>(); // present once seeded/changed; absent = lazy-default to grant
+  private tiers = new Map<string, Tier>();
+  private paid = new Map<string, Set<string>>(); // rid -> finalIds already charged
+  private holds = new Map<string, Map<string, number>>(); // rid -> token -> reserved bytes
+  private events = new Map<string, Set<string>>(); // rid -> stripe event ids already credited
+  idFromName(name: string): DurableObjectId {
+    return { toString: () => name } as unknown as DurableObjectId;
+  }
+  get(id: DurableObjectId) {
+    const name = id.toString();
+    const { totals, pendingFiles, balances, tiers, paid, holds, events } = this;
+    const clamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+    const held = () => holds.get(name) ?? holds.set(name, new Map<string, number>()).get(name)!;
+    const pend = () => pendingFiles.get(name) ?? pendingFiles.set(name, new Map<string, number>()).get(name)!;
+    const paidSet = () => paid.get(name) ?? paid.set(name, new Set<string>()).get(name)!;
+    const tierOf = (): Tier => tiers.get(name) ?? "free";
+    const bal = (grant: number) => balances.get(name) ?? clamp(grant);
+    const sum = (m: Map<string, number>) => {
+      let s = 0;
+      for (const b of m.values()) s += b;
+      return s;
+    };
+    return {
+      async reserve(bytes: number, freeCap: number, paidCap: number): Promise<{ ok: true; token: string } | { ok: false }> {
+        const add = clamp(bytes);
+        const isPaid = tierOf() === "paid";
+        const cap = isPaid ? paidCap : freeCap;
+        const basis = isPaid ? sum(pend()) : (totals.get(name) ?? 0);
+        if (cap > 0 && basis + sum(held()) + add > cap) return { ok: false };
+        const token = crypto.randomUUID();
+        held().set(token, add);
+        return { ok: true, token };
+      },
+      async commit(token: string, finalId: string, accruePending: boolean): Promise<void> {
+        const b = held().get(token);
+        if (b === undefined) return;
+        held().delete(token);
+        totals.set(name, (totals.get(name) ?? 0) + b);
+        if (accruePending) pend().set(finalId, b); // delivered, un-downloaded (only tracked when the cap is on)
+      },
+      async release(token: string): Promise<void> {
+        held().delete(token);
+      },
+      async charge(finalId: string, size: number, grant: number): Promise<ChargeResult> {
+        const need = clamp(size);
+        const balance = bal(grant);
+        if (paidSet().has(finalId)) return { ok: true, alreadyPaid: true, balance };
+        if (balance < need) return { ok: false, balance, need };
+        paidSet().add(finalId);
+        const newBalance = balance - need;
+        balances.set(name, newBalance);
+        pend().delete(finalId); // downloaded -> no longer pending
+        return { ok: true, alreadyPaid: false, balance: newBalance };
+      },
+      async credit(packBytes: number, grant: number, eventId?: string): Promise<{ balance: number }> {
+        if (eventId) {
+          const ev = events.get(name) ?? events.set(name, new Set<string>()).get(name)!;
+          if (ev.has(eventId)) return { balance: bal(grant) };
+          ev.add(eventId);
+        }
+        const newBalance = bal(grant) + clamp(packBytes);
+        balances.set(name, newBalance);
+        tiers.set(name, "paid");
+        return { balance: newBalance };
+      },
+      async summary(grant: number): Promise<AccountSummary> {
+        return {
+          tier: tierOf(),
+          total: totals.get(name) ?? 0,
+          pending: sum(pend()),
+          balance: bal(grant),
+          reserved: sum(held()),
+        };
       },
     };
   }
@@ -190,12 +281,14 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
   const r2 = new MemoryR2();
   const email = new CapturingEmail();
   const completion = new MemoryCompletion();
+  const receiver = new MemoryReceiver();
 
   const env: Env = {
     EMAIL: email,
     DROP_BUCKET: r2 as unknown as R2Bucket,
     DROP_KV: kv as unknown as KVNamespace,
     COMPLETION: completion as unknown as Env["COMPLETION"],
+    RECEIVER: receiver as unknown as Env["RECEIVER"],
     SERVER_SIGN_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.privateKey)),
     SERVER_SIGN_PUBLIC_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.publicKey)),
     SERVER_KEM_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", kem.privateKey)),
@@ -206,6 +299,7 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
     R2_BUCKET: "filekey-drop-test",
     R2_ACCESS_KEY_ID: "TESTKEYID",
     R2_SECRET_ACCESS_KEY: "testsecret",
+    RECEIVER_ID_SECRET: "test-receiver-id-secret",
     ...overrides,
   };
 

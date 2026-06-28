@@ -7,7 +7,7 @@
 //   /d/<objectId>      -> Receive (receiver fetches + decrypts a delivered file)
 import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../core/src/index.js";
 import { base64urlDecode, base64urlEncode, decodeDropLink, splitSignature } from "../../shared/codec";
-import { importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeUnseal, importKemPublicKey, importSignPublicKey, sealEmail, verifyRegion } from "../../shared/crypto";
 import { ERR, SVG, StatusMsg, actionRow, appMsg, hideDropBar, initChrome, inputPrompt, linkReveal, saveCardWith, saveDecryptedStream, showDropBar, uploadCard } from "../fk/ui";
 import { ciphertextLength, encryptFileToParts, encryptFileToShareKey, openCiphertext, openCiphertextSource, streamSource } from "../fk/stream";
 import { uploadPartsPool } from "../fk/pool";
@@ -33,6 +33,7 @@ function humanError(e: unknown): string {
     if (/revoked/i.test(m)) return "This link has been turned off. Ask the recipient for a new one.";
     if (/invalid or expired/i.test(m)) return "This confirmation link expired or was already used. Set up again.";
     if (/too large|maxBytes/i.test(m)) return "That file is over the upload limit.";
+    if (/inbox is full|over capacity/i.test(m)) return "This inbox is full right now. The recipient has been notified.";
     if (/rate limited|daily limit|over its daily/i.test(m)) return "Too many requests right now. Please try again later.";
     if (/invalid link|bad signature|not a FileKey/i.test(m)) return "This link isn't valid. Ask the recipient for a fresh one.";
     if (/invalid token|bad token|missing token/i.test(m)) return "This manage link isn't valid. Use the most recent one from a delivery email or your confirmation page.";
@@ -368,71 +369,100 @@ async function uploadPart(
 }
 
 // ---- Receive (/d/<id>) ----
-// Enough of the ciphertext to cover the fixed head + the metadata (<= ~1 MiB), fetched as a Range
-// request so we can show the filename without downloading the whole file.
-const METADATA_PREFIX = 1_200_000;
+// Download gate: prove the passkey holder is the one downloading. Request a challenge (a nonce the Worker
+// sealed to the receiver's share key), unseal it with the identity, and derive the proof. Each outcome
+// (free preview, charged download) consumes its own single-use challenge; both reuse the in-memory
+// identity, so neither the preview nor a re-proven Save triggers a second passkey prompt.
+type Identity = Awaited<ReturnType<typeof deriveIdentityFromPrf>>;
+async function proveFetch(objectId: string, identity: Identity): Promise<{ challengeId: string; proof: string }> {
+  const { challengeId, sealed } = await api.fetchChallenge(objectId);
+  const nonce = await hpkeUnseal(identity.keyPair, base64urlDecode(sealed), FETCH_CHALLENGE_INFO);
+  const proof = await fetchProofHex(challengeId, objectId, nonce);
+  return { challengeId, proof };
+}
+/** Free preview: the head + metadata bytes (the Worker serves them directly; no payload, no charge). */
+async function fetchMetaPrefix(objectId: string, identity: Identity): Promise<Uint8Array<ArrayBuffer>> {
+  const { challengeId, proof } = await proveFetch(objectId, identity);
+  return api.fetchPreview(challengeId, proof);
+}
+/** Charged download: a short-lived URL for the full ciphertext, or a needs-funds signal. */
+async function fetchDownloadUrl(objectId: string, identity: Identity) {
+  const { challengeId, proof } = await proveFetch(objectId, identity);
+  return api.fetchDownload(challengeId, proof);
+}
 
-// Read at most `max` bytes from a response body, then cancel the rest — so opening a link to read just
-// the metadata never downloads the whole file, even if the server ignored our Range request (200).
-async function readPrefix(resp: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
-  if (!resp.body) return new Uint8Array(await resp.arrayBuffer()).subarray(0, max);
-  const reader = resp.body.getReader();
-  const parts: Uint8Array[] = [];
-  let len = 0;
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** Hand off to Stripe-hosted Checkout for a top-up: prove possession of the file (so the server credits
+ *  the owning account), get the Checkout URL, and redirect. On return Stripe sends us back to ?paid=1. */
+async function startCheckout(objectId: string, identity: Identity, pack: string): Promise<void> {
   try {
-    while (len < max) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value && value.length) {
-        parts.push(value);
-        len += value.length;
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
+    const { challengeId, proof } = await proveFetch(objectId, identity);
+    const { url } = await api.billingCheckout(challengeId, proof, pack);
+    window.location.href = url;
+  } catch (e) {
+    await appMsg([humanError(e)], ERR);
   }
-  const out = new Uint8Array(Math.min(len, max));
-  let off = 0;
-  for (const p of parts) {
-    if (off >= out.length) break;
-    const take = p.subarray(0, out.length - off);
-    out.set(take, off);
-    off += take.length;
+}
+
+/** The out-of-funds wall: the only place money surfaces. Pull the prepaid tiers from the server (so the
+ *  labels always reflect the live price), then a tap starts checkout. */
+async function showTopUp(objectId: string, identity: Identity): Promise<void> {
+  const host = await appMsg([{ t: "Add credit to unlock this download.", b: true }, " Prepaid, pay only for what you download, never expires."]);
+  try {
+    const { packs } = await api.billingPacks();
+    actionRow(
+      host,
+      packs.map((p) => ({ label: p.label, onClick: () => void startCheckout(objectId, identity, p.id) })),
+    );
+  } catch (e) {
+    await appMsg([humanError(e)], ERR);
   }
-  return out;
 }
 
 async function receiveMode(objectId: string): Promise<void> {
   const st = new StatusMsg("Opening your file");
   try {
-    const { url } = await api.fetchUrl(objectId);
+    // Derive the identity FIRST (one passkey prompt), then prove possession to the gate — only the passkey
+    // holder can unseal the gate's challenge, so a stranger with the link can't even see the filename.
     const prf = await prfSecret();
     // Zero the PRF secret whether derivation succeeds or throws, so it's not left live on the error path.
     const identity = await deriveIdentityFromPrf(prf, ns).finally(() => prf.fill(0));
-    // Metadata only: fetch just the head + metadata prefix (a Range request) and decrypt it for the
-    // filename. The full payload streams to disk on Save (below), so the whole ciphertext is never
-    // buffered — true 1x disk, which is what makes receiving a multi-TB file feasible.
-    const headResp = await fetch(url, { headers: { Range: `bytes=0-${METADATA_PREFIX - 1}` } });
-    if (!headResp.ok) throw new Error("the file has expired or was already removed"); // 200 or 206 are ok
-    // Read only the prefix + cancel: even if the server ignored Range (200), we never download the
-    // whole ciphertext just to read the filename.
-    const { metadata } = await openCiphertext(new Blob([await readPrefix(headResp, METADATA_PREFIX)]), identity, NS);
+    // Free preview: the Worker serves just the head + metadata (never the payload, no charge), so we can
+    // show the filename before the receiver commits to (and pays for) the download. The full payload
+    // streams to disk on Save (below), so the whole ciphertext is never buffered — true 1x disk.
+    const { metadata } = await openCiphertext(new Blob([await fetchMetaPrefix(objectId, identity)]), identity, NS);
     st.done();
     await appMsg([{ t: "Ready to save.", b: true }, " It's encrypted to you, and the file itself only decrypts on your device when you save it."]);
     if (!(window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker && metadata.originalSize > 2 * 1024 * 1024 * 1024) {
       await appMsg(["For a file this large, Chrome or Edge can save it more reliably than this browser."]);
     }
     const filename = metadata.filename || "file";
+    // Returning from a top-up (Stripe sends us back to ?paid=1): the crediting webhook can lag the redirect
+    // by a second or two, so on the first Save click we retry briefly before showing the wall again.
+    const justPaid = new URLSearchParams(location.search).has("paid");
+    let firstSave = true;
     let saving = false;
     saveCardWith(filename, "Decrypted file", async () => {
       if (saving) return; // one save at a time; ignore double-clicks
       saving = true;
       const controller = new AbortController(); // the Save's Cancel button aborts this download
       try {
-        // Stream the full ciphertext straight to disk (1x disk): fetch -> ReadableStream -> decrypt ->
-        // write, never buffering the whole file. A fresh fetch per click is naturally re-startable, so a
-        // failed/cancelled/double-clicked save just starts clean.
-        const resp = await fetch(url, { signal: controller.signal });
+        // Re-prove on Save (reuses the in-memory identity, so no second passkey prompt) and request the
+        // charged download. Out of credit -> the top-up wall. Otherwise stream the full ciphertext straight
+        // to disk (1x disk): fetch -> decrypt -> write, never buffering. A fresh prove+fetch per click is
+        // naturally re-startable, and the Save's Cancel button aborts the stream via controller.signal.
+        let got = await fetchDownloadUrl(objectId, identity);
+        for (let i = 0; justPaid && firstSave && "needsFunds" in got && i < 4; i++) {
+          await sleep(1500); // wait for the webhook credit to land, then re-prove + retry
+          got = await fetchDownloadUrl(objectId, identity);
+        }
+        firstSave = false;
+        if ("needsFunds" in got) {
+          await showTopUp(objectId, identity);
+          return; // re-clickable once funded
+        }
+        const resp = await fetch(got.url, { signal: controller.signal });
         if (!resp.ok || !resp.body) throw new Error("the file has expired or was already removed");
         const size = Number(resp.headers.get("content-length"));
         if (!Number.isFinite(size) || size <= 0) throw new Error("couldn't read the file size");
@@ -445,6 +475,8 @@ async function receiveMode(objectId: string): Promise<void> {
         saving = false;
       }
     });
+    // The file picker needs a user click, so we can't auto-download on return — nudge them to tap Save.
+    if (justPaid) await appMsg(["Payment received. Tap Save to download your file."]);
   } catch (e) {
     st.fail();
     await appMsg([humanError(e)], ERR);

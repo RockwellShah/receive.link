@@ -12,15 +12,21 @@
 //   POST /upload-parts     re-presign a batch of multipart UploadPart URLs (browser uploads direct)
 //   POST /upload-complete  assemble (multipart), verify it's real FileKey ciphertext, email the receiver
 //   POST /upload-abort     cancel an in-progress multipart upload
-//   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
 //   POST /discard          receiver removes a delivered object after saving it
+//   POST /fetch/challenge  download gate: seal a nonce to the receiver's key (passkey-proof)
+//   POST /fetch/preview    verify the proof, serve the head+metadata bytes (free; filename + size)
+//   POST /fetch/download   verify the proof, charge the per-file price, return a short-lived presigned GET
+//   GET  /billing/packs    the prepaid credit tiers at the current price (for the top-up picker)
+//   POST /billing/checkout passkey-proof -> a Stripe Checkout URL to add prepaid credit
+//   POST /billing/webhook  Stripe -> us: verify the signature, credit the account on a paid session
 
-import { confirm, discardObject, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
+import { billingCheckout, billingPacks, billingWebhook, confirm, discardObject, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
 import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
 
-// The Durable Object class must be exported from the entry module so the runtime can construct it.
+// Durable Object classes must be exported from the entry module so the runtime can construct them.
 export { CompletionGuard } from "./completion";
+export { ReceiverAccount } from "./receiver";
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -53,13 +59,20 @@ export default {
         return uploadAbort(req, env);
       case "POST /discard":
         return discardObject(req, env);
-      default: {
-        const fetchId = req.method === "GET" && url.pathname.startsWith("/fetch/")
-          ? url.pathname.slice("/fetch/".length)
-          : null;
-        if (fetchId !== null) return fetchObject(req, env, fetchId);
+      case "POST /fetch/challenge":
+        return fetchChallenge(req, env);
+      case "POST /fetch/preview":
+        return fetchPreview(req, env);
+      case "POST /fetch/download":
+        return fetchDownload(req, env);
+      case "GET /billing/packs":
+        return billingPacks(req, env);
+      case "POST /billing/checkout":
+        return billingCheckout(req, env);
+      case "POST /billing/webhook":
+        return billingWebhook(req, env);
+      default:
         return json({ error: "not found" }, 404, origin);
-      }
     }
   },
 } satisfies ExportedHandler<Env>;

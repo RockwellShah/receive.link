@@ -76,6 +76,11 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
 .btn:focus-visible,.textlink:focus-visible,.cancel:focus-visible{outline:2px solid var(--g);outline-offset:2px}
 .note{font-size:12.5px;color:var(--mut);font-weight:500;margin:22px auto 0;max-width:330px;line-height:1.5}
 .err{color:#C0452A}
+.packs{display:flex;flex-direction:column;gap:10px;margin:26px auto 0;max-width:300px}
+.pack{font-family:inherit;width:100%;background:#fff;border:1px solid var(--ln);border-radius:14px;padding:14px 16px;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
+.pack:hover{border-color:var(--g);background:#FBFDFC}
+.pack:disabled{opacity:.5;cursor:default}
+.pack:focus-visible{outline:2px solid var(--g);outline-offset:2px}
 @media(max-width:480px){h1{font-size:27px}.logo{margin-bottom:40px}.frame{padding:40px 20px 64px}}
 </style>
 </head>
@@ -135,6 +140,14 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
       <h1>Removed</h1>
       <p class="sub">This file is gone from our servers. The copy you saved is the only one left.</p>
       <a class="btn full" href="/">Back to receive.link</a>
+    </div>
+
+    <div class="st" data-state="topup" hidden>
+      <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0 -18"/><path d="M14.8 9a2 2 0 0 0 -1.8 -1h-2a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4h-2a2 2 0 0 1 -1.8 -1"/><path d="M12 7v1"/><path d="M12 16v1"/></svg></div>
+      <h1>Add credit to unlock</h1>
+      <p class="sub">Prepaid — you only pay for what you download, and credit never expires.</p>
+      <div class="packs" id="packs"></div>
+      <button class="textlink" id="topupback" type="button">Not now</button>
     </div>
 
     <div class="st" data-state="error" hidden>

@@ -20,13 +20,15 @@ import {
   splitSignature,
   type DropLink,
 } from "../../shared/codec";
-import { importKemPrivateKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeSealTo, importKemPrivateKey, importKemPublicKey, importSignPrivateKey, importSignPublicKey, signRegion, unsealEmail, verifyRegion } from "../../shared/crypto";
+import { recipientPkFromShareKeyBytes } from "../../shared/sharekey";
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
-import { clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
-import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
-import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
+import { cors, clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
+import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes } from "./kv";
+import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, fileKeyMetadataPrefixLen, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
+import { createCheckoutSession, isPackId, packList, parseCreditFromEvent, priceCentsPerGb, stripeConfigured, verifyStripeSignature } from "./stripe";
 import type { Env } from "./types";
-import { hex, hmacHex, isEmail, isHex, randomBytes } from "../../shared/util";
+import { hex, hmacHex, hmacSha256hex, isEmail, isHex, randomBytes } from "../../shared/util";
 
 // Abuse limits (soft, KV fixed-window). Tune from real traffic. Exported so tests
 // assert against the source of truth.
@@ -34,12 +36,21 @@ export const REG_IP_PER_DAY = 20; // confirmation emails one IP can trigger
 export const REG_EMAIL_PER_DAY = 5; // confirmation emails one address can receive (anti-bombing)
 export const UPLOAD_LINK_PER_DAY = 25; // files one Drop link accepts (anti-flood of the inbox)
 export const UPLOAD_IP_PER_DAY = 100; // files one IP can push across all links
+export const FETCH_IP_PER_DAY = 1000; // download-gate challenge + prove calls one IP can make per day
 export const REVOKE_IP_PER_DAY = 60; // revoke calls one IP can make (tokens are unguessable; this just caps probing)
 const UPLOAD_BYTES_LINK_FACTOR = 5; // per-link daily byte budget defaults to 5x the per-file cap
 const UPLOAD_BYTES_IP_FACTOR = 10; // per-IP daily byte budget defaults to 10x the per-file cap
 const DEFAULT_SIGN_KEY_ID = 1; // key id stamped into links when SERVER_SIGN_KEY_ID is unset
 const CONFIRM_TTL_SEC = HOUR; // pending registration lifetime
-const PRESIGN_TTL_SEC = HOUR; // presigned PUT/GET lifetime
+const PRESIGN_TTL_SEC = HOUR; // presigned upload PUT lifetime
+// Download gate (passkey-proof at /fetch). The download URL is short-lived + distinct from the 1h upload
+// presign; the binding outlives the 7-day R2 object lifecycle; the challenge is single-use within its window.
+const FETCH_URL_TTL_SEC = 5 * MINUTE; // post-proof presigned GET
+const FETCHBIND_TTL_SEC = 8 * DAY; // finalId -> { receiver pubkey, size, rid }
+const CHALLENGE_TTL_SEC = 5 * MINUTE; // sealed-nonce challenge
+const FETCH_NONCE_BYTES = 32;
+const CHALLENGE_ID_BYTES = 16;
+const FETCH_PREVIEW_BYTES = 1_200_000; // bytes the FREE preview serves: head + metadata (cap ~1 MiB); never the payload
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 const OBJECT_ID_BYTES = 16;
 const REVOKE_TOKEN_BYTES = 16; // receiver-only secret that maps to a link_id for revocation
@@ -120,6 +131,42 @@ function bytesPerLinkDay(env: Env): number {
 }
 function bytesPerIpDay(env: Env): number {
   return envInt(env.UPLOAD_BYTES_PER_IP_DAY, maxUploadBytes(env) * UPLOAD_BYTES_IP_FACTOR);
+}
+
+/** Stable per-recipient account id, derived from the receiver's CONFIRMED email via a keyed digest.
+ *  The email is the one identity a sender can't forge — you can only confirm an address you control —
+ *  whereas the share key inside a link is public, so keying on it would let anyone who sees a victim's
+ *  link mint their own link for the victim's account and burn its capacity. HMAC (not a bare hash)
+ *  keeps the id from being reversed back to the address. */
+export function receiverId(env: Env, email: string): Promise<string> {
+  return hmacSha256hex(env.RECEIVER_ID_SECRET, canonEmail(email));
+}
+
+/** Per-recipient cumulative inbound ceiling in bytes (the free-tier cap). Unset/<=0 => uncapped, so
+ *  the Worker meters every recipient but rejects nothing until the cap is dialed in (see uploadComplete). */
+function receiverInboundCap(env: Env): number {
+  return envInt(env.RECEIVER_INBOUND_CAP_BYTES, 0);
+}
+
+// ---- Phase 2 billing config (download charge). Ships INERT: billingEnabled() is false unless the env
+// var is set, so /fetch/download issues a free URL exactly like Phase 1 until Stripe (2b) is live. ----
+const DEFAULT_FREE_GRANT_BYTES = 1_000_000_000; // 1 GB (decimal) of free download credit per new account
+
+/** Paid-tier at-rest (un-downloaded) ceiling in bytes (the 100 GB safety cap). Unset/<=0 => uncapped. */
+function paidAtRestCap(env: Env): number {
+  return envInt(env.PAID_ATREST_CAP_BYTES, 0);
+}
+/** Free credit seeded into a new account when billing is on (default 1 GB, decimal). Unlike envInt, an
+ *  explicit "0" is honored (a deliberate no-free-grant config), not coerced to the default. */
+function freeGrantBytes(env: Env): number {
+  if (env.FREE_GRANT_BYTES === undefined) return DEFAULT_FREE_GRANT_BYTES;
+  const n = parseInt(env.FREE_GRANT_BYTES, 10);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_FREE_GRANT_BYTES;
+}
+/** Whether the per-file download charge is live. Off (default) = downloads are free (Phase 1 behavior). */
+function billingEnabled(env: Env): boolean {
+  const v = env.BILLING_ENABLED?.toLowerCase();
+  return v === "1" || v === "true";
 }
 
 /** The signing key id stamped into newly minted links, so the verifier can pick the right key later. */
@@ -312,8 +359,29 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
-  // NOTE: byte budgets are charged at upload-COMPLETE on the actual object size, not here — the
-  // declared `size` is client-controlled and no presigned PUT enforces it (see uploadComplete).
+  // Byte budgets + the AUTHORITATIVE recipient-capacity charge are applied at upload-COMPLETE on the
+  // actual object size, not here — the declared `size` is client-controlled and no presigned PUT enforces
+  // it (see uploadComplete). This is only a FAIL-FAST pre-check on the declared size: bounce an obviously
+  // over-cap upload before the transfer so the sender sees "inbox full" up front. Best-effort + advisory
+  // (complete re-checks on the real size), and skipped entirely while both caps are unset (the default),
+  // so it costs nothing — not even the email unseal — until monetization is switched on.
+  const freeCap = receiverInboundCap(env);
+  const paidCap = paidAtRestCap(env);
+  if (freeCap > 0 || paidCap > 0) {
+    try {
+      const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
+      const email = await unsealEmail(kemPriv, link.sealedEmail);
+      const acct = env.RECEIVER.get(env.RECEIVER.idFromName(await receiverId(env, email)));
+      const s = await acct.summary(freeGrantBytes(env));
+      const cap = s.tier === "paid" ? paidCap : freeCap;
+      const basis = s.tier === "paid" ? s.pending : s.total;
+      if (cap > 0 && basis + s.reserved + body.size > cap) {
+        return json({ error: "recipient inbox is full", overCapacity: true }, 507, origin);
+      }
+    } catch {
+      /* pre-check is best-effort: on any failure, fall through to the authoritative gate at complete */
+    }
+  }
 
   // Bind the object to the link that minted it, so completion can't pair another
   // (e.g. a victim's) link with this object.
@@ -417,6 +485,13 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     return json({ error: "missing fields" }, 400, origin);
   }
   if (!isHex(body.objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
+  // Fail fast on a missing account-id secret BEFORE any side effect (copy, byte-budget increments): the
+  // recipient charge derives rid from it, and we don't want a misconfigured deploy to do work + orphan
+  // R2 objects before throwing late.
+  if (!env.RECEIVER_ID_SECRET) {
+    logEvent("config_error", { what: "RECEIVER_ID_SECRET" });
+    return json({ error: "service misconfigured" }, 503, origin);
+  }
 
   let link: DropLink;
   try {
@@ -456,6 +531,10 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       : json({ error: "completion already in progress, try again" }, 409, origin);
   }
   let finished = false;
+  // The recipient-capacity reservation taken before the delivery email (below). Committed iff this
+  // attempt wins the exactly-once delivery race; released on every other path. Held here so the finally
+  // can release it on an abort. A crash before either frees the hold via the DO's reservation TTL.
+  let reservation: { acct: ReturnType<Env["RECEIVER"]["get"]>; token: string } | null = null;
   try {
     // Multipart: validate the part set strictly, then assemble — but only if a prior attempt hasn't
     // already completed the MPU (CompleteMultipartUpload consumes the uploadId; if an earlier attempt
@@ -509,12 +588,48 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
 
     // If a stalled attempt was reclaimed while we worked, the reclaimer now owns delivery — abort
-    // before the email rather than send a duplicate (fences the side effect, not just the state).
-    if (!(await guard.heldBy(claim.token))) return json({ error: "completion was retried elsewhere, try again" }, 409, origin);
+    // before the email rather than send a duplicate (fences the side effect, not just the state). The
+    // reclaimer mints its own final key, so drop ours instead of leaking it until TTL.
+    if (!(await guard.heldBy(claim.token))) {
+      await deleteObject(env, finalId);
+      return json({ error: "completion was retried elsewhere, try again" }, 409, origin);
+    }
 
-    // Byte budgets, charged on the ACTUAL object size and AFTER every other gate, so an invalid or
-    // over-limit upload never burns the quota. Per-link + per-IP daily caps keep a multi-TB per-file
-    // cap from becoming petabytes/day.
+    // Recipient capacity FIRST among the post-fence gates, on the ACTUAL final-object size: RESERVE the
+    // bytes against the cap (atomic in the DO, so two concurrent uploads to one recipient can't both
+    // slip a tight cap). The hold is committed only if THIS attempt wins delivery (below) and released
+    // on every other path (byte-budget reject, failed email, abort, or a duplicate that lost the
+    // exactly-once race), so the charge is exactly-once; a crash frees the hold via the DO's reservation
+    // TTL. An over-cap upload rejects here WITHOUT burning the byte budget. We reserve the actual
+    // final-object size on every (re)try, so overwriting mutable staging to deliver more is caught here.
+    // Uncapped deployments still meter (commit accrues `total`) for accurate history.
+    const rid = await receiverId(env, email);
+    const acct = env.RECEIVER.get(env.RECEIVER.idFromName(rid));
+    const hold = await acct.reserve(finalInfo.size, receiverInboundCap(env), paidAtRestCap(env));
+    if (!hold.ok) {
+      logEvent("recipient_over_capacity", { link: linkIdHex, size: finalInfo.size });
+      await deleteObject(env, finalId);
+      await deleteObject(env, body.objectId);
+      return json({ error: "recipient inbox is full", overCapacity: true }, 507, origin);
+    }
+    reservation = { acct, token: hold.token };
+
+    // Decode the receiver's share key to a raw pubkey for the download gate, BEFORE the byte budgets — a
+    // malformed key (the only structural way this fails) then rejects without burning daily budget. The
+    // Worker only holds the signed link during completion, so this is the one place to do it. The
+    // fetchbind WRITE itself happens just before the email (below).
+    let recipientPk: Uint8Array;
+    try {
+      recipientPk = recipientPkFromShareKeyBytes(link.shareKey);
+    } catch {
+      await deleteObject(env, finalId);
+      return json({ error: "invalid link" }, 400, origin);
+    }
+
+    // Byte budgets on the ACTUAL object size, after the recipient reservation (released by the finally
+    // if a budget rejects here). Per-link + per-IP daily caps keep a multi-TB per-file cap from
+    // becoming petabytes/day. IP hash is the reimplementation's keyed digest (HASH_SECRET), not a plain
+    // SHA-256 — low-entropy IPs must not be brute-forceable from a leaked rate-limit key.
     const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
     if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, finalInfo.size, bytesPerLinkDay(env), DAY))) {
       logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: finalInfo.size });
@@ -529,21 +644,52 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "rate limited" }, 429, origin);
     }
 
-    // Carry the receiver's manage/revoke link in the delivery email (best-effort).
-    const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`);
+    // Bind the delivered object to the receiver's (already-decoded) key so the download gate can prove
+    // possession later: store the raw pubkey + size + owning account (rid) keyed by finalId. The rid lets
+    // a download charge the right account without re-unsealing the email; it's an opaque HMAC (already the
+    // DO name), so it carries no PII. FAIL-CLOSED: if the write fails, do NOT deliver, or the receiver
+    // gets a link the gate can't authenticate. No linkId/email stored alongside (correlation hygiene).
+    try {
+      await env.DROP_KV.put(
+        `fetchbind:${finalId}`,
+        JSON.stringify({ pk: base64urlEncode(recipientPk), size: finalInfo.size, rid }),
+        { expirationTtl: FETCHBIND_TTL_SEC },
+      );
+    } catch {
+      logEvent("fetchbind_failed", { link: linkIdHex });
+      await deleteObject(env, finalId);
+      return json({ error: "delivery failed, try again" }, 502, origin);
+    }
+
+    // Carry the receiver's manage/revoke link in the delivery email (best-effort): a KV blip fetching the
+    // token must NOT fail an otherwise-deliverable upload, so fall back to no manage link rather than
+    // throwing into the finally (which would orphan the object + fetchbind and 500 a deliverable send).
+    const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`).catch(() => null);
     const manageUrl = revokeToken ? `${linkOrigin(env)}/revoke#${revokeToken}` : undefined;
     try {
       await sendDownloadEmail(env, email, `${linkOrigin(env)}/d/${finalId}`, link.label, manageUrl);
     } catch {
       logEvent("delivery_failed", { link: linkIdHex });
-      await deleteObject(env, finalId); // no orphaned final; the client can retry
+      // Best-effort cleanup, each guarded independently so a throw in one can't skip the other (and
+      // neither masks the 502 the client retries on): drop the gate binding AND the final object. A
+      // residual of either is harmless and TTL-bounded (fetchbind ~8d; the object via the 7-day lifecycle).
+      await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {});
+      await deleteObject(env, finalId).catch(() => {});
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
-    // The email is OUT — from here we must never release the lock (that would let a retry send a
-    // duplicate). Record done, then best-effort cleanup; a cleanup failure must NOT 500 the sender
-    // after a successful delivery (the client doesn't retry 500, so it would report a false failure).
+    // The email is OUT — from here we must never release the completion lock (that would let a retry
+    // send a duplicate). Commit the recipient charge IFF we WON the exactly-once delivery transition; if
+    // a stalled+reclaimed sibling already delivered (a duplicate email, the completion guard's accepted
+    // residual), finish() is "already"/"lost" and we RELEASE the hold instead, so the receiver is
+    // charged exactly once. Then best-effort cleanup; a cleanup failure must NOT 500 after a successful
+    // delivery (the client doesn't retry 500, so it would report a false failure).
     finished = true;
-    await guard.finish(claim.token);
+    const outcome = await guard.finish(claim.token);
+    // Accrue total always; track per-file pending only when the at-rest cap is BOTH configured AND billing
+    // is on — i.e. only when downloads actually run through charge() to clear it. (Setting the cap without
+    // billing would otherwise let pending drift up with no downloads to decrement it.)
+    if (outcome === "won") await acct.commit(hold.token, finalId, billingEnabled(env) && paidAtRestCap(env) > 0);
+    else { logEvent("delivery_duplicate", { link: linkIdHex }); await acct.release(hold.token); }
     logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {
       await deleteObject(env, body.objectId);
@@ -553,17 +699,226 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
     return json({ ok: true }, 200, origin);
   } finally {
-    if (!finished) await guard.release(claim.token); // free the claim for a retry
+    if (!finished) {
+      // Abort path (before delivery): release the capacity hold so it doesn't sit against the cap until
+      // its TTL, then free the completion claim for a retry. Best-effort: a release failure must not mask
+      // the real result (the DO's reservation alarm reclaims the hold either way).
+      if (reservation) await reservation.acct.release(reservation.token).catch(() => logEvent("receiver_release_failed", { link: linkIdHex }));
+      await guard.release(claim.token);
+    }
   }
 }
 
-// GET /fetch/:id -> { url } (presigned R2 GET for the receiver's decrypt page)
-export async function fetchObject(req: Request, env: Env, objectId: string): Promise<Response> {
+// ---- Download gate (passkey-proof at /fetch) ---------------------------------------------------------
+// The relay never sees plaintext, so it can't tell WHO is downloading — which it must know to charge the
+// right account. So a download is gated by an HPKE challenge-response that proves the requester holds the
+// receiver's passkey, without revealing anything: the Worker seals a random nonce to the receiver's bound
+// share key (only their passkey unseals it) and acts only once they prove they recovered it. The proof is
+// the gate for two outcomes, each needing its own single-use challenge:
+//   /fetch/challenge -> /fetch/preview  : FREE. The Worker serves only the head+metadata bytes (so the
+//                                         receiver sees the filename + size), never a URL to the payload.
+//   /fetch/challenge -> /fetch/download : CHARGED (when billing is on). Debits the per-file price from the
+//                                         account balance (free re-downloads), then issues a short-lived
+//                                         presigned GET; 402 when out of funds. Free (Phase-1 behavior)
+//                                         when billing is off, so 2a ships inert.
+
+/** Constant-time equality for two equal-length hex strings (used to compare proofs). */
+function constantTimeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// rid is optional for backward compatibility: bindings written before Phase 2 carry only { pk, size }.
+// A challenge needs just the pubkey, so those still authenticate; a charged download with no rid can't
+// resolve an account and falls back to free (safe — billing is only switched on long after every live
+// binding has a rid, since they expire in 8 days).
+type Fetchbind = { pk: string; size: number; rid?: string };
+
+/** Load + parse the delivery binding for a finalId (the receiver pubkey + size + owning account). */
+async function loadFetchbind(env: Env, objectId: string): Promise<Fetchbind | null> {
+  const raw = await env.DROP_KV.get(`fetchbind:${objectId}`);
+  if (!raw) return null;
+  try {
+    const b = JSON.parse(raw) as Partial<Fetchbind>;
+    if (typeof b.pk !== "string" || typeof b.size !== "number" || !Number.isFinite(b.size) || b.size < 0) return null;
+    return { pk: b.pk, size: b.size, rid: typeof b.rid === "string" ? b.rid : undefined };
+  } catch {
+    return null;
+  }
+}
+
+/** Verify a single-use challenge proof (shared by preview + download): validate + rate-limit, then
+ *  consume the challenge (delete-before-compare, so a wrong guess can't be retried) and constant-time
+ *  compare. Returns the bound objectId on success, else the error Response to return as-is. */
+async function verifyFetchProof(req: Request, env: Env, origin: string, body: { challengeId?: unknown; proof?: unknown } | null): Promise<{ ok: true; objectId: string } | { ok: false; resp: Response }> {
+  if (!body || typeof body.challengeId !== "string" || typeof body.proof !== "string") {
+    return { ok: false, resp: json({ error: "missing fields" }, 400, origin) };
+  }
+  const { challengeId, proof } = body;
+  if (!isHex(challengeId, CHALLENGE_ID_BYTES) || !isHex(proof, 32)) return { ok: false, resp: json({ error: "bad proof" }, 400, origin) };
+  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `prove:ip:${ipHash}`, envInt(env.FETCH_IP_PER_DAY, FETCH_IP_PER_DAY), DAY))) {
+    return { ok: false, resp: json({ error: "rate limited" }, 429, origin) };
+  }
+  const stored = await env.DROP_KV.get(`challenge:${challengeId}`);
+  if (!stored) return { ok: false, resp: json({ error: "challenge expired" }, 404, origin) };
+  await env.DROP_KV.delete(`challenge:${challengeId}`); // best-effort single-use (KV get+delete isn't atomic)
+  let ch: { objectId: string; proof: string };
+  try {
+    ch = JSON.parse(stored) as { objectId: string; proof: string };
+  } catch {
+    return { ok: false, resp: json({ error: "challenge expired" }, 404, origin) };
+  }
+  if (!constantTimeEqualHex(proof, ch.proof)) return { ok: false, resp: json({ error: "proof failed" }, 403, origin) };
+  return { ok: true, objectId: ch.objectId };
+}
+
+// POST /fetch/challenge { objectId } -> { challengeId, sealed }
+export async function fetchChallenge(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
-  if (!isHex(objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
-  if (!(await objectInfo(env, objectId))) return json({ error: "expired or not found" }, 404, origin);
-  const url = await presignGet(env, objectId, PRESIGN_TTL_SEC);
-  return json({ url, expiresInSec: PRESIGN_TTL_SEC }, 200, origin);
+  const body = await readJson<{ objectId: string }>(req);
+  if (!body || typeof body.objectId !== "string") return json({ error: "missing fields" }, 400, origin);
+  if (!isHex(body.objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
+  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `fetch:ip:${ipHash}`, envInt(env.FETCH_IP_PER_DAY, FETCH_IP_PER_DAY), DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
+  // Hard cutover: only a delivered object has a binding; anything else is unauthenticated -> 404.
+  const bind = await loadFetchbind(env, body.objectId);
+  if (!bind) return json({ error: "expired or not found" }, 404, origin);
+
+  // Seal a fresh nonce to the receiver's pubkey (base mode); only the passkey holder can unseal it.
+  const recipientPk = await importKemPublicKey(base64urlDecode(bind.pk));
+  const nonce = randomBytes(FETCH_NONCE_BYTES);
+  const sealed = await hpkeSealTo(recipientPk, nonce, FETCH_CHALLENGE_INFO);
+  const challengeId = hex(randomBytes(CHALLENGE_ID_BYTES));
+  const expectedProof = await fetchProofHex(challengeId, body.objectId, nonce);
+  await env.DROP_KV.put(
+    `challenge:${challengeId}`,
+    JSON.stringify({ objectId: body.objectId, proof: expectedProof }),
+    { expirationTtl: CHALLENGE_TTL_SEC },
+  );
+  return json({ challengeId, sealed: base64urlEncode(sealed) }, 200, origin);
+}
+
+// POST /fetch/preview { challengeId, proof } -> binary body: the head + metadata bytes only (FREE).
+// The Worker serves the bytes itself rather than a presigned URL because a URL is all-or-nothing — handing
+// one out for "preview" would be a free full download. Bounded to the metadata prefix, so the payload is
+// never exposed for free. (R2 egress is free, so the only cost here is anti-abuse, which the prove:ip cap
+// and the size bound cover.)
+export async function fetchPreview(req: Request, env: Env): Promise<Response> {
+  const origin = corsOrigin(env, req);
+  const v = await verifyFetchProof(req, env, origin, await readJson(req));
+  if (!v.ok) return v.resp;
+  const info = await objectInfo(env, v.objectId);
+  if (!info) return json({ error: "expired or not found" }, 404, origin);
+  // Read a bounded prefix, then trim to EXACTLY head + metadata-ciphertext so the payload is never served
+  // for free (a fixed prefix would leak the start of the payload on files with small metadata).
+  const obj = await env.DROP_BUCKET.get(v.objectId, { range: { offset: 0, length: Math.min(FETCH_PREVIEW_BYTES, info.size) } });
+  if (!obj) return json({ error: "expired or not found" }, 404, origin);
+  const buf = new Uint8Array(await obj.arrayBuffer());
+  const metaLen = fileKeyMetadataPrefixLen(buf);
+  // Fail CLOSED: if the header won't parse we can't tell metadata from payload, so serve nothing rather
+  // than risk leaking payload bytes for free. (A delivered object always has a valid header.)
+  if (metaLen === null || metaLen > buf.length) return json({ error: "expired or not found" }, 404, origin);
+  return new Response(buf.subarray(0, metaLen), { status: 200, headers: { ...cors(origin), "content-type": "application/octet-stream", "cache-control": "no-store" } });
+}
+
+// POST /fetch/download { challengeId, proof } -> { url, expiresInSec } | 402 { needBytes, balanceBytes }.
+// Charges the per-file price to the owning account once (free re-downloads), then issues a short-lived
+// presigned GET. When billing is off (default) it skips the charge and behaves exactly like Phase 1.
+export async function fetchDownload(req: Request, env: Env): Promise<Response> {
+  const origin = corsOrigin(env, req);
+  const v = await verifyFetchProof(req, env, origin, await readJson(req));
+  if (!v.ok) return v.resp;
+  // Confirm the object still exists BEFORE charging, so we never debit for a file that's already gone.
+  if (!(await objectInfo(env, v.objectId))) return json({ error: "expired or not found" }, 404, origin);
+  if (billingEnabled(env)) {
+    const bind = await loadFetchbind(env, v.objectId);
+    // A challenge only mints for a bound object, so a missing bind here is anomalous (not a free pass) -> 404.
+    if (!bind) return json({ error: "expired or not found" }, 404, origin);
+    if (bind.rid) {
+      const acct = env.RECEIVER.get(env.RECEIVER.idFromName(bind.rid));
+      // charge() is exactly-once per finalId: a re-download (or a double-clicked/retried Save) sees the
+      // file already paid and returns free, so a crash between charge and URL issue can't double-charge —
+      // the retry re-proves, charge() says alreadyPaid, and the URL is re-issued.
+      const result = await acct.charge(v.objectId, bind.size, freeGrantBytes(env));
+      if (!result.ok) return json({ error: "needs funds", needBytes: result.need, balanceBytes: result.balance }, 402, origin);
+    } else {
+      logEvent("billing_skipped_no_rid"); // ONLY a legacy pre-Phase-2 binding (has pk+size, no rid) -> free
+    }
+  }
+  const url = await presignGet(env, v.objectId, FETCH_URL_TTL_SEC);
+  return json({ url, expiresInSec: FETCH_URL_TTL_SEC }, 200, origin);
+}
+
+// ---- Billing (Stripe top-up) -------------------------------------------------------------------------
+// A receiver tops up prepaid credit through Stripe-hosted Checkout. The account to credit is the one that
+// owns the file being unlocked: the client proves passkey possession (same gate as a download), which
+// resolves the rid from the binding. The credit itself lands via the webhook, not the redirect, so it's
+// robust to the user closing the tab. Both endpoints 503 until Stripe is configured, so 2b ships inert.
+
+// POST /billing/checkout { challengeId, proof, pack } -> { url } (a Stripe-hosted Checkout URL)
+export async function billingCheckout(req: Request, env: Env): Promise<Response> {
+  const origin = corsOrigin(env, req);
+  if (!stripeConfigured(env)) return json({ error: "billing unavailable" }, 503, origin);
+  const body = await readJson<{ challengeId: string; proof: string; pack: string }>(req);
+  if (!body || typeof body.pack !== "string" || !isPackId(body.pack)) return json({ error: "unknown pack" }, 400, origin);
+  // Prove passkey possession on the file being unlocked -> the owning account (rid) to credit.
+  const v = await verifyFetchProof(req, env, origin, body);
+  if (!v.ok) return v.resp;
+  const bind = await loadFetchbind(env, v.objectId);
+  if (!bind?.rid) return json({ error: "expired or not found" }, 404, origin);
+  const base = linkOrigin(env);
+  try {
+    const url = await createCheckoutSession(env, {
+      rid: bind.rid,
+      pack: body.pack,
+      successUrl: `${base}/d/${v.objectId}?paid=1`, // back to the file; the client retries the download
+      cancelUrl: `${base}/d/${v.objectId}`,
+    });
+    return json({ url }, 200, origin);
+  } catch {
+    logEvent("stripe_checkout_failed");
+    return json({ error: "could not start checkout, try again" }, 502, origin);
+  }
+}
+
+// POST /billing/webhook (Stripe -> us; server-to-server, raw body, signature-verified) -> 200/400
+export async function billingWebhook(req: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_WEBHOOK_SECRET) {
+    logEvent("config_error", { what: "STRIPE_WEBHOOK_SECRET" });
+    return new Response("unconfigured", { status: 503 });
+  }
+  const sig = req.headers.get("stripe-signature") ?? "";
+  const raw = await req.text(); // RAW body: re-serialized JSON would break the signature
+  if (!(await verifyStripeSignature(raw, sig, env.STRIPE_WEBHOOK_SECRET, Math.floor(Date.now() / 1000)))) {
+    return new Response("bad signature", { status: 400 });
+  }
+  let event: unknown;
+  try {
+    event = JSON.parse(raw);
+  } catch {
+    return new Response("bad payload", { status: 400 });
+  }
+  const credit = parseCreditFromEvent(event);
+  if (credit) {
+    // credit() is idempotent on the Stripe event id, so a webhook retry can't double-credit.
+    const acct = env.RECEIVER.get(env.RECEIVER.idFromName(credit.rid));
+    await acct.credit(credit.bytes, freeGrantBytes(env), credit.eventId);
+    logEvent("billing_credited", { bytes: credit.bytes }); // bytes only — never the rid/email
+  }
+  return new Response("ok", { status: 200 }); // 200 even for ignored event types, so Stripe stops retrying
+}
+
+// GET /billing/packs -> { packs: [{ id, amountCents, bytes, label }], priceCentsPerGb }. The prepaid tiers
+// at the CURRENT price, so the client's top-up picker tracks the price knob with no client redeploy. Public
+// (just pricing info, no account data); the client only fetches it at the out-of-funds wall.
+export function billingPacks(req: Request, env: Env): Response {
+  const origin = corsOrigin(env, req);
+  return json({ packs: packList(env), priceCentsPerGb: priceCentsPerGb(env) }, 200, origin);
 }
 
 // Delete-after-download calls one IP can make in a day. The object id is an unguessable bearer

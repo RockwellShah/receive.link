@@ -115,7 +115,7 @@ export class DropApi {
    * Upload step 3: confirm the object + trigger the delivery email. `parts` for multipart. Retries on
    * transient 409 (another complete in progress) and 502 (assembly/email blip): the Worker makes these
    * safe to repeat (completion is idempotent + retry-safe), so a recoverable race resolves itself
-   * instead of failing the send. Terminal errors (400/410/413/422) are not retried.
+   * instead of failing the send. Terminal errors (400/410/413/422/507) are not retried.
    */
   async uploadComplete(payload: string, objectId: string, parts?: { partNumber: number; etag: string }[]): Promise<{ ok: true }> {
     const body = parts ? { payload, objectId, parts } : { payload, objectId };
@@ -137,11 +137,52 @@ export class DropApi {
     return this.postJson("/upload-abort", { payload, objectId });
   }
 
-  /** Receive: get a presigned R2 GET URL for an object id. */
-  async fetchUrl(objectId: string): Promise<{ url: string }> {
-    const res = await fetch(`${this.base}/fetch/${objectId}`);
+  /** Download gate step 1: request a sealed-nonce challenge for a delivered object. The returned `sealed`
+   *  (base64url enc||ct) only the receiver's passkey identity can open. */
+  fetchChallenge(objectId: string): Promise<{ challengeId: string; sealed: string }> {
+    return this.postJson("/fetch/challenge", { objectId });
+  }
+
+  /** Download gate (free preview): submit the proof -> the head+metadata bytes. The Worker serves them
+   *  directly (a presigned URL would be all-or-nothing, i.e. a free full download), so this returns raw
+   *  ciphertext prefix bytes for the client to decrypt into the filename + size. */
+  async fetchPreview(challengeId: string, proof: string): Promise<Uint8Array<ArrayBuffer>> {
+    const res = await fetch(`${this.base}/fetch/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ challengeId, proof }),
+    });
     if (!res.ok) throw await asError(res);
-    return (await res.json()) as { url: string };
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  /** Download gate (charged download): submit the proof -> a short-lived presigned GET URL, or a
+   *  needs-funds signal (HTTP 402) the caller turns into the "add credit to unlock" prompt. */
+  async fetchDownload(challengeId: string, proof: string): Promise<{ url: string; expiresInSec: number } | { needsFunds: true; needBytes: number; balanceBytes: number }> {
+    const res = await fetch(`${this.base}/fetch/download`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ challengeId, proof }),
+    });
+    if (res.status === 402) {
+      const b = (await res.json().catch(() => ({}))) as { needBytes?: number; balanceBytes?: number };
+      return { needsFunds: true, needBytes: b.needBytes ?? 0, balanceBytes: b.balanceBytes ?? 0 };
+    }
+    if (!res.ok) throw await asError(res);
+    return (await res.json()) as { url: string; expiresInSec: number };
+  }
+
+  /** The prepaid credit tiers at the current price (for the top-up picker; labels track the price knob). */
+  async billingPacks(): Promise<{ packs: { id: string; label: string }[] }> {
+    const res = await fetch(`${this.base}/billing/packs`);
+    if (!res.ok) throw await asError(res);
+    return (await res.json()) as { packs: { id: string; label: string }[] };
+  }
+
+  /** Start a top-up: prove possession of the file being unlocked (so the server credits the owning
+   *  account) and get a Stripe-hosted Checkout URL to redirect to. */
+  billingCheckout(challengeId: string, proof: string, pack: string): Promise<{ url: string }> {
+    return this.postJson("/billing/checkout", { challengeId, proof, pack });
   }
 
   /** Receive: remove a delivered object from storage after saving it (frees R2 + clears the server copy). */
