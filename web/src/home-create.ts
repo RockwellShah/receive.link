@@ -52,16 +52,18 @@ function isPasskeyError(e: unknown): boolean {
   return /not allowed|timed out|NotAllowed|AbortError|cancel|no PRF|passkey|assertion/i.test(m);
 }
 
-// PRF secret, pinned to the passkey this browser enrolled (rl_cred) so the authenticator targets
-// THAT one (no picker). Self-heals the pin when missing. Mirrors app.ts prfSecret().
+// PRF secret, pinned to the passkey this browser enrolled (rl_cred) so the authenticator targets THAT
+// one (no picker). NO silent fallback: if the pinned passkey can't be used (deleted, or you switched
+// passkey managers / devices), the assertion throws and rlCreate's catch shows the recovery panel
+// (Try again / Create a new passkey) rather than quietly minting a link under a different passkey
+// identity. The pin is set at enrollPasskey time, so there's nothing to (re)write here. Mirrors app.ts.
 async function prfSecret(): Promise<Uint8Array> {
   let id: Uint8Array | undefined;
   try {
     const stored = localStorage.getItem("rl_cred");
     if (stored) id = base64urlDecode(stored);
   } catch { /* storage blocked / private mode: open prompt */ }
-  const { secret, credentialId } = await getPrfSecret(id);
-  if (!id) { try { localStorage.setItem("rl_cred", base64urlEncode(credentialId)); } catch { /* private mode */ } }
+  const { secret } = await getPrfSecret(id);
   return secret;
 }
 
@@ -79,8 +81,16 @@ async function rlCreate(email: string, label: string, cb: CreateCallbacks, force
   if (forceEnroll) {
     try { localStorage.removeItem("rl_passkey"); localStorage.removeItem("rl_cred"); } catch { /* private mode */ }
   }
-  let hasStoredPasskey = false;
-  try { hasStoredPasskey = !!localStorage.getItem("rl_passkey"); } catch { /* storage blocked / private mode */ }
+  let hasStoredPasskey = false, hasPin = false;
+  try { hasStoredPasskey = !!localStorage.getItem("rl_passkey"); hasPin = !!localStorage.getItem("rl_cred"); } catch { /* storage blocked / private mode */ }
+  // The pin (rl_cred) can be dropped on its own — the receive flow clears it on a wrong-key decrypt. If
+  // rl_passkey lingers without it, the "use the pinned passkey" assumption is broken; reset to a clean
+  // enroll instead of letting prfSecret open an UNPINNED picker that could mint a link under a different
+  // passkey identity.
+  if (hasStoredPasskey && !hasPin) {
+    try { localStorage.removeItem("rl_passkey"); } catch { /* private mode */ }
+    hasStoredPasskey = false;
+  }
   const firstPasskey = forceEnroll || !hasStoredPasskey;
   try {
     const cfg = await ensureConfig();

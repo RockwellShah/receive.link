@@ -199,6 +199,7 @@ export async function makeTestEnv(overrides: Partial<Env> = {}): Promise<TestHar
     SERVER_SIGN_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.privateKey)),
     SERVER_SIGN_PUBLIC_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", sign.publicKey)),
     SERVER_KEM_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey("jwk", kem.privateKey)),
+    HASH_SECRET: "test-hash-secret-0123456789abcdef",
     ALLOWED_ORIGIN: "https://drop.test",
     MAIL_FROM: "files@send.test",
     R2_ACCOUNT_ID: "testacct",

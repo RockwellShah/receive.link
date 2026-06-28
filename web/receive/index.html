@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Save your file · receive.link</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<!-- The RECEIVE/download page (recipient opens a delivery link to decrypt + save). Served at /d/<id>
+     via _redirects -> /receive/ (the URL stays /d/<id>; home-receive.ts reads the id from the path).
+     Drives the [data-state] panels and calls fk/receive.ts. Fonts absolute (/home/fonts/). -->
+<style>
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+a{text-decoration:none;color:inherit}
+body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+.frame{min-height:100svh;display:flex;flex-direction:column;align-items:center;padding:46px 22px 72px}
+.logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:21px;letter-spacing:-.01em;margin-bottom:48px}
+.logo .dotp{color:var(--g)}.logo .tld{color:#9499A3;font-weight:600}
+.col{width:100%;max-width:464px;text-align:center}
+.st[hidden]{display:none}
+.icon{width:58px;height:58px;border-radius:17px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+.icon.ok{background:#E7F2EB;color:var(--g)}
+.icon.bad{background:#FBEAE7;color:#D2502E}
+.icon.off{background:var(--cream);color:var(--mut)}
+.spin{width:46px;height:46px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
+.sub{font-size:15px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 auto;max-width:360px}
+
+/* File card */
+.filecard{display:flex;align-items:center;gap:13px;border:1px solid var(--ln);border-radius:14px;padding:14px 16px;background:#fff;text-align:left;margin:26px 0 0}
+.ficon{width:24px;height:24px;color:var(--mut);flex:none}
+.finfo{min-width:0;flex:1}
+.fname{font-weight:700;font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsize{font-size:12.5px;color:var(--mut);font-weight:500}
+/* Bundle contents (the file list a sender packed into the encrypted metadata). */
+.filelist{margin-top:10px;border:1px solid var(--ln);border-radius:14px;background:#fff;overflow:hidden;text-align:left}
+.filescroll{max-height:182px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CFC8B9 transparent}
+.filescroll::-webkit-scrollbar{width:12px}
+.filescroll::-webkit-scrollbar-track{background:transparent}
+.filescroll::-webkit-scrollbar-thumb{background:#CFC8B9;border-radius:9px;border:3px solid #fff;background-clip:padding-box}
+.filescroll::-webkit-scrollbar-thumb:hover{background:#BCB4A2;background-clip:padding-box}
+.filerow{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:500;color:#4F5159;padding:9px 15px;border-top:1px solid #F2EFE8}
+.filerow:first-child{border-top:0}
+.frowicon{width:15px;height:15px;color:#AEA897;flex:none}
+.frowname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.filemore{font-size:12.5px;color:var(--mut);font-weight:700;padding:9px 15px 9px 39px;border-top:1px solid #F2EFE8}
+
+/* Progress (saving) */
+.prog{text-align:left;margin-top:20px}
+.phase{font-weight:700;font-size:14.5px;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.bytes{font-size:12.5px;color:var(--mut);font-weight:600;font-variant-numeric:tabular-nums}
+.bar{height:8px;background:#E7E1D4;border-radius:6px;overflow:hidden;margin-top:11px}
+.barfill{height:100%;background:var(--g);border-radius:6px;width:0;transition:width .2s ease}
+.bar.indet .barfill{width:40%!important;animation:indet 1.1s ease-in-out infinite}
+@keyframes indet{0%{margin-left:-40%}100%{margin-left:100%}}
+.cancel{background:none;border:0;font-family:inherit;font-size:13px;font-weight:700;color:var(--mut);cursor:pointer;margin-top:18px}
+.cancel:hover{color:#C0452A}
+
+/* Buttons */
+.btn{font-family:inherit;background:var(--g);color:#fff;border:0;border-radius:22px;padding:13px 24px;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(35,162,103,.2);transition:background .15s,box-shadow .15s}
+.btn:hover{background:#1F9760;box-shadow:0 2px 10px rgba(35,162,103,.26)}
+.btn:active{background:#1C8957}
+.btn.full{display:block;width:100%;max-width:300px;margin:24px auto 0;text-align:center}
+.textlink{background:none;border:0;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--mut);cursor:pointer;margin-top:22px;padding:2px;text-decoration:underline;text-decoration-color:#CFC7B6;text-underline-offset:3px}
+.textlink:hover{color:var(--ink);text-decoration-color:#B9B1A0}
+.savedacts{display:flex;flex-direction:column;gap:12px;align-items:center;margin-top:24px}
+.savedacts .textlink{margin-top:0}
+.textlink.del:hover{color:#C0452A;text-decoration-color:#E3B4A8}
+.textlink:disabled{color:var(--mut);cursor:default;text-decoration:none}
+.btn:focus-visible,.textlink:focus-visible,.cancel:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+.note{font-size:12.5px;color:var(--mut);font-weight:500;margin:22px auto 0;max-width:330px;line-height:1.5}
+.err{color:#C0452A}
+@media(max-width:480px){h1{font-size:27px}.logo{margin-bottom:40px}.frame{padding:40px 20px 64px}}
+</style>
+</head>
+<body>
+<div class="rk">
+<div class="frame">
+  <a class="logo" href="/"><svg width="23" height="23" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span>receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+  <main class="col">
+    <div class="st" data-state="locked">
+      <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg></div>
+      <h1>You've got a file</h1>
+      <p class="sub">It's encrypted to you. Unlock it with your passkey to see and save it.</p>
+      <button class="btn full" id="open" type="button">Unlock with passkey</button>
+    </div>
+    <div class="st" data-state="loading" hidden>
+      <div class="spin"></div>
+      <h1>Opening your file</h1>
+      <p class="sub">Confirm with your passkey.</p>
+    </div>
+
+    <div class="st" data-state="ready" hidden>
+      <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/></svg></div>
+      <h1>Ready to save</h1>
+      <p class="sub">This file was sent just to you. It only decrypts on your device when you save it.</p>
+      <div class="filecard">
+        <svg class="ficon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/></svg>
+        <div class="finfo"><div class="fname" id="rfname">file</div><div class="fsize" id="rfsize"></div></div>
+      </div>
+      <div class="filelist" id="rfilesbox" hidden><div class="filescroll" id="rfiles"></div></div>
+      <button class="btn full" id="save" type="button">Save file</button>
+    </div>
+
+    <div class="st" data-state="saving" hidden>
+      <div class="filecard">
+        <svg class="ficon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/></svg>
+        <div class="finfo"><div class="fname" id="sfname">file</div><div class="fsize" id="sfsize"></div></div>
+      </div>
+      <div class="prog">
+        <div class="phase"><span id="phase">Saving</span><span class="bytes" id="bytes"></span></div>
+        <div class="bar"><div class="barfill" id="barfill"></div></div>
+      </div>
+      <button class="cancel" id="cancel" type="button">Cancel</button>
+    </div>
+
+    <div class="st" data-state="saved" hidden>
+      <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10"/></svg></div>
+      <h1>Saved</h1>
+      <p class="sub">Decrypted and saved to your device.</p>
+      <div class="savedacts">
+        <button class="textlink" id="saveagain" type="button">Save another copy</button>
+        <button class="textlink del" id="delfile" type="button">Delete it from the server</button>
+      </div>
+    </div>
+
+    <div class="st" data-state="deleted" hidden>
+      <div class="icon off"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg></div>
+      <h1>Removed</h1>
+      <p class="sub">This file is gone from our servers. The copy you saved is the only one left.</p>
+      <a class="btn full" href="/">Back to receive.link</a>
+    </div>
+
+    <div class="st" data-state="error" hidden>
+      <div class="icon bad"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/></svg></div>
+      <h1>Something went wrong</h1>
+      <p class="sub err" id="errmsg">Please try again.</p>
+      <button class="btn full" id="reopen" type="button" hidden>Try a different passkey</button>
+      <a class="textlink" href="/">Back to receive.link</a>
+    </div>
+  </main>
+</div>
+</div>
+<script type="module" src="/dist/home-receive.js"></script>
+</body>
+</html>

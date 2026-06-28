@@ -1,3 +1,6 @@
 # Apple App Site Association must be served as application/json (no file extension).
 /.well-known/apple-app-site-association
   Content-Type: application/json
+# NOTE: Cloudflare Pages enforces max-age=14400 on /dist/* bundles and ignores a Cache-Control
+# override here (Content-Type overrides DO work, see above). To cache-bust a deploy, append a
+# changing ?v= query to the bundle <script src> in the HTML, or hash the bundle filename at build.

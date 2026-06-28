@@ -76,8 +76,8 @@ export class DropApi {
   }
 
   /** Upload step 2 (single): PUT the ciphertext straight to R2 (bytes never touch the Worker). */
-  async putToR2(uploadUrl: string, body: Blob | Uint8Array): Promise<void> {
-    const res = await fetch(uploadUrl, { method: "PUT", body: body as BodyInit });
+  async putToR2(uploadUrl: string, body: Blob | Uint8Array, opts?: { signal?: AbortSignal }): Promise<void> {
+    const res = await fetch(uploadUrl, { method: "PUT", body: body as BodyInit, signal: opts?.signal });
     if (!res.ok) throw new DropApiError(`upload to storage failed (${res.status})`, res.status);
   }
 
@@ -142,5 +142,10 @@ export class DropApi {
     const res = await fetch(`${this.base}/fetch/${objectId}`);
     if (!res.ok) throw await asError(res);
     return (await res.json()) as { url: string };
+  }
+
+  /** Receive: remove a delivered object from storage after saving it (frees R2 + clears the server copy). */
+  discard(objectId: string): Promise<{ ok: true }> {
+    return this.postJson("/discard", { objectId });
   }
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>receive.link — receive files only you can open</title>
+<title>receive.link · receive files only you can open</title>
 <meta name="description" content="Anyone can send you files. Only you can open them. Encrypted to your passkey, no accounts.">
 <link rel="canonical" href="https://receive.link/">
 <meta property="og:type" content="website">
@@ -14,7 +14,7 @@
 <meta property="og:image" content="https://staging.receive.link/og-v2.png">
 <meta property="og:image:width" content="2400">
 <meta property="og:image:height" content="1260">
-<meta property="og:image:alt" content="receive.link — receive files privately">
+<meta property="og:image:alt" content="receive.link · receive files privately">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Receive files only you can open">
 <meta name="twitter:description" content="Anyone can send you files. Only you can open them. Encrypted to your passkey, no accounts.">
@@ -22,10 +22,10 @@
 <!-- Staging cutover (when this becomes receive.link): drop the noindex below, and flip og:image + twitter:image from the staging.receive.link host to receive.link. -->
 <meta name="robots" content="noindex">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
-<script>/* A share-link open is /#<code> (the code rides in the hash so the sealed email never hits a server log). The browser can read it — hand off to the upload view. Page anchors like #how stay put. */(function(){var h=location.hash.slice(1);if(h&&!/^(how|pricing|faq)$/.test(h))location.replace("/u"+location.hash);})();</script>
+<script>/* A share-link open is /#<code> (the code rides in the hash so the sealed email never hits a server log). The browser can read it, so hand off to the upload view. Page anchors like #how stay put. */(function(){var h=location.hash.slice(1);if(h&&!/^(how|pricing|faq)$/.test(h))location.replace("/u"+location.hash);})();</script>
 <!-- Homepage redesign (responsive). CTAs → live app (/) + /how-it-works/. Fonts self-hosted + icons inlined: zero third-party requests. -->
 <style>
-/* Self-hosted fonts (latin subset) — no third-party requests. Nunito is one variable woff2 (400-700). */
+/* Self-hosted fonts (latin subset), no third-party requests. Nunito is one variable woff2 (400-700). */
 @font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
@@ -51,6 +51,7 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif}
 .rk .kebab{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;color:var(--mut);cursor:pointer;border:1px solid var(--ln);background:#fff}
 .rk .kebab .ti{font-size:18px}
 .rk .menu:hover .kebab,.rk .menu.open .kebab{color:var(--ink);border-color:#D7D0C1}
+.rk .menu:focus-visible .kebab{outline:2px solid var(--g);outline-offset:2px;color:var(--ink);border-color:#D7D0C1}
 .rk .navmenu{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 34px rgba(26,31,43,.14);padding:6px;min-width:158px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .14s,transform .14s,visibility .14s;z-index:5}
 .rk .menu::after{content:"";position:absolute;right:0;top:100%;width:34px;height:10px}
 .rk .menu.open .navmenu{opacity:1;visibility:visible;transform:none}
@@ -265,7 +266,7 @@ body.cmlock{overflow:hidden}
     <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a>
     <div class="navr">
       <a class="pill" href="/" data-create>Create your link</a>
-      <div class="menu" tabindex="0"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
+      <div class="menu" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" aria-label="Menu"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
         <div class="navmenu"><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a><a href="mailto:Contact@receive.link">Contact Us</a></div>
       </div>
     </div>
@@ -291,7 +292,7 @@ body.cmlock{overflow:hidden}
 
   <hr class="rule">
   <div class="feat" id="how">
-    <div class="txt"><div class="fn">(1)</div><h3>Create your link</h3><p>Use an email plus a passkey, done in seconds. Share the link however you like — text, email, a QR code.</p><a class="lm" href="/" data-create>Try it free <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /> <path d="M13 18l6 -6" /> <path d="M13 6l6 6" /></svg></a></div>
+    <div class="txt"><div class="fn">(1)</div><h3>Create your link</h3><p>Use an email plus a passkey, done in seconds. Share the link however you like: text, email, a QR code.</p><a class="lm" href="/" data-create>Try it free <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /> <path d="M13 18l6 -6" /> <path d="M13 6l6 6" /></svg></a></div>
     <div class="vis v1"><div class="chip"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 15l6 -6" /> <path d="M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464" /> <path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463" /></svg><span>receive.link/<span class="lk">k3f9a2x7</span></span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg></div></div>
   </div>
   <hr class="rule">
@@ -429,10 +430,11 @@ body.cmlock{overflow:hidden}
 (function(){
   var m=document.querySelector('.rk .menu');if(!m)return;
   var k=m.querySelector('.kebab');
-  k.addEventListener('click',function(e){e.stopPropagation();m.classList.toggle('open');});
-  m.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();m.classList.toggle('open');}else if(e.key==='Escape'){m.classList.remove('open');}});
-  document.addEventListener('click',function(e){if(!m.contains(e.target))m.classList.remove('open');});
-  m.querySelectorAll('.navmenu a').forEach(function(a){a.addEventListener('click',function(){m.classList.remove('open');});});
+  function sync(){m.setAttribute('aria-expanded',m.classList.contains('open')?'true':'false');}
+  k.addEventListener('click',function(e){e.stopPropagation();m.classList.toggle('open');sync();});
+  m.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target===m){e.preventDefault();m.classList.toggle('open');sync();}else if(e.key==='Escape'){m.classList.remove('open');sync();}});
+  document.addEventListener('click',function(e){if(!m.contains(e.target)){m.classList.remove('open');sync();}});
+  m.querySelectorAll('.navmenu a').forEach(function(a){a.addEventListener('click',function(){m.classList.remove('open');sync();});});
 })();
 (function(){
   var modal=document.getElementById('cmodal');if(!modal)return;

@@ -15,6 +15,17 @@ export async function sha256hex(s: string): Promise<string> {
   return hex(new Uint8Array(digest));
 }
 
+// Keyed one-way digest (HMAC-SHA-256), hex output. For rate-limit keys derived from LOW-ENTROPY
+// inputs (email addresses, IPs): a plain SHA-256 of those is brute-forceable back to the input, but
+// without the server-held secret an HMAC is not. `secret` is required — a missing key must fail loud,
+// never silently fall back to an unkeyed (guessable) digest.
+export async function hmacHex(secret: string, message: string): Promise<string> {
+  if (!secret) throw new Error("hmacHex: missing HASH_SECRET");
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return hex(new Uint8Array(sig));
+}
+
 // Deliberately permissive: we only guard against obviously-malformed input before
 // handing an address to the mail provider. Real validity is proven by delivery.
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;

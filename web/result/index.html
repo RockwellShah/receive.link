@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>receive.link</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<!-- Back-half receiver pages in the new design: /confirm (reveal), /revoke, /qr. JS drives the [data-state] panels via /dist/home-result.js. Full-page content spans on the cream bg (no boxed card -- that treatment is only for the homepage modal overlay). Fonts absolute (/home/fonts/) so they load when served at /confirm etc. -->
+<style>
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
+*{box-sizing:border-box}
+/* Make the hidden attribute authoritative -- elements below set display (inline-flex/inline-block) which would otherwise beat the UA [hidden] rule on specificity. */
+[hidden]{display:none!important}
+a{text-decoration:none;color:inherit}
+body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+
+/* Top-aligned page: logo, then a centered content column. Top-align (not vertical-center) so revealing the QR expands downward instead of shoving everything up. */
+.frame{min-height:100svh;display:flex;flex-direction:column;align-items:center;padding:46px 22px 72px}
+.logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:21px;letter-spacing:-.01em;margin-bottom:52px}
+.logo .dotp{color:var(--g)}.logo .tld{color:#9499A3;font-weight:600}
+.col{width:100%;max-width:452px;text-align:center}
+.st[hidden]{display:none}
+
+/* --- Header group (the moment) --- */
+.icon{width:58px;height:58px;border-radius:17px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+.icon.ok{background:#E7F2EB;color:var(--g)}
+.icon.off{background:var(--cream);color:var(--mut)}
+.icon.bad{background:#FBEAE7;color:#D2502E}
+.spin{width:46px;height:46px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
+.sub{font-size:15px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 auto;max-width:312px}
+/* The link's name (the label chosen at setup), shown as a small chip under the heading. */
+.linkname{display:inline-flex;align-items:center;gap:7px;max-width:290px;margin:2px auto 16px;padding:6px 14px;background:#fff;border:1px solid var(--ln);border-radius:999px;font-size:13px;font-weight:700;color:#4F5159}
+.linkname svg{width:13px;height:13px;color:var(--g);flex:none}
+.linkname span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* --- Link + actions group --- */
+.linkwrap{margin-top:34px}
+.url{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:#5B5D65;background:#fff;border:1px solid var(--ln);border-radius:15px;padding:16px 18px;word-break:break-all;text-align:left;line-height:1.62;user-select:all;-webkit-user-select:all}
+.acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+/* Action buttons: highlight on hover, no bounce/lift (consistent across the green Copy and the two ghosts). */
+.btn{font-family:inherit;background:var(--g);color:#fff;border:0;border-radius:22px;padding:12px 21px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(35,162,103,.2);transition:background .15s,box-shadow .15s}
+.btn:hover{background:#1F9760;box-shadow:0 2px 10px rgba(35,162,103,.26)}
+.btn:active{background:#1C8957}
+.ghost{font-family:inherit;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:22px;padding:12px 19px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,background .15s}
+.ghost:hover{border-color:#D7D0C1;background:var(--cream)}
+.ghost .ti{width:16px;height:16px;flex:none}
+.qr{margin:22px auto 0;background:#fff;border:1px solid var(--ln);border-radius:16px;padding:16px;display:inline-block;line-height:0}
+.qr img{width:208px;height:auto;display:block}
+
+/* --- Footer group (secondary) --- */
+.note{font-size:14.5px;color:var(--mut);font-weight:500;margin:36px auto 0;max-width:340px;line-height:1.55}
+.btn:focus-visible,.ghost:focus-visible,.btn2:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+
+/* --- Stacked CTAs (revoke / done / error states) --- */
+.btns{display:flex;flex-direction:column;gap:11px;margin-top:30px;max-width:300px;margin-left:auto;margin-right:auto}
+.full{width:100%;display:block;padding:13px 0;text-align:center}
+.btn2{font-family:inherit;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:22px;font-size:14px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s}
+.btn2:hover{border-color:#D7D0C1;background:var(--cream)}
+.solo{margin-top:30px;max-width:300px;margin-left:auto;margin-right:auto}
+.err{color:#C0452A}
+@media(max-width:480px){h1{font-size:27px}.logo{margin-bottom:42px}.frame{padding:40px 20px 64px}}
+</style>
+</head>
+<body>
+<div class="rk">
+<div class="frame">
+  <a class="logo" href="/"><svg width="23" height="23" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span>receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+  <main class="col">
+    <div class="st" data-state="loading">
+      <div class="spin"></div>
+      <h1 id="loadh">Finishing setup</h1>
+      <p class="sub">One moment.</p>
+    </div>
+
+    <div class="st" data-state="reveal" hidden>
+      <div class="icon ok"><svg class="ti" viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg></div>
+      <h1 id="revh">Your link is ready</h1>
+      <div class="linkname" id="revname" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3z"/></svg><span id="revnametext"></span></div>
+      <p class="sub" id="revsub">Share it with anyone. Only you can open what they send.</p>
+      <div class="linkwrap">
+        <code class="url" id="url"></code>
+        <div class="acts">
+          <button class="btn" id="copy" type="button">Copy link</button>
+          <button class="ghost" id="share" type="button" hidden><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M8.7 10.7l6.6 -3.4"/><path d="M8.7 13.3l6.6 3.4"/></svg>Share</button>
+          <button class="ghost" id="qrtoggle" type="button" aria-expanded="false" aria-controls="qr"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M4 14m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M14 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M14 14l0 .01"/><path d="M20 14l0 .01"/><path d="M14 20l6 0"/><path d="M20 17l0 3"/></svg><span id="qrlabel">Show QR</span></button>
+        </div>
+        <div class="qr" id="qr" hidden></div>
+      </div>
+      <p class="note" id="note">Also, we emailed you this info.</p>
+    </div>
+
+    <div class="st" data-state="revoke-confirm" hidden>
+      <div class="icon off"><svg class="ti" viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 6a7.75 7.75 0 1 0 10 0"/><path d="M12 4l0 8"/></svg></div>
+      <h1>Turn off this link?</h1>
+      <p class="sub">New files will stop arriving. Anything already sent is unaffected.</p>
+      <div class="btns">
+        <button class="btn full" id="revyes" type="button">Turn it off</button>
+        <a class="btn2 full" href="/">Keep it</a>
+      </div>
+    </div>
+
+    <div class="st" data-state="revoke-done" hidden>
+      <div class="icon off"><svg class="ti" viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/></svg></div>
+      <h1>Link turned off</h1>
+      <p class="sub">New files will no longer arrive at this link.</p>
+      <a class="btn full solo" href="/">Create a new link</a>
+    </div>
+
+    <div class="st" data-state="error" hidden>
+      <div class="icon bad"><svg class="ti" viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/></svg></div>
+      <h1>Something went wrong</h1>
+      <p class="sub err" id="errmsg">Please try again.</p>
+      <a class="btn full solo" href="/">Back to receive.link</a>
+    </div>
+  </main>
+</div>
+</div>
+<script type="module" src="/dist/home-result.js"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@
 // mail at /__mail so you can click the confirm + download links. Run: bun run web/devserver.ts
 import { file } from "bun";
 import { base64urlDecode } from "../shared/codec";
-import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
+import { confirm, discardObject, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "../worker/src/handlers";
 import { CapturingEmail, MemoryCompletion, MemoryKV, MemoryR2 } from "../worker/src/testing";
 import type { Env } from "../worker/src/types";
 
@@ -91,6 +91,7 @@ async function handleApi(req: Request, sub: string): Promise<Response> {
   }
   if (req.method === "POST" && sub === "/upload-complete") return uploadComplete(req, env);
   if (req.method === "POST" && sub === "/upload-abort") return uploadAbort(req, env);
+  if (req.method === "POST" && sub === "/discard") return discardObject(req, env);
   if (req.method === "GET" && sub.startsWith("/fetch/")) {
     const id = sub.slice("/fetch/".length);
     return localizeUrl(await fetchObject(req, env, id), "url", id);

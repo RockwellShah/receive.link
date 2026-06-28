@@ -41,23 +41,22 @@ async function sendAs(browser, shareUrl, file, expectSent) {
   let initStatus = 0;
   tx.page.on("response", (r) => { if (r.request().method() === "POST" && r.url().includes("/upload-init")) initStatus = r.status(); });
   try {
-    await tx.page.goto(shareUrl, { waitUntil: "domcontentloaded", timeout: 60_000 }); // /#code bounces to /u#code
-    await tx.page.locator("#file_input").waitFor({ state: "attached", timeout: 30_000 });
-    await tx.page.locator("#main_inner").getByText(/Send files to/i).waitFor({ timeout: 30_000 });
-    await tx.page.setInputFiles("#file_input", file.path);
+    await tx.page.goto(shareUrl, { waitUntil: "domcontentloaded", timeout: 60_000 }); // /#code bounces to /u → /send/
+    await tx.page.locator('.st[data-state="ready"]').waitFor({ state: "visible", timeout: 30_000 });
+    await tx.page.getByText(/Send files to/i).waitFor({ timeout: 30_000 }); // share link verified + label loaded
+    await tx.page.setInputFiles("#fileinput", file.path);
     if (expectSent) {
-      await tx.page.locator("#main_inner").getByText(/Sent!/).waitFor({ timeout: 120_000 });
+      await tx.page.locator('.st[data-state="sent"]').waitFor({ state: "visible", timeout: 120_000 });
       return { sent: true, initStatus };
     }
-    // fail-closed: a revoked link ⇒ /upload-init 410 ⇒ the "turned off" message (revocation-specific only).
+    // fail-closed: a revoked link ⇒ /upload-init 410 ⇒ the send page lands on its error state, never "Sent!".
     const blocked = await tx.page
-      .locator("#main_inner")
-      .getByText(/turned off/i)
-      .waitFor({ timeout: 90_000 })
+      .locator('.st[data-state="error"]')
+      .waitFor({ state: "visible", timeout: 90_000 })
       .then(() => true)
       .catch(() => false);
-    const sent = await tx.page.locator("#main_inner").getByText(/Sent!/).count();
-    return { blocked, sent: sent > 0, initStatus };
+    const sent = await tx.page.locator('.st[data-state="sent"]').isVisible().catch(() => false);
+    return { blocked, sent, initStatus };
   } finally {
     await tx.context.close();
   }
@@ -87,6 +86,11 @@ async function roundTrip(browser) {
     const shareUrl = (await rx.page.locator("#url").innerText()).trim();
     record("confirm: nonce → share link revealed", true, /\/#[A-Za-z0-9_-]+$/.test(shareUrl), shareUrl.slice(0, 56));
 
+    // EXTRA (this session): the reveal page's link-name chip shows the label we created with.
+    const nameText = (await rx.page.locator("#revname").isVisible().catch(() => false))
+      ? (await rx.page.locator("#revname").innerText()).trim() : "";
+    record("reveal: link-name chip shows the label", false, nameText.includes("e2e " + tag), nameText || "no chip");
+
     // 3. upload (S5/S6) — fresh sender
     const tUpload = Date.now() - 5_000;
     const up = await sendAs(browser, shareUrl, file, true);
@@ -97,9 +101,13 @@ async function roundTrip(browser) {
     await rx.page.goto(dlLink, { waitUntil: "domcontentloaded", timeout: 60_000 });
     let dlMatch = false, dlDetail = "";
     try {
-      await rx.page.locator("#main_inner").getByText(/Ready to save/i).waitFor({ timeout: 90_000 });
+      // New receive page gates on an explicit "Unlock with passkey" click (Safari user-activation), then
+      // the virtual authenticator asserts the receiver's pinned passkey and the metadata decrypts.
+      await rx.page.locator('.st[data-state="locked"]').waitFor({ state: "visible", timeout: 30_000 });
+      await rx.page.locator("#open").click();
+      await rx.page.locator('.st[data-state="ready"]').getByText(/Ready to save/i).waitFor({ timeout: 90_000 });
       const dlPromise = rx.page.waitForEvent("download", { timeout: 90_000 }).catch(() => null);
-      await rx.page.locator("#main_inner .save_act").first().click();
+      await rx.page.locator("#save").click();
       const dl = await dlPromise;
       if (dl) {
         const saved = readFileSync(await dl.path());
@@ -108,6 +116,22 @@ async function roundTrip(browser) {
       } else dlDetail = "no download event";
     } catch (e) { dlDetail = "err: " + String((e && e.message) || e).slice(0, 50); }
     record("download: receiver decrypts → bytes match", true, dlMatch, dlDetail);
+
+    // EXTRA (this session): delete-after-download — the receiver removes the server copy, and the
+    // object must then be gone from the Worker (a fresh /fetch returns 404). Runs on the saved page.
+    let delOk = false, delDetail = "skipped (download failed)";
+    if (dlMatch) {
+      const objId = (dlLink.split("/d/")[1] || "").replace(/[#?/].*$/, "");
+      try {
+        await rx.page.locator('.st[data-state="saved"]').waitFor({ state: "visible", timeout: 15_000 });
+        await rx.page.locator("#delfile").click();
+        const uiGone = await rx.page.locator('.st[data-state="deleted"]').waitFor({ state: "visible", timeout: 20_000 }).then(() => true).catch(() => false);
+        const srvGone = objId ? await fetch(API_BASE + "/fetch/" + objId).then((r) => r.status === 404).catch(() => false) : false;
+        delOk = uiGone && srvGone;
+        delDetail = `ui ${uiGone ? "removed" : "?"}, server fetch ${srvGone ? "404" : "still there"}`;
+      } catch (e) { delDetail = "err: " + String((e && e.message) || e).slice(0, 50); }
+    }
+    record("delete: receiver removes the server copy (/discard)", false, delOk, delDetail);
 
     // diagnostic: what state did a result-page route actually reach?
     const pageState = (page) => page.evaluate(() => ({

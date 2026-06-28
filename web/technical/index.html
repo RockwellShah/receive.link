@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technical details · receive.link</title>
+<meta name="description" content="receive.link's end-to-end encryption, broken down step by step: identity derivation, the HPKE cipher suite, the file format, the relay, and the threat model.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<!-- Technical details page (the old how-it-works "For cryptographers" section, restyled). Static at /technical/.
+     Uses the homepage header + footer; nav/footer links point at the homepage's sections, never the old how-it-works page. -->
+<style>
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
+*{box-sizing:border-box}
+a{text-decoration:none;color:inherit}
+body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+
+/* Header (copied from the homepage) */
+.rk .logo{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--ink)}
+.rk .logo svg{flex:none;color:var(--ink)}
+.rk .logo .wm{display:inline-flex;align-items:baseline;letter-spacing:-.01em}
+.rk .logo .dotp{color:var(--g)}
+.rk .logo .tld{color:#9499A3;font-weight:600}
+.rk .ti{width:1em;height:1em;display:inline-block;vertical-align:-.125em;flex:none}
+.rk .nav{position:sticky;top:0;z-index:50;background:rgba(237,232,223,.82);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--ln)}
+.rk .navinner{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:18px 40px}
+.rk .nav .logo{font-size:24px}
+.rk .navr{display:flex;align-items:center;gap:11px}
+.rk .nav .pill{height:34px;padding:0 17px;font-size:13px;display:inline-flex;align-items:center}
+.rk .menu{position:relative;outline:none}
+.rk .kebab{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;color:var(--mut);cursor:pointer;border:1px solid var(--ln);background:#fff}
+.rk .kebab .ti{font-size:18px}
+.rk .menu:hover .kebab,.rk .menu.open .kebab{color:var(--ink);border-color:#D7D0C1}
+.rk .menu:focus-visible .kebab{outline:2px solid var(--g);outline-offset:2px;color:var(--ink);border-color:#D7D0C1}
+.rk .navmenu{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 34px rgba(26,31,43,.14);padding:6px;min-width:158px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .14s,transform .14s,visibility .14s;z-index:5}
+.rk .menu::after{content:"";position:absolute;right:0;top:100%;width:34px;height:10px}
+.rk .menu.open .navmenu{opacity:1;visibility:visible;transform:none}
+.rk .navmenu a{font-size:13px;font-weight:600;color:#56585F;padding:8px 11px;border-radius:8px;cursor:pointer}
+.rk .navmenu a:hover{background:var(--cream);color:var(--ink)}
+.rk .pill{background:var(--g);color:#fff;border-radius:22px;padding:11px 20px;font-size:14px;font-weight:700;display:inline-block;cursor:pointer;box-shadow:0 2px 8px rgba(35,162,103,.22);transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease,filter .15s ease}
+.rk .pill:hover{transform:translateY(-3px);box-shadow:0 11px 24px rgba(35,162,103,.34);filter:brightness(1.05)}
+.rk .pill:active{transform:translateY(-1px) scale(.985);box-shadow:0 4px 12px rgba(35,162,103,.28);transition-duration:.09s}
+
+/* Document content */
+.doc{max-width:760px;margin:0 auto;padding:48px 28px 88px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--g);margin:0 0 12px}
+h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:40px;letter-spacing:-.02em;line-height:1.1;margin:0 0 14px}
+.lead{font-size:17px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 0 8px;max-width:560px}
+.grp{margin-top:44px}
+.grp h2{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:24px;letter-spacing:-.01em;margin:0 0 14px;padding-bottom:11px;border-bottom:1px solid var(--ln)}
+.grp p{font-size:15.5px;line-height:1.72;color:#3C3F47;margin:0 0 14px}
+.grp p:last-child{margin-bottom:0}
+.grp ol,.grp ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:13px}
+.grp ol{counter-reset:step}
+.grp ol li{position:relative;padding-left:38px;font-size:15.5px;line-height:1.6;color:#3C3F47;counter-increment:step}
+.grp ol li::before{content:counter(step);position:absolute;left:0;top:-1px;width:25px;height:25px;border-radius:50%;background:#E7F2EB;color:var(--g);font-size:12.5px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.grp ul li{position:relative;padding-left:22px;font-size:15.5px;line-height:1.65;color:#3C3F47}
+.grp ul li::before{content:"";position:absolute;left:3px;top:10px;width:6px;height:6px;border-radius:50%;background:#C7C0B0}
+.grp li b{color:var(--ink);font-weight:800}
+.grp li em{font-style:italic;color:var(--ink)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;background:#E9E4D8;border-radius:5px;padding:1.5px 5px;color:#39424A;white-space:nowrap}
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.62;color:#3A3D45;background:#FBF9F4;border:1px solid var(--ln);border-radius:13px;padding:15px 17px;overflow-x:auto;white-space:pre;margin:16px 0;tab-size:2}
+
+/* Footer (copied from the homepage) */
+.footsep{border-top:1px solid var(--ln)}
+.rk .foot{max-width:1200px;margin:0 auto;padding:56px 40px;display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:40px}
+.rk .foot .logo{font-size:17px;margin-bottom:11px}
+.rk .foot .brand{font-size:12.5px;color:var(--mut);font-weight:600;line-height:1.6}
+.rk .foot h5{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:0 0 12px;font-weight:700}
+.rk .foot a{display:block;font-size:13.5px;color:#56585F;margin-bottom:8px;font-weight:600;text-decoration:none;cursor:pointer}
+.rk .foot a:hover{color:var(--ink)}
+
+@media (max-width:920px){.rk .foot{padding:44px 22px;gap:30px 20px;grid-template-columns:1fr 1fr}}
+@media (max-width:640px){h1{font-size:32px}.rk .navinner{padding:16px 20px}.doc{padding:36px 20px 72px}.grp{margin-top:36px}}
+@media (max-width:400px){.rk .nav .logo{font-size:18px}}
+</style>
+</head>
+<body>
+<div class="rk">
+  <div class="nav">
+    <div class="navinner">
+    <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+    <div class="navr">
+      <a class="pill" href="/">Create your link</a>
+      <div class="menu" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" aria-label="Menu"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
+        <div class="navmenu"><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a><a href="mailto:Contact@receive.link">Contact Us</a></div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <main class="doc">
+    <p class="eyebrow">For cryptographers</p>
+    <h1>Technical details</h1>
+    <p class="lead">Everything broken down, step by step.</p>
+
+    <div class="grp">
+      <h2>The full round-trip</h2>
+      <ol>
+        <li><b>Setup.</b> You enter an email and create a passkey. Your browser derives your identity keypair from it (PRF → HKDF → P-256), seals your email to the server's public key with HPKE, and registers <code>{sealed_email, share_key, label}</code> with the worker. Your private key is never sent.</li>
+        <li><b>Confirm.</b> The worker unseals your email, holds the unsigned link in KV for an hour, and emails you a one-time confirmation link. You click it; the worker signs the link with <code>ECDSA P-256</code> and hands back your permanent share link.</li>
+        <li><b>Share.</b> You post the link anywhere. It carries your public key, your sealed email, and the server's signature. There is no secret inside it, so it is safe to make public.</li>
+        <li><b>Send.</b> A sender opens your link and drops a file. Their browser mints a throwaway identity, runs <code>HPKE Auth</code> to your public key, and AES-256-GCM-encrypts the file and its metadata in 64 KiB authenticated chunks. Small files finish encrypting before the upload starts; large files stream-encrypt chunk by chunk as they upload.</li>
+        <li><b>Upload.</b> The worker verifies your link's signature and returns a presigned R2 URL (several, for multipart on large files). The sender's browser PUTs the ciphertext straight to R2 through it; the worker only signs URLs and verifies links, never handling the bytes. A Durable Object enforces exactly-once delivery.</li>
+        <li><b>Notify.</b> The worker unseals your email from the link, in memory only, sends you a delivery link to <code>/d/&lt;id&gt;</code>, then forgets the address. The link and the stored ciphertext both expire in 7 days.</li>
+        <li><b>Receive.</b> You open the delivery link. Your browser re-derives your identity from your passkey, fetches the ciphertext, and runs <code>HPKE SetupAuthR</code> + AES-256-GCM to verify and decrypt each chunk straight to disk. Only your passkey can complete this step.</li>
+        <li><b>Clean up.</b> After saving a file you can delete it from the relay right away, or let the R2 object auto-delete on its 7-day lifecycle. You can disable the link at any time; the worker flags it in KV and refuses further uploads.</li>
+      </ol>
+    </div>
+
+    <div class="grp">
+      <h2>Identity</h2>
+      <p>Your keys are derived deterministically from your passkey, on your device, through the WebAuthn <code>PRF</code> extension. Your private key and the passkey secret behind it never reach our servers; only your public key does, carried inside your link. Your passkey itself syncs only through your platform's encrypted keychain, never through us.</p>
+      <div class="code">master_prk   = HKDF-Extract(salt="FILEKEY-v1/master-prk", IKM=prf_secret)
+identity_ikm = HKDF-Expand(master_prk, "FILEKEY-v1/identity-kem" || namespace, 32)   // namespace = "filekey.app"
+(sk, pk)     = DHKEM(P-256)-DeriveKeyPair(identity_ikm)        // RFC 9180 §7.1.3</div>
+      <p>The keypair is bound to a fixed namespace, <code>filekey.app</code> (the same one the FileKey app uses), so the identity carries between the two and a file you receive here also opens there with the same passkey. The private key is reproduced from the passkey secret each session and never persisted to disk.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Cipher suite</h2>
+      <p>Every file uses the same fixed cipher suite, so there's no algorithm negotiation and nothing to downgrade. It's <code>HPKE Auth</code> mode over <code>DHKEM(P-256, HKDF-SHA-256)</code>, with <code>HKDF-SHA-256</code> and <code>AES-256-GCM</code>, per RFC 9180. The implementation uses <code>@hpke/core</code> and <code>@noble/curves</code> (the latter for a Safari-compatible <code>DeriveKeyPair</code>), verified byte-for-byte against the spec's known-answer vectors.</p>
+    </div>
+
+    <div class="grp">
+      <h2>File format</h2>
+      <div class="code">header[12] || sender_pk[65] || hpke_enc[65] || u32(meta_len) || enc_metadata || chunk[0..N]
+header  = "FKEY" || ver=0x01 || suite=0x01 || flags || namespace_tag
+chunk_i = AES-256-GCM(payload_key, nonce = I2OSP(counter_i, 11) || last_flag, AAD)   // 64 KiB each
+AAD     = header || sender_pk || hpke_enc</div>
+      <p>The filename, MIME type, and exact size live in <code>enc_metadata</code>, sealed with AES-256-GCM under a separate key exported from the same HPKE context. The name, type, and contents never travel in the clear, and every chunk is authenticated, so tampering is caught as you open it.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Senders are anonymous, by construction</h2>
+      <p>A sender has no passkey and no account. Their browser mints a <em>throwaway</em> identity for each file, <code>deriveIdentityFromPrf(random(32))</code>, and uses it as the HPKE Auth sender. The <code>sender_pk</code> embedded in the file is random noise that links to nothing and no one. At the identity layer we never learn who sent you a thing. Like any server, the relay sees the sender's IP at request time, but we don't store it: it's HMAC'd into a short-lived rate-limit counter, never kept as a raw address.</p>
+    </div>
+
+    <div class="grp">
+      <h2>The relay</h2>
+      <ul>
+        <li>Links are signed by the server with <code>ECDSA P-256</code>. The worker verifies the signature before accepting an upload, and rejects revoked or invalid links. (Share links don't expire; the per-file delivery link and its ciphertext do, after 7 days.)</li>
+        <li>Your email is <code>HPKE</code>-sealed to the server's public key inside the link, and unsealed only in memory: at sign-up, at confirm, and on each delivery. It is never written to storage as plaintext.</li>
+        <li>Ciphertext is PUT to Cloudflare R2 through a presigned URL and auto-deleted on a 7-day lifecycle. A SQLite-backed Durable Object enforces exactly-once delivery.</li>
+        <li>Revocation lives in KV (a revoke-token map plus a "link is off" flag); the abuse limits are short-lived counters keyed by an HMAC of the IP, link, or email, so KV holds only digests, never a raw IP or plaintext email. No file bytes or names are ever stored.</li>
+      </ul>
+    </div>
+
+    <div class="grp">
+      <h2>Threat model and non-goals</h2>
+      <ul>
+        <li><b>No forward secrecy.</b> Your identity key is long-lived, so a compromised passkey can decrypt past and future files sent to that link.</li>
+        <li><b>Not post-quantum.</b> Sharing rides on HPKE over P-256, which a large quantum computer could eventually break. receive.link only does sharing; there's no self-encryption mode here.</li>
+        <li><b>Deniable by design.</b> We make no non-repudiation claim. A recipient can forge a file attributing any sender, and senders are ephemeral regardless, so nothing here proves who sent what.</li>
+        <li><b>Observable metadata.</b> At request time the relay sees a ciphertext's length, its timing, and the connection IP (which we hash, never store). Length implies an approximate plaintext size.</li>
+        <li><b>No escrow.</b> The server holds no key that can read your files, only its own link-signing and email-sealing keys. Your identity key isn't rotatable in v1; you issue a fresh link instead.</li>
+      </ul>
+    </div>
+  </main>
+
+  <div class="footsep">
+    <div class="foot">
+      <div><a class="logo" href="/" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
+      <div><h5>Product</h5><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a></div>
+      <div><h5>Resources</h5><a href="/technical/">Technical Info</a><a href="https://signal.group/#CjQKICNGSnaJLhHwrpK8FAEFkk80SJ3_iVj-vq3R3Ym_sU-TEhDjAFNXS0N12yazxAqdpGBX" target="_blank" rel="noopener noreferrer">Signal Group</a><a href="mailto:Contact@receive.link">Contact</a></div>
+      <div><h5>Legal</h5><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/license/">License</a></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var m=document.querySelector('.rk .menu');if(!m)return;
+  var k=m.querySelector('.kebab');
+  function sync(){m.setAttribute('aria-expanded',m.classList.contains('open')?'true':'false');}
+  k.addEventListener('click',function(e){e.stopPropagation();m.classList.toggle('open');sync();});
+  m.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target===m){e.preventDefault();m.classList.toggle('open');sync();}else if(e.key==='Escape'){m.classList.remove('open');sync();}});
+  document.addEventListener('click',function(e){if(!m.contains(e.target)){m.classList.remove('open');sync();}});
+  m.querySelectorAll('.navmenu a').forEach(function(a){a.addEventListener('click',function(){m.classList.remove('open');sync();});});
+})();
+</script>
+</body>
+</html>

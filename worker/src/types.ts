@@ -25,6 +25,7 @@ export interface Env {
   SERVER_SIGN_PRIVATE_JWK: string; // sign Drop links at /confirm (ECDSA)
   R2_ACCESS_KEY_ID: string; // R2 S3 API token — presign uploads/downloads
   R2_SECRET_ACCESS_KEY: string;
+  HASH_SECRET: string; // HMAC key for rate-limit digests of email/IP (so low-entropy inputs can't be brute-forced)
 
   // Vars (public, in wrangler.toml)
   SERVER_SIGN_PUBLIC_JWK: string; // verify Drop links on upload (public half)

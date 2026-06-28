@@ -15,3 +15,6 @@ keys/
 
 # Internal design docs — never ship in the public app repo.
 /SPEC-*.md
+
+# E2E inbox worker read token (local only, never committed)
+e2e/inbox/.token

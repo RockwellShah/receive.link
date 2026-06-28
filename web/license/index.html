@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>License · receive.link</title>
+<meta name="description" content="receive.link is free and open-source software, released under the GNU General Public License version 3.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<!-- License page. Static at /license/. GPL-3.0-or-later; full text served at /license/gpl-3.0.txt.
+     Uses the homepage header + footer. -->
+<style>
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
+*{box-sizing:border-box}
+a{text-decoration:none;color:inherit}
+body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+.rk .logo{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--ink)}
+.rk .logo svg{flex:none;color:var(--ink)}
+.rk .logo .wm{display:inline-flex;align-items:baseline;letter-spacing:-.01em}
+.rk .logo .dotp{color:var(--g)}
+.rk .logo .tld{color:#9499A3;font-weight:600}
+.rk .ti{width:1em;height:1em;display:inline-block;vertical-align:-.125em;flex:none}
+.rk .nav{position:sticky;top:0;z-index:50;background:rgba(237,232,223,.82);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--ln)}
+.rk .navinner{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:18px 40px}
+.rk .nav .logo{font-size:24px}
+.rk .navr{display:flex;align-items:center;gap:11px}
+.rk .nav .pill{height:34px;padding:0 17px;font-size:13px;display:inline-flex;align-items:center}
+.rk .menu{position:relative;outline:none}
+.rk .kebab{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;color:var(--mut);cursor:pointer;border:1px solid var(--ln);background:#fff}
+.rk .kebab .ti{font-size:18px}
+.rk .menu:hover .kebab,.rk .menu.open .kebab{color:var(--ink);border-color:#D7D0C1}
+.rk .menu:focus-visible .kebab{outline:2px solid var(--g);outline-offset:2px;color:var(--ink);border-color:#D7D0C1}
+.rk .navmenu{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 34px rgba(26,31,43,.14);padding:6px;min-width:158px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .14s,transform .14s,visibility .14s;z-index:5}
+.rk .menu::after{content:"";position:absolute;right:0;top:100%;width:34px;height:10px}
+.rk .menu.open .navmenu{opacity:1;visibility:visible;transform:none}
+.rk .navmenu a{font-size:13px;font-weight:600;color:#56585F;padding:8px 11px;border-radius:8px;cursor:pointer}
+.rk .navmenu a:hover{background:var(--cream);color:var(--ink)}
+.rk .pill{background:var(--g);color:#fff;border-radius:22px;padding:11px 20px;font-size:14px;font-weight:700;display:inline-block;cursor:pointer;box-shadow:0 2px 8px rgba(35,162,103,.22);transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease,filter .15s ease}
+.rk .pill:hover{transform:translateY(-3px);box-shadow:0 11px 24px rgba(35,162,103,.34);filter:brightness(1.05)}
+.rk .pill:active{transform:translateY(-1px) scale(.985);box-shadow:0 4px 12px rgba(35,162,103,.28);transition-duration:.09s}
+.doc{max-width:720px;margin:0 auto;padding:48px 28px 88px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--g);margin:0 0 12px}
+h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:40px;letter-spacing:-.02em;line-height:1.1;margin:0 0 14px}
+.lead{font-size:17px;color:var(--mut);font-weight:500;line-height:1.55;margin:0;max-width:560px}
+.grp{margin-top:42px}
+.grp h2{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:24px;letter-spacing:-.01em;margin:0 0 14px;padding-bottom:11px;border-bottom:1px solid var(--ln)}
+.grp p{font-size:15.5px;line-height:1.72;color:#3C3F47;margin:0 0 14px}
+.grp p:last-child{margin-bottom:0}
+.grp ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:13px}
+.grp ul li{position:relative;padding-left:22px;font-size:15.5px;line-height:1.6;color:#3C3F47}
+.grp ul li::before{content:"";position:absolute;left:3px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--g)}
+.grp li b{color:var(--ink);font-weight:800}
+.grp a.inl{color:var(--g);font-weight:700;border-bottom:1px solid rgba(35,162,103,.32)}
+.grp a.inl:hover{border-bottom-color:var(--g)}
+.lic{background:var(--card);border:1px solid var(--ln);border-radius:13px;padding:16px 19px;font-size:13.5px;line-height:1.72;color:#3C3F47;margin:4px 0 0}
+.lic b{color:var(--ink)}
+.footsep{border-top:1px solid var(--ln)}
+.rk .foot{max-width:1200px;margin:0 auto;padding:56px 40px;display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:40px}
+.rk .foot .logo{font-size:17px;margin-bottom:11px}
+.rk .foot .brand{font-size:12.5px;color:var(--mut);font-weight:600;line-height:1.6}
+.rk .foot h5{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:0 0 12px;font-weight:700}
+.rk .foot a{display:block;font-size:13.5px;color:#56585F;margin-bottom:8px;font-weight:600;text-decoration:none;cursor:pointer}
+.rk .foot a:hover{color:var(--ink)}
+@media (max-width:920px){.rk .foot{padding:44px 22px;gap:30px 20px;grid-template-columns:1fr 1fr}}
+@media (max-width:640px){h1{font-size:32px}.rk .navinner{padding:16px 20px}.doc{padding:36px 20px 72px}.grp{margin-top:34px}}
+@media (max-width:400px){.rk .nav .logo{font-size:18px}}
+</style>
+</head>
+<body>
+<div class="rk">
+  <div class="nav">
+    <div class="navinner">
+    <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+    <div class="navr">
+      <a class="pill" href="/">Create your link</a>
+      <div class="menu" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" aria-label="Menu"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
+        <div class="navmenu"><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a><a href="mailto:Contact@receive.link">Contact Us</a></div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <main class="doc">
+    <p class="eyebrow">License</p>
+    <h1>License</h1>
+    <p class="lead">receive.link is free and open-source software.</p>
+
+    <div class="grp">
+      <h2>Free and open source</h2>
+      <p>receive.link is released under the <b>GNU General Public License, version 3.0 or later</b> (GPLv3). The browser client and the server are open source, so you can read, run, audit, and modify every line, and verify for yourself that it does what this site says.</p>
+      <p>Copyright &copy; 2026 receive.link. The "receive.link" name is used as a product and brand name; the GPL covers the software, not the branding.</p>
+    </div>
+
+    <div class="grp">
+      <h2>What the license gives you</h2>
+      <ul>
+        <li><b>Use it freely</b>, for any purpose, personal or commercial.</li>
+        <li><b>Study how it works</b> and change it to suit you.</li>
+        <li><b>Share copies</b>, and share your changes, as long as you pass on the same freedoms. The GPL is a "copyleft" license: anything you build from it must also be released under the GPL, version 3 or later, with its source kept open.</li>
+        <li><b>No warranty.</b> The software is provided as is, without warranty of any kind.</li>
+      </ul>
+    </div>
+
+    <div class="grp">
+      <h2>The notice</h2>
+      <p class="lic">receive.link is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.<br><br>receive.link is distributed in the hope that it will be useful, but <b>WITHOUT ANY WARRANTY</b>; without even the implied warranty of <b>MERCHANTABILITY</b> or <b>FITNESS FOR A PARTICULAR PURPOSE</b>. See the GNU General Public License for more details.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Read the full license</h2>
+      <p>The complete license text is available here: <a class="inl" href="/license/gpl-3.0.txt">GNU General Public License v3.0</a>. It is also published by the Free Software Foundation at <a class="inl" href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener noreferrer">gnu.org/licenses/gpl-3.0</a>.</p>
+    </div>
+  </main>
+
+  <div class="footsep">
+    <div class="foot">
+      <div><a class="logo" href="/" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
+      <div><h5>Product</h5><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a></div>
+      <div><h5>Resources</h5><a href="/technical/">Technical Info</a><a href="https://signal.group/#CjQKICNGSnaJLhHwrpK8FAEFkk80SJ3_iVj-vq3R3Ym_sU-TEhDjAFNXS0N12yazxAqdpGBX" target="_blank" rel="noopener noreferrer">Signal Group</a><a href="mailto:Contact@receive.link">Contact</a></div>
+      <div><h5>Legal</h5><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/license/">License</a></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var m=document.querySelector('.rk .menu');if(!m)return;
+  var k=m.querySelector('.kebab');
+  function sync(){m.setAttribute('aria-expanded',m.classList.contains('open')?'true':'false');}
+  k.addEventListener('click',function(e){e.stopPropagation();m.classList.toggle('open');sync();});
+  m.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target===m){e.preventDefault();m.classList.toggle('open');sync();}else if(e.key==='Escape'){m.classList.remove('open');sync();}});
+  document.addEventListener('click',function(e){if(!m.contains(e.target)){m.classList.remove('open');sync();}});
+  m.querySelectorAll('.navmenu a').forEach(function(a){a.addEventListener('click',function(){m.classList.remove('open');sync();});});
+})();
+</script>
+</body>
+</html>

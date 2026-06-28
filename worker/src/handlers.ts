@@ -26,7 +26,7 @@ import { clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./ht
 import { DAY, HOUR, rateLimit, rateLimitBytes } from "./kv";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import type { Env } from "./types";
-import { hex, isEmail, isHex, randomBytes, sha256hex } from "../../shared/util";
+import { hex, hmacHex, isEmail, isHex, randomBytes } from "../../shared/util";
 
 // Abuse limits (soft, KV fixed-window). Tune from real traffic. Exported so tests
 // assert against the source of truth.
@@ -174,7 +174,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
   }
 
   // Hash the IP so KV only ever holds a digest, never a raw address (it's only a rate-limit key).
-  const ipHash = await sha256hex(clientIp(req));
+  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `reg:ip:${ipHash}`, envInt(env.REG_IP_PER_DAY, REG_IP_PER_DAY), DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
@@ -210,7 +210,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
 
   // Anti-bombing: silently succeed once an address is over its daily quota, so
   // register can't be used to probe or flood a victim. No existence oracle.
-  const emailHash = await sha256hex(canonEmail(email));
+  const emailHash = await hmacHex(env.HASH_SECRET, canonEmail(email));
   if (!(await rateLimit(env.DROP_KV, `reg:em:${emailHash}`, envInt(env.REG_EMAIL_PER_DAY, REG_EMAIL_PER_DAY), DAY))) {
     return json({ ok: true }, 202, origin);
   }
@@ -270,7 +270,7 @@ export async function revoke(req: Request, env: Env): Promise<Response> {
   if (!body || typeof body.token !== "string") return json({ error: "missing token" }, 400, origin);
   if (!isHex(body.token, REVOKE_TOKEN_BYTES)) return json({ error: "bad token" }, 400, origin);
 
-  const ipHash = await sha256hex(clientIp(req));
+  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `rev:ip:${ipHash}`, REVOKE_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
@@ -308,7 +308,7 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (!(await rateLimit(env.DROP_KV, `up:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
     return json({ error: "link is over its daily limit" }, 429, origin);
   }
-  const ipHash = await sha256hex(clientIp(req));
+  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
@@ -515,7 +515,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // Byte budgets, charged on the ACTUAL object size and AFTER every other gate, so an invalid or
     // over-limit upload never burns the quota. Per-link + per-IP daily caps keep a multi-TB per-file
     // cap from becoming petabytes/day.
-    const ipHash = await sha256hex(clientIp(req));
+    const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
     if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, finalInfo.size, bytesPerLinkDay(env), DAY))) {
       logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: finalInfo.size });
       await deleteObject(env, finalId);
@@ -564,4 +564,27 @@ export async function fetchObject(req: Request, env: Env, objectId: string): Pro
   if (!(await objectInfo(env, objectId))) return json({ error: "expired or not found" }, 404, origin);
   const url = await presignGet(env, objectId, PRESIGN_TTL_SEC);
   return json({ url, expiresInSec: PRESIGN_TTL_SEC }, 200, origin);
+}
+
+// Delete-after-download calls one IP can make in a day. The object id is an unguessable bearer
+// capability, so this just caps abuse (forcing R2 delete ops against valid-looking ids); generous
+// enough for a real receiver clearing their own deliveries.
+const DISCARD_IP_PER_DAY = 100;
+
+// POST /discard { objectId } -> { ok }. The receiver removes a delivered object from storage after
+// saving it: frees R2, and lets the recipient clear the only server-side copy for peace of mind. The
+// object id is a bearer capability held only by the receiver (it arrived in their delivery email) - the
+// same trust level as GET /fetch/:id. Idempotent and safe to repeat; auto-expiry still sweeps the rest.
+export async function discardObject(req: Request, env: Env): Promise<Response> {
+  const origin = corsOrigin(env, req);
+  const body = await readJson<{ objectId?: unknown }>(req);
+  const objectId = typeof body?.objectId === "string" ? body.objectId : "";
+  if (!isHex(objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
+  // Cheap per-IP cap so a caller can't flood R2 delete ops against arbitrary valid-looking ids (codex P2).
+  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `discard:ip:${ipHash}`, DISCARD_IP_PER_DAY, DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
+  await deleteObject(env, objectId); // R2 delete is idempotent: an already-gone/expired object is a no-op
+  return json({ ok: true }, 200, origin);
 }

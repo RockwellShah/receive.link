@@ -107,7 +107,9 @@ async function runSetup(email: string, label: string, forceEnroll = false): Prom
   // First setup on this browser (and "Create a new passkey" below) has no passkey to "use" yet, so
   // enroll one, then derive the identity from it; after that we reuse it. (Opening a download link
   // always uses the existing passkey and never enrolls, so received files stay tied to one key.)
-  const firstPasskey = forceEnroll || !localStorage.getItem("rl_passkey");
+  let hasStoredPasskey = false;
+  try { hasStoredPasskey = !!localStorage.getItem("rl_passkey"); } catch { /* storage blocked / private mode */ }
+  const firstPasskey = forceEnroll || !hasStoredPasskey;
   if (firstPasskey) {
     await appMsg(["Now create your passkey. It's the key that unlocks your files, kept on this device (Face ID, a fingerprint, or a security key). No password, no account."]);
   }
@@ -121,8 +123,8 @@ async function runSetup(email: string, label: string, forceEnroll = false): Prom
       } catch { /* private mode: just enroll again next time */ }
     }
     const prf = await prfSecret();
-    const identity = await deriveIdentityFromPrf(prf, ns);
-    prf.fill(0);
+    // Zero the PRF secret whether derivation succeeds or throws, so it's not left live on the error path.
+    const identity = await deriveIdentityFromPrf(prf, ns).finally(() => prf.fill(0));
     const shareKey = encodeShareKey(identity.staticPkRaw, identity.namespace);
     const kemPub = await importKemPublicKey(hexToBytes(cfg.serverKemPublicHex));
     const sealed = await sealEmail(kemPub, email);
@@ -405,8 +407,8 @@ async function receiveMode(objectId: string): Promise<void> {
   try {
     const { url } = await api.fetchUrl(objectId);
     const prf = await prfSecret();
-    const identity = await deriveIdentityFromPrf(prf, ns);
-    prf.fill(0);
+    // Zero the PRF secret whether derivation succeeds or throws, so it's not left live on the error path.
+    const identity = await deriveIdentityFromPrf(prf, ns).finally(() => prf.fill(0));
     // Metadata only: fetch just the head + metadata prefix (a Range request) and decrypt it for the
     // filename. The full payload streams to disk on Save (below), so the whole ciphertext is never
     // buffered — true 1x disk, which is what makes receiving a multi-TB file feasible.

@@ -46,9 +46,10 @@ export async function encryptFileToShareKey(
   namespaces: NamespaceSet,
   sender: Identity,
   h: StreamHandle = {},
+  extras?: Map<string, Uint8Array>,
 ): Promise<Blob> {
   const { recipientPkRaw, namespace } = decodeShareKey(shareKey, namespaces);
-  const metadata = metaFor(file);
+  const metadata = metaFor(file, extras);
   const parts: Blob[] = [];
   const plaintext = blobSource(file, (read) => h.onProgress?.(read, file.size));
   for await (const piece of encryptStream({ senderIdentity: sender, recipientPkRaw, namespace, plaintext, metadata })) {
@@ -57,14 +58,17 @@ export async function encryptFileToShareKey(
   return new Blob(parts, { type: "application/octet-stream" });
 }
 
-/** Metadata FileKey commits for a File. Shared so the size estimate matches the actual encryption. */
-function metaFor(file: File): Omit<Metadata, "originalSize"> {
-  return { filename: file.name, mimeType: file.type || "application/octet-stream", createdAtUnixMs: 0, extras: new Map() };
+/** Metadata FileKey commits for a File. Shared so the size estimate matches the actual encryption.
+ *  `extras` (Drop addition, additive over the vendored original) rides in the encrypted metadata —
+ *  Drop uses it to carry a bundle's file list so the receiver can preview names without the whole zip. */
+function metaFor(file: File, extras?: Map<string, Uint8Array>): Omit<Metadata, "originalSize"> {
+  return { filename: file.name, mimeType: file.type || "application/octet-stream", createdAtUnixMs: 0, extras: extras ?? new Map() };
 }
 
-/** Exact .filekey ciphertext length for a File — computed up front so upload-init can size multipart. */
-export function ciphertextLength(file: File): number {
-  const metaCtLen = encodeMetadata({ ...metaFor(file), originalSize: file.size }).length + GCM_TAG_LEN;
+/** Exact .filekey ciphertext length for a File — computed up front so upload-init can size multipart.
+ *  Pass the SAME `extras` you encrypt with, or the presized length won't match the real ciphertext. */
+export function ciphertextLength(file: File, extras?: Map<string, Uint8Array>): number {
+  const metaCtLen = encodeMetadata({ ...metaFor(file, extras), originalSize: file.size }).length + GCM_TAG_LEN;
   const headLen = HEADER_LEN + PK_LEN + ENC_LEN + 4 + metaCtLen;
   const numChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
   return headLen + file.size + numChunks * GCM_TAG_LEN;
@@ -82,11 +86,12 @@ export async function* encryptFileToParts(
   sender: Identity,
   partSize: number,
   onRead?: (bytes: number) => void,
+  extras?: Map<string, Uint8Array>,
 ): AsyncGenerator<Uint8Array> {
   const { recipientPkRaw, namespace } = decodeShareKey(shareKey, namespaces);
   const pending: Uint8Array[] = [];
   let pendingLen = 0;
-  for await (const piece of encryptStream({ senderIdentity: sender, recipientPkRaw, namespace, plaintext: blobSource(file, onRead), metadata: metaFor(file) })) {
+  for await (const piece of encryptStream({ senderIdentity: sender, recipientPkRaw, namespace, plaintext: blobSource(file, onRead), metadata: metaFor(file, extras) })) {
     pending.push(piece);
     pendingLen += piece.length;
     while (pendingLen >= partSize) {

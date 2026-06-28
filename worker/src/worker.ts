@@ -13,8 +13,9 @@
 //   POST /upload-complete  assemble (multipart), verify it's real FileKey ciphertext, email the receiver
 //   POST /upload-abort     cancel an in-progress multipart upload
 //   GET  /fetch/:id        presigned R2 GET for the receiver's decrypt page
+//   POST /discard          receiver removes a delivered object after saving it
 
-import { confirm, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
+import { confirm, discardObject, fetchObject, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
 import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
 
@@ -50,6 +51,8 @@ export default {
         return uploadComplete(req, env);
       case "POST /upload-abort":
         return uploadAbort(req, env);
+      case "POST /discard":
+        return discardObject(req, env);
       default: {
         const fetchId = req.method === "GET" && url.pathname.startsWith("/fetch/")
           ? url.pathname.slice("/fetch/".length)

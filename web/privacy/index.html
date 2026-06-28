@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · receive.link</title>
+<meta name="description" content="receive.link is built so we cannot read your files. No analytics, no cookies, no trackers. Here is exactly what we collect and what we do not.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<!-- Privacy policy. Static at /privacy/. Plain-language; data-handling claims verified against worker/src.
+     Have counsel review before publishing. Uses the homepage header + footer. -->
+<style>
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
+*{box-sizing:border-box}
+a{text-decoration:none;color:inherit}
+body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+.rk .logo{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--ink)}
+.rk .logo svg{flex:none;color:var(--ink)}
+.rk .logo .wm{display:inline-flex;align-items:baseline;letter-spacing:-.01em}
+.rk .logo .dotp{color:var(--g)}
+.rk .logo .tld{color:#9499A3;font-weight:600}
+.rk .ti{width:1em;height:1em;display:inline-block;vertical-align:-.125em;flex:none}
+.rk .nav{position:sticky;top:0;z-index:50;background:rgba(237,232,223,.82);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--ln)}
+.rk .navinner{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:18px 40px}
+.rk .nav .logo{font-size:24px}
+.rk .navr{display:flex;align-items:center;gap:11px}
+.rk .nav .pill{height:34px;padding:0 17px;font-size:13px;display:inline-flex;align-items:center}
+.rk .menu{position:relative;outline:none}
+.rk .kebab{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;color:var(--mut);cursor:pointer;border:1px solid var(--ln);background:#fff}
+.rk .kebab .ti{font-size:18px}
+.rk .menu:hover .kebab,.rk .menu.open .kebab{color:var(--ink);border-color:#D7D0C1}
+.rk .menu:focus-visible .kebab{outline:2px solid var(--g);outline-offset:2px;color:var(--ink);border-color:#D7D0C1}
+.rk .navmenu{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 34px rgba(26,31,43,.14);padding:6px;min-width:158px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .14s,transform .14s,visibility .14s;z-index:5}
+.rk .menu::after{content:"";position:absolute;right:0;top:100%;width:34px;height:10px}
+.rk .menu.open .navmenu{opacity:1;visibility:visible;transform:none}
+.rk .navmenu a{font-size:13px;font-weight:600;color:#56585F;padding:8px 11px;border-radius:8px;cursor:pointer}
+.rk .navmenu a:hover{background:var(--cream);color:var(--ink)}
+.rk .pill{background:var(--g);color:#fff;border-radius:22px;padding:11px 20px;font-size:14px;font-weight:700;display:inline-block;cursor:pointer;box-shadow:0 2px 8px rgba(35,162,103,.22);transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease,filter .15s ease}
+.rk .pill:hover{transform:translateY(-3px);box-shadow:0 11px 24px rgba(35,162,103,.34);filter:brightness(1.05)}
+.rk .pill:active{transform:translateY(-1px) scale(.985);box-shadow:0 4px 12px rgba(35,162,103,.28);transition-duration:.09s}
+.doc{max-width:720px;margin:0 auto;padding:48px 28px 88px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--g);margin:0 0 12px}
+h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:40px;letter-spacing:-.02em;line-height:1.1;margin:0 0 14px}
+.lead{font-size:17px;color:var(--mut);font-weight:500;line-height:1.55;margin:0;max-width:580px}
+.updated{font-size:13px;color:var(--mut);font-weight:600;margin:10px 0 0}
+.grp{margin-top:40px}
+.grp h2{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:22px;letter-spacing:-.01em;margin:0 0 13px;padding-bottom:10px;border-bottom:1px solid var(--ln)}
+.grp p{font-size:15.5px;line-height:1.72;color:#3C3F47;margin:0 0 14px}
+.grp p:last-child{margin-bottom:0}
+.grp ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+.grp ul li{position:relative;padding-left:22px;font-size:15.5px;line-height:1.62;color:#3C3F47}
+.grp ul li::before{content:"";position:absolute;left:3px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--g)}
+.grp li b,.grp p b{color:var(--ink);font-weight:800}
+.grp a.inl{color:var(--g);font-weight:700;border-bottom:1px solid rgba(35,162,103,.32)}
+.grp a.inl:hover{border-bottom-color:var(--g)}
+.footsep{border-top:1px solid var(--ln)}
+.rk .foot{max-width:1200px;margin:0 auto;padding:56px 40px;display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:40px}
+.rk .foot .logo{font-size:17px;margin-bottom:11px}
+.rk .foot .brand{font-size:12.5px;color:var(--mut);font-weight:600;line-height:1.6}
+.rk .foot h5{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:0 0 12px;font-weight:700}
+.rk .foot a{display:block;font-size:13.5px;color:#56585F;margin-bottom:8px;font-weight:600;text-decoration:none;cursor:pointer}
+.rk .foot a:hover{color:var(--ink)}
+@media (max-width:920px){.rk .foot{padding:44px 22px;gap:30px 20px;grid-template-columns:1fr 1fr}}
+@media (max-width:640px){h1{font-size:32px}.rk .navinner{padding:16px 20px}.doc{padding:36px 20px 72px}.grp{margin-top:32px}}
+@media (max-width:400px){.rk .nav .logo{font-size:18px}}
+</style>
+</head>
+<body>
+<div class="rk">
+  <div class="nav">
+    <div class="navinner">
+    <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+    <div class="navr">
+      <a class="pill" href="/">Create your link</a>
+      <div class="menu" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" aria-label="Menu"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
+        <div class="navmenu"><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a><a href="mailto:Contact@receive.link">Contact Us</a></div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <main class="doc">
+    <p class="eyebrow">Privacy</p>
+    <h1>Privacy</h1>
+    <p class="lead">receive.link is built so we cannot read your files, even if we wanted to.</p>
+    <p class="updated">Last updated: June 26, 2026</p>
+
+    <div class="grp">
+      <h2>Your files</h2>
+      <p>Every file is encrypted in the sender's browser, end to end, to a key that only you hold (derived from your passkey). We only ever receive and store the encrypted version. We cannot read your files, see their names, or know their type, and neither can anyone else without your passkey. Encrypted files are stored for at most <b>7 days</b>, then deleted automatically.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Your email address</h2>
+      <p>Your email address is sealed (encrypted) inside your link, to our server's key, so it is never exposed in the public link, to the people who send you files, or in our logs. Our server holds the matching key and can unseal it, but only does so in memory, and only to send you the emails the service runs on: a confirmation when you create a link, a copy of your link once it is confirmed, and a notice when a file arrives. We never store your address in readable form. While you are confirming a new link, the still-encrypted version is held for up to an hour, then deleted.</p>
+      <p>Your email is the one piece of personal data our server can read, and only to mail you. Your files are different: they are sealed to a key only your passkey can produce, which our server never holds, so we cannot open them. Long-term, the only thing we keep tied to you is a one-way hash of your address, never the address itself, used to count usage and apply abuse limits.</p>
+    </div>
+
+    <div class="grp">
+      <h2>People who send you files</h2>
+      <p>Senders do not have an account and do not sign in. Their browser creates a throwaway key for each file that links to no one, so we never learn a sender's identity. Like any website, the relay does briefly receive a sender's IP address to enforce abuse limits, but stores it only as a one-way hash, never the raw address.</p>
+    </div>
+
+    <div class="grp">
+      <h2>What we log</h2>
+      <ul>
+        <li><b>No analytics, no cookies, no trackers, no advertising.</b> We do not build a profile of you.</li>
+        <li>For security and to stop abuse, we keep short-lived counters keyed to a <b>one-way hash</b> of the sender's IP address and of email addresses, never the raw IP or email. These counters expire automatically.</li>
+        <li>We keep minimal operational logs to run and debug the service: object and link identifiers, transfer sizes, and error codes, <b>never</b> your email, file names, or contents.</li>
+        <li>Our hosting provider, Cloudflare, may keep standard, short-lived network logs (as nearly all hosts do) for security and abuse prevention.</li>
+        <li>The relay can see the <b>size and timing</b> of an encrypted transfer, an opaque link identifier, and the label you gave your link (we use it in your email subjects). It cannot see file names, contents, or who sent them.</li>
+      </ul>
+    </div>
+
+    <div class="grp">
+      <h2>Payments</h2>
+      <p>Payments are handled by <b>Stripe</b>. When you add credit, you enter your billing details with Stripe, and Stripe holds them under its own <a class="inl" href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer">privacy policy</a>. We never see or store your card number. From Stripe we keep only a billing reference (the one-way fingerprint of your email, tied to your Stripe customer ID) and your remaining credit balance, so we can apply what you have paid for.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Where your data lives</h2>
+      <p>receive.link runs on <b>Cloudflare</b> (Workers, R2 storage, and KV). Encrypted files live in R2 and auto-delete after 7 days. A link awaiting confirmation (held one hour, still encrypted) and rate-limit counters expire on their own. The one longer-lived piece is the small map that powers your disable-link button: a random token tied to a link identifier, with no email attached. We do not operate a database of users or files.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Your choices</h2>
+      <p>You can turn off any link at any time, which stops new files from arriving. You can stop using receive.link whenever you like; there is no account to delete, because we do not keep one. Because we hold so little about you (one-way hashes, not your address or IP), there is very little to request, but for any privacy question or request you can reach us at <a class="inl" href="mailto:Contact@receive.link">Contact@receive.link</a>.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Changes</h2>
+      <p>If any of this changes, we will update this page and the date above. New features get their behavior described here before you use them.</p>
+    </div>
+  </main>
+
+  <div class="footsep">
+    <div class="foot">
+      <div><a class="logo" href="/" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
+      <div><h5>Product</h5><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a></div>
+      <div><h5>Resources</h5><a href="/technical/">Technical Info</a><a href="https://signal.group/#CjQKICNGSnaJLhHwrpK8FAEFkk80SJ3_iVj-vq3R3Ym_sU-TEhDjAFNXS0N12yazxAqdpGBX" target="_blank" rel="noopener noreferrer">Signal Group</a><a href="mailto:Contact@receive.link">Contact</a></div>
+      <div><h5>Legal</h5><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/license/">License</a></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var m=document.querySelector('.rk .menu');if(!m)return;
+  var k=m.querySelector('.kebab');
+  function sync(){m.setAttribute('aria-expanded',m.classList.contains('open')?'true':'false');}
+  k.addEventListener('click',function(e){e.stopPropagation();m.classList.toggle('open');sync();});
+  m.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target===m){e.preventDefault();m.classList.toggle('open');sync();}else if(e.key==='Escape'){m.classList.remove('open');sync();}});
+  document.addEventListener('click',function(e){if(!m.contains(e.target)){m.classList.remove('open');sync();}});
+  m.querySelectorAll('.navmenu a').forEach(function(a){a.addEventListener('click',function(){m.classList.remove('open');sync();});});
+})();
+</script>
+</body>
+</html>

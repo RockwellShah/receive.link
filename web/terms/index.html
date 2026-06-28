@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms · receive.link</title>
+<meta name="description" content="The plain-language terms for using receive.link, a private, end-to-end-encrypted file-receiving service.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<!-- Terms of service. Static at /terms/. Paid-service terms; governing law = Wyoming.
+     Have counsel review before publishing. Uses the homepage header + footer. -->
+<style>
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
+*{box-sizing:border-box}
+a{text-decoration:none;color:inherit}
+body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+.rk .logo{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--ink)}
+.rk .logo svg{flex:none;color:var(--ink)}
+.rk .logo .wm{display:inline-flex;align-items:baseline;letter-spacing:-.01em}
+.rk .logo .dotp{color:var(--g)}
+.rk .logo .tld{color:#9499A3;font-weight:600}
+.rk .ti{width:1em;height:1em;display:inline-block;vertical-align:-.125em;flex:none}
+.rk .nav{position:sticky;top:0;z-index:50;background:rgba(237,232,223,.82);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--ln)}
+.rk .navinner{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:18px 40px}
+.rk .nav .logo{font-size:24px}
+.rk .navr{display:flex;align-items:center;gap:11px}
+.rk .nav .pill{height:34px;padding:0 17px;font-size:13px;display:inline-flex;align-items:center}
+.rk .menu{position:relative;outline:none}
+.rk .kebab{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;color:var(--mut);cursor:pointer;border:1px solid var(--ln);background:#fff}
+.rk .kebab .ti{font-size:18px}
+.rk .menu:hover .kebab,.rk .menu.open .kebab{color:var(--ink);border-color:#D7D0C1}
+.rk .menu:focus-visible .kebab{outline:2px solid var(--g);outline-offset:2px;color:var(--ink);border-color:#D7D0C1}
+.rk .navmenu{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 34px rgba(26,31,43,.14);padding:6px;min-width:158px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .14s,transform .14s,visibility .14s;z-index:5}
+.rk .menu::after{content:"";position:absolute;right:0;top:100%;width:34px;height:10px}
+.rk .menu.open .navmenu{opacity:1;visibility:visible;transform:none}
+.rk .navmenu a{font-size:13px;font-weight:600;color:#56585F;padding:8px 11px;border-radius:8px;cursor:pointer}
+.rk .navmenu a:hover{background:var(--cream);color:var(--ink)}
+.rk .pill{background:var(--g);color:#fff;border-radius:22px;padding:11px 20px;font-size:14px;font-weight:700;display:inline-block;cursor:pointer;box-shadow:0 2px 8px rgba(35,162,103,.22);transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease,filter .15s ease}
+.rk .pill:hover{transform:translateY(-3px);box-shadow:0 11px 24px rgba(35,162,103,.34);filter:brightness(1.05)}
+.rk .pill:active{transform:translateY(-1px) scale(.985);box-shadow:0 4px 12px rgba(35,162,103,.28);transition-duration:.09s}
+.doc{max-width:720px;margin:0 auto;padding:48px 28px 88px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--g);margin:0 0 12px}
+h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:40px;letter-spacing:-.02em;line-height:1.1;margin:0 0 14px}
+.lead{font-size:17px;color:var(--mut);font-weight:500;line-height:1.55;margin:0;max-width:580px}
+.updated{font-size:13px;color:var(--mut);font-weight:600;margin:10px 0 0}
+.intro{font-size:15.5px;line-height:1.72;color:#3C3F47;margin:24px 0 0}
+.intro b{color:var(--ink);font-weight:800}
+.grp{margin-top:40px}
+.grp h2{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:22px;letter-spacing:-.01em;margin:0 0 13px;padding-bottom:10px;border-bottom:1px solid var(--ln)}
+.grp p{font-size:15.5px;line-height:1.72;color:#3C3F47;margin:0 0 14px}
+.grp p:last-child{margin-bottom:0}
+.grp ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+.grp ul li{position:relative;padding-left:22px;font-size:15.5px;line-height:1.62;color:#3C3F47}
+.grp ul li::before{content:"";position:absolute;left:3px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--g)}
+.grp li b,.grp p b{color:var(--ink);font-weight:800}
+.grp a.inl{color:var(--g);font-weight:700;border-bottom:1px solid rgba(35,162,103,.32)}
+.grp a.inl:hover{border-bottom-color:var(--g)}
+.footsep{border-top:1px solid var(--ln)}
+.rk .foot{max-width:1200px;margin:0 auto;padding:56px 40px;display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:40px}
+.rk .foot .logo{font-size:17px;margin-bottom:11px}
+.rk .foot .brand{font-size:12.5px;color:var(--mut);font-weight:600;line-height:1.6}
+.rk .foot h5{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:0 0 12px;font-weight:700}
+.rk .foot a{display:block;font-size:13.5px;color:#56585F;margin-bottom:8px;font-weight:600;text-decoration:none;cursor:pointer}
+.rk .foot a:hover{color:var(--ink)}
+@media (max-width:920px){.rk .foot{padding:44px 22px;gap:30px 20px;grid-template-columns:1fr 1fr}}
+@media (max-width:640px){h1{font-size:32px}.rk .navinner{padding:16px 20px}.doc{padding:36px 20px 72px}.grp{margin-top:32px}}
+@media (max-width:400px){.rk .nav .logo{font-size:18px}}
+</style>
+</head>
+<body>
+<div class="rk">
+  <div class="nav">
+    <div class="navinner">
+    <a class="logo" href="/"><svg width="24" height="24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+    <div class="navr">
+      <a class="pill" href="/">Create your link</a>
+      <div class="menu" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" aria-label="Menu"><span class="kebab"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg></span>
+        <div class="navmenu"><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a><a href="mailto:Contact@receive.link">Contact Us</a></div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <main class="doc">
+    <p class="eyebrow">Terms</p>
+    <h1>Terms of service</h1>
+    <p class="lead">The plain-language terms for using receive.link.</p>
+    <p class="updated">Last updated: June 26, 2026</p>
+
+    <p class="intro">By using receive.link, you agree to these terms. If you do not agree with these terms, please do not use the service.</p>
+
+    <div class="grp">
+      <h2>What receive.link is</h2>
+      <p>receive.link gives you a private link that anyone can send files to, where only you can open them. You create a link with a passkey and an email address; the people who send to you need neither. Files are encrypted end to end on the sender's device and can only be opened with your passkey.</p>
+    </div>
+
+    <div class="grp">
+      <h2>No account, and your responsibility</h2>
+      <p>There is no traditional account or password. Your passkey is your key. Keep it safe: <b>if you lose access to your passkey, your files cannot be recovered</b>, by us or by anyone, because we never hold your keys. You are responsible for the security of your passkey and for the files you choose to receive.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Acceptable use</h2>
+      <p>You agree to use receive.link only for lawful purposes. You may not use it to receive, store, or distribute content that is illegal, infringes someone's rights, or that you do not have the right to handle; to harass or harm others; or to attack, overload, probe, or work around the limits of the service.</p>
+      <p>If a link is reported, or our abuse signals flag it, we may turn that link off and block the source. Because files are encrypted, we cannot see their contents or screen them in advance, so enforcement is reactive: it relies on reports, on legal takedowns for a specific link, and on the limited signals we can observe, such as volume and rate.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Paid service</h2>
+      <p>receive.link is a paid service, metered by how much you download:</p>
+      <ul>
+        <li>Your first <b>1 GB</b> of downloads is <b>free</b>.</li>
+        <li>After that, you pay <b>$0.01 per gigabyte</b> you download. You are charged once per file, so re-downloading a file you have already paid for is free.</li>
+        <li>You pay by adding credit in advance through our payment processor, <b>Stripe</b>. Charges are drawn from your credit balance as you download.</li>
+        <li>Prices and free allowances may change. We will show current pricing before you pay.</li>
+      </ul>
+      <p>Prepaid credit is non-refundable except where the law requires otherwise, has no cash value, and is for your use of receive.link only. Any taxes are your responsibility.</p>
+    </div>
+
+    <div class="grp">
+      <h2>The service is provided "as is"</h2>
+      <p>receive.link is provided "as is" and "as available", without warranties of any kind, whether express or implied, including merchantability, fitness for a particular purpose, and non-infringement. We do not guarantee that the service will be uninterrupted, error-free, or that any file will always be delivered or remain available. Encrypted files expire after 7 days, so download them in time.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Limitation of liability</h2>
+      <p>To the maximum extent permitted by law, receive.link and the people who operate it will not be liable for any indirect, incidental, special, or consequential damages, or for lost, delayed, or unrecoverable files, lost data, or lost profits, arising from your use of (or inability to use) receive.link. To the maximum extent permitted by law, our total liability for any claim relating to the service is limited to the amount you paid us for it in the 12 months before the claim.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Open source</h2>
+      <p>receive.link's code is released under the GNU General Public License, version 3.0 or later. See the <a class="inl" href="/license/">License</a> page for details.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Changes and ending your use</h2>
+      <p>We may update these terms; continued use after a change means you accept the updated terms. You can stop using receive.link at any time and turn off your links. We may suspend or end your access if you breach these terms or use the service unlawfully.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Governing law</h2>
+      <p>These terms are governed by the laws of the State of Wyoming, USA, without regard to its conflict-of-laws rules. Any dispute relating to them will be brought in the state or federal courts located in Wyoming.</p>
+    </div>
+
+    <div class="grp">
+      <h2>Contact</h2>
+      <p>Questions about these terms? Reach us at <a class="inl" href="mailto:Contact@receive.link">Contact@receive.link</a>.</p>
+    </div>
+  </main>
+
+  <div class="footsep">
+    <div class="foot">
+      <div><a class="logo" href="/" style="margin-bottom:9px"><svg width="16" height="16" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wm">receive<span class="dotp">.</span><span class="tld">link</span></span></a><div class="brand">Receive files privately.<br>&copy; 2026</div></div>
+      <div><h5>Product</h5><a href="/#how">How it works</a><a href="/#pricing">Pricing</a><a href="/#faq">FAQ</a></div>
+      <div><h5>Resources</h5><a href="/technical/">Technical Info</a><a href="https://signal.group/#CjQKICNGSnaJLhHwrpK8FAEFkk80SJ3_iVj-vq3R3Ym_sU-TEhDjAFNXS0N12yazxAqdpGBX" target="_blank" rel="noopener noreferrer">Signal Group</a><a href="mailto:Contact@receive.link">Contact</a></div>
+      <div><h5>Legal</h5><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/license/">License</a></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var m=document.querySelector('.rk .menu');if(!m)return;
+  var k=m.querySelector('.kebab');
+  function sync(){m.setAttribute('aria-expanded',m.classList.contains('open')?'true':'false');}
+  k.addEventListener('click',function(e){e.stopPropagation();m.classList.toggle('open');sync();});
+  m.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target===m){e.preventDefault();m.classList.toggle('open');sync();}else if(e.key==='Escape'){m.classList.remove('open');sync();}});
+  document.addEventListener('click',function(e){if(!m.contains(e.target)){m.classList.remove('open');sync();}});
+  m.querySelectorAll('.navmenu a').forEach(function(a){a.addEventListener('click',function(){m.classList.remove('open');sync();});});
+})();
+</script>
+</body>
+</html>

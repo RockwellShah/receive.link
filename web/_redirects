@@ -1,11 +1,15 @@
 # receive.link routing. NO "/*" catch-all (it shadows real assets: /dist/*.js + /style.css would all
-# serve the /app HTML page, breaking every bundle). The app (app.html -> clean URL /app) owns the
-# explicit functional routes the Worker emails or app.ts dispatches: /confirm, /revoke, /qr, /d/<id>,
-# and /u (the upload view; a share-link open /#code is bounced to /u client-side, code staying in the
-# hash). Real assets serve themselves; the marketing homepage owns "/"; unknown paths 404.
-/confirm   /app      200
-/revoke    /app      200
-/qr        /app      200
-/d/*       /app      200
-/u         /app      200
+# serve an HTML page, breaking every bundle). Real assets serve themselves; the marketing homepage
+# owns "/"; unknown paths 404. The back-half receiver pages in the new design (web/result/index.html)
+# own /confirm (reveal), /revoke, /qr -- home-result.ts routes by location.pathname, so the URL MUST stay
+# /confirm etc. The target MUST be "/result/" WITH the trailing slash: "/result" (no slash) is a directory
+# that Cloudflare 308-redirects to "/result/", which changes the URL and collapses all three routes to one
+# pathname (silently breaking /revoke + /qr). Same reason "/" targets "/home/". The app (app.html -> clean
+# URL /app, a FILE so no slash needed) still owns the sender upload /u (a share-link open /#code is bounced
+# to /u client-side, code staying in the hash) and the receiver download /d/<id>.
+/confirm   /result/  200
+/revoke    /result/  200
+/qr        /result/  200
+/d/*       /receive/ 200
+/u         /send/    200
 /          /home/    200

@@ -9,7 +9,7 @@ rmSync("web/dist", { recursive: true, force: true });
 const { version } = (await Bun.file("package.json").json()) as { version: string };
 
 const result = await Bun.build({
-  entrypoints: ["web/src/app.ts", "web/src/home-create.ts"],
+  entrypoints: ["web/src/app.ts", "web/src/home-create.ts", "web/src/home-result.ts", "web/src/home-send.ts", "web/src/home-receive.ts"],
   outdir: "web/dist",
   target: "browser",
   minify: true,
