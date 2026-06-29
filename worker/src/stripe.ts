@@ -36,16 +36,16 @@ function bytesForCents(amountCents: number, priceCentsPerGb: number): number {
   return Math.floor((amountCents / priceCentsPerGb) * GB);
 }
 
-/** Human pack size for labels (decimal GB/TB; no em dash per house style). Exported so the credit-UX
- *  surfaces (delivery email status line, /fetch/preview headers consumer) render balances in the same
- *  rounded capacity units as the pack picker. */
+/** Human pack/credit size for labels. ALWAYS GB (never rolls up to TB), with thousands separators, so a
+ *  1 TB pack reads "1,000 GB" (big numbers feel more generous than "1 TB"). Exported so the credit-UX
+ *  surfaces (delivery email status line, the /fetch/preview balance headers consumer) and the pack picker
+ *  all render credit in the same unit. Decimal GB (1 GB = 1e9). No em dash per house style. */
 export function humanSize(bytes: number): string {
   const gb = bytes / GB;
-  if (gb >= 1000) {
-    const tb = gb / 1000;
-    return `${Number.isInteger(tb) ? tb : tb.toFixed(1)} TB`;
-  }
-  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
+  const s = Number.isInteger(gb) ? String(gb) : gb.toFixed(1);
+  const [intPart, frac] = s.split(".");
+  const withCommas = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return frac ? `${withCommas}.${frac} GB` : `${withCommas} GB`;
 }
 
 /** The prepaid packs at the CURRENT price, for the client's top-up picker. Derived, so changing the price

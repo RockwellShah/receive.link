@@ -801,8 +801,8 @@ test("billing: the price is one env knob; packs + labels derive from it", async 
   const cheap = await makeTestEnv(); // default 1¢/GB
   expect(priceCentsPerGb(cheap.env)).toBe(1);
   const p10cheap = packList(cheap.env).find((p) => p.id === "p10")!;
-  expect(p10cheap.bytes).toBe(1_000_000_000_000); // $10 = 1 TB
-  expect(p10cheap.label).toContain("1 TB");
+  expect(p10cheap.bytes).toBe(1_000_000_000_000); // $10 = 1 TB of bytes, shown as 1,000 GB (always-GB labels)
+  expect(p10cheap.label).toContain("1,000 GB");
   const dear = await makeTestEnv({ PRICE_CENTS_PER_GB: "10" }); // walk it to 10¢/GB
   const p10dear = packList(dear.env).find((p) => p.id === "p10")!;
   expect(p10dear.bytes).toBe(100_000_000_000); // same $10 now buys 100 GB

@@ -141,12 +141,15 @@ function showReady(): void {
 
 // Credit UI on the ready panel, ALL gated on delivery.credit (billing on). No-ops cleanly when it's
 // undefined (billing off): every element stays hidden and the add-credit link is inert. Reuses the page's
-// Decimal GB/TB for credit, to match the worker's humanSize, the email, and the pack labels ($10 · 1 TB),
-// so a 1 TB pack reads "1 TB credit" not "0.9 TB". (Binary fmtBytes stays for raw file sizes.) Never a price.
+// Credit in GB ALWAYS (never rolls up to TB), with thousands separators, matching the worker's humanSize,
+// the email, and the pack labels: a 1 TB balance reads "1,000 GB credit" (big numbers feel generous).
+// Decimal GB (1 GB = 1e9), never a dollar price. (Binary fmtBytes stays for raw file sizes.)
 function creditSize(bytes: number): string {
   const gb = bytes / 1_000_000_000;
-  if (gb >= 1000) { const tb = gb / 1000; return `${Number.isInteger(tb) ? tb : tb.toFixed(1)} TB`; }
-  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
+  const s = Number.isInteger(gb) ? String(gb) : gb.toFixed(1);
+  const [intPart, frac] = s.split(".");
+  const withCommas = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return frac ? `${withCommas}.${frac} GB` : `${withCommas} GB`;
 }
 function renderCredit(): void {
   const chipRow = el("rcreditrow");
