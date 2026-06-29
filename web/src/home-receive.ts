@@ -166,7 +166,7 @@ function renderCredit(): void {
     addLink.hidden = true;
     return;
   }
-  chip.textContent = `${creditSize(credit.balanceBytes)} credit`;
+  chip.textContent = `${creditSize(credit.balanceBytes)} left`;
   chipRow.hidden = false;
   addLink.hidden = false;
   // After a top-up (?paid=1) the chip already reflects the refreshed balance (a fresh loadDelivery re-read
