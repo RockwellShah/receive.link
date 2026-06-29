@@ -63,12 +63,12 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
   // download credit. Generic (no live balance, no buy link): the account isn't created until a file lands.
   const creditText = billing
     ? `YOUR DOWNLOAD CREDIT\n` +
-      `You start with 1 GB of free download credit, spent only when you open a file. Add more anytime, it never expires.\n\n` +
+      `You start with 1 GB of free download credit, spent only when you download a file. Add more anytime, it never expires.\n\n` +
       `- - - - - -\n\n`
     : "";
   const creditHtml = billing
     ? head("Your download credit") +
-      para("You start with 1 GB of free download credit, spent only when you open a file. Add more anytime, it never expires.") +
+      para("You start with 1 GB of free download credit, spent only when you download a file. Add more anytime, it never expires.") +
       rule
     : "";
   const text =
