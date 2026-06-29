@@ -171,6 +171,7 @@ function renderCredit(): void {
   addLink.hidden = false;
   // After a top-up (?paid=1) the chip already reflects the refreshed balance (a fresh loadDelivery re-read
   // the header on unlock); confirm it with a brief "Credit added" note.
+  if (justPaid) paidNote.textContent = `Credit added. You now have ${creditSize(credit.balanceBytes)} of download credit.`;
   paidNote.hidden = !justPaid;
   // Low-balance nudge: affordable file (projected remaining >= 0) but it leaves under the floor. An
   // unaffordable file is the existing wall, not this soft note.

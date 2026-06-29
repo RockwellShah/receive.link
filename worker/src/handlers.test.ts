@@ -798,7 +798,7 @@ test("stripe: checkoutSessionParams encodes a one-time payment and LOCKS the cur
 });
 
 test("billing: the price is one env knob; packs + labels derive from it", async () => {
-  const cheap = await makeTestEnv(); // default 1¢/GB
+  const cheap = await makeTestEnv({ BILLING_ENABLED: "1" }); // default 1¢/GB; billing on so /billing/packs serves
   expect(priceCentsPerGb(cheap.env)).toBe(1);
   const p10cheap = packList(cheap.env).find((p) => p.id === "p10")!;
   expect(p10cheap.bytes).toBe(1_000_000_000_000); // $10 = 1 TB of bytes, shown as 1,000 GB (always-GB labels)
@@ -813,24 +813,46 @@ test("billing: the price is one env knob; packs + labels derive from it", async 
   expect(out.packs.map((x) => x.id)).toEqual(["p10", "p25", "p50", "p100"]);
 });
 
+test("billing: checkout + packs are 503 when BILLING_ENABLED is off, even with Stripe configured", async () => {
+  // Stripe keys present but BILLING_ENABLED off: a direct caller still cannot buy credit that downloads
+  // (free while billing is off) would never spend. The gate is billingEnabled, not just stripeConfigured.
+  const h = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
+  expect(billingPacks(new Request("http://x/billing/packs"), h.env).status).toBe(503);
+  expect((await billingCheckout(post("/billing/checkout", { challengeId: "x", proof: "y", pack: "p10" }), h.env)).status).toBe(503);
+});
+
+test("credit UX: the setup (drop-link) email carries the free-credit line only when billing is on", async () => {
+  const on = await makeTestEnv({ BILLING_ENABLED: "1" });
+  await register(post("/register", { sealedEmail: await sealed(on, "receiver@example.com"), shareKey: SHARE_KEY, label: "x" }), on.env);
+  await confirm(post("/confirm", { nonce: nonceFrom(on.email.sent[0]!.text!) }), on.env);
+  const drop = on.email.sent.at(-1)!; // confirm sends the drop-link email after the register confirm email
+  expect(drop.text).toContain("download credit");
+  expect(drop.html).toContain("download credit");
+
+  const off = await makeTestEnv(); // billing off (default)
+  await register(post("/register", { sealedEmail: await sealed(off, "r2@example.com"), shareKey: SHARE_KEY, label: "x" }), off.env);
+  await confirm(post("/confirm", { nonce: nonceFrom(off.email.sent[0]!.text!) }), off.env);
+  expect(off.email.sent.at(-1)!.text).not.toContain("download credit");
+});
+
 test("billing checkout: 503 unless BOTH Stripe secrets are set; 400 on an unknown pack", async () => {
-  const h = await makeTestEnv(); // neither secret
+  const h = await makeTestEnv({ BILLING_ENABLED: "1" }); // billing on; neither Stripe secret -> the Stripe gate 503s
   const finalId = await deliver(h, await setupLink(h), 200);
   const cp = await challengeAndProof(h, finalId, RECEIVER);
   expect((await billingCheckout(post("/billing/checkout", { ...cp, pack: "p10" }), h.env)).status).toBe(503);
   // API key set but webhook secret missing -> still 503, so a user can never pay before we can credit them.
-  const hk = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x" });
+  const hk = await makeTestEnv({ BILLING_ENABLED: "1", STRIPE_SECRET_KEY: "sk_test_x" });
   const fk = await deliver(hk, await setupLink(hk), 200);
   const cpk = await challengeAndProof(hk, fk, RECEIVER);
   expect((await billingCheckout(post("/billing/checkout", { ...cpk, pack: "p10" }), hk.env)).status).toBe(503);
-  const h2 = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
+  const h2 = await makeTestEnv({ BILLING_ENABLED: "1", STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
   const f2 = await deliver(h2, await setupLink(h2), 200);
   const cp2 = await challengeAndProof(h2, f2, RECEIVER);
   expect((await billingCheckout(post("/billing/checkout", { ...cp2, pack: "nope" }), h2.env)).status).toBe(400);
 });
 
 test("billing checkout: a proven request returns a Stripe Checkout URL", async () => {
-  const h = await makeTestEnv({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
   const finalId = await deliver(h, await setupLink(h), 200);
   const cp = await challengeAndProof(h, finalId, RECEIVER);
   const realFetch = globalThis.fetch;

@@ -56,9 +56,23 @@ export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string,
 
 /** Post-confirm email: a durable copy of the receiver's link (to share) and their
  *  private manage/revoke link, so neither is lost if they close the tab. */
-export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, manageUrl: string, label: string): Promise<void> {
+export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, manageUrl: string, label: string, billing = false): Promise<void> {
   const subject = `Your share link is ready${label ? ` · ${label}` : ""}`;
   const lbl = label ? ` "${label}"` : "";
+  // Free-credit explainer, billing ON only: tell the new receiver receiving is free + they start with
+  // download credit. Generic (no live balance, no buy link): the account isn't created until a file lands.
+  const creditText = billing
+    ? `YOUR DOWNLOAD CREDIT\n` +
+      `Receiving is always free. You start with 1 GB of download credit to open the files people send ` +
+      `you, and you only spend it when you download. Add credit anytime, it never expires.\n\n` +
+      `- - - - - -\n\n`
+    : "";
+  const creditHtml = billing
+    ? head("Your download credit") +
+      para("Receiving is always free. You start with 1 GB of download credit to open the files people send you, and you only spend it when you download.") +
+      para("Add credit anytime, it never expires.") +
+      rule
+    : "";
   const text =
     `Your share link${lbl} is ready.\n\n` +
     `SHARE THIS LINK\n` +
@@ -72,6 +86,7 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
     `receiver, use the link below:\n\n` +
     `${manageUrl}\n\n` +
     `- - - - - -\n\n` +
+    creditText +
     `Only you can open the files. We can't see them, and we don't store your email address.\n`;
   const html = wrap(
     intro(`Your share link${label ? ` <strong>"${esc(label)}"</strong>` : ""} is ready.`) +
@@ -86,6 +101,7 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
       para("If you ever want to stop receiving files through this receiver, use the link below.") +
       urlBox(manageUrl) +
       rule +
+      creditHtml +
       para("Only you can open the files. We can't see them, and we don't store your email address."),
   );
   await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });

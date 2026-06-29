@@ -301,7 +301,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
     const decoded = decodeDropLink(full);
     const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
     const email = await unsealEmail(kemPriv, decoded.sealedEmail);
-    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label);
+    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, billingEnabled(env));
   } catch {
     /* page already showed both links */
   }
@@ -908,7 +908,9 @@ export async function fetchDownload(req: Request, env: Env): Promise<Response> {
 // POST /billing/checkout { challengeId, proof, pack } -> { url } (a Stripe-hosted Checkout URL)
 export async function billingCheckout(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
-  if (!stripeConfigured(env)) return json({ error: "billing unavailable" }, 503, origin);
+  // Billing must be ON, not just Stripe-configured: if keys are present while BILLING_ENABLED is off
+  // (e.g. staging mid-rollout), a direct caller must not be able to buy credit that downloads won't spend.
+  if (!billingEnabled(env) || !stripeConfigured(env)) return json({ error: "billing unavailable" }, 503, origin);
   const body = await readJson<{ challengeId: string; proof: string; pack: string }>(req);
   if (!body || typeof body.pack !== "string" || !isPackId(body.pack)) return json({ error: "unknown pack" }, 400, origin);
   // Prove passkey possession on the file being unlocked -> the owning account (rid) to credit.
@@ -963,6 +965,7 @@ export async function billingWebhook(req: Request, env: Env): Promise<Response> 
 // (just pricing info, no account data); the client only fetches it at the out-of-funds wall.
 export function billingPacks(req: Request, env: Env): Response {
   const origin = corsOrigin(env, req);
+  if (!billingEnabled(env)) return json({ error: "billing unavailable" }, 503, origin);
   return json({ packs: packList(env), priceCentsPerGb: priceCentsPerGb(env) }, 200, origin);
 }
 

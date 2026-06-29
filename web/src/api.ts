@@ -161,7 +161,7 @@ export class DropApi {
     const rawTier = res.headers.get("X-RL-Tier");
     // Only surface credit when BOTH headers are present and parse cleanly (billing on); any gap = billing
     // off, so the page renders no credit UI.
-    const balanceBytes = rawCredit !== null ? Number(rawCredit) : NaN;
+    const balanceBytes = rawCredit !== null && /^\d+$/.test(rawCredit) ? Number(rawCredit) : NaN; // non-negative integer only; reject "", whitespace, negative, fractional
     const tier: "free" | "paid" | undefined = rawTier === "free" || rawTier === "paid" ? rawTier : undefined;
     const credit: { balanceBytes: number; tier: "free" | "paid" } | undefined =
       Number.isFinite(balanceBytes) && tier ? { balanceBytes, tier } : undefined;
