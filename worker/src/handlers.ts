@@ -25,6 +25,7 @@ import { recipientPkFromShareKeyBytes } from "../../shared/sharekey";
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
 import { cors, clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
 import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes } from "./kv";
+import { mintMagicToken } from "./magic";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, fileKeyMetadataPrefixLen, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import { createCheckoutSession, isPackId, packList, parseCreditFromEvent, priceCentsPerGb, stripeConfigured, verifyStripeSignature } from "./stripe";
 import type { Env } from "./types";
@@ -144,7 +145,7 @@ export function receiverId(env: Env, email: string): Promise<string> {
 
 /** Per-recipient cumulative inbound ceiling in bytes (the free-tier cap). Unset/<=0 => uncapped, so
  *  the Worker meters every recipient but rejects nothing until the cap is dialed in (see uploadComplete). */
-function receiverInboundCap(env: Env): number {
+export function receiverInboundCap(env: Env): number {
   return envInt(env.RECEIVER_INBOUND_CAP_BYTES, 0);
 }
 
@@ -153,18 +154,30 @@ function receiverInboundCap(env: Env): number {
 const DEFAULT_FREE_GRANT_BYTES = 1_000_000_000; // 1 GB (decimal) of free download credit per new account
 
 /** Paid-tier at-rest (un-downloaded) ceiling in bytes (the 100 GB safety cap). Unset/<=0 => uncapped. */
-function paidAtRestCap(env: Env): number {
+export function paidAtRestCap(env: Env): number {
   return envInt(env.PAID_ATREST_CAP_BYTES, 0);
+}
+
+/** Config invariant for the account wallet: adding credit flips an account free->paid, and the paid tier uses
+ *  a DIFFERENT cap basis (at-rest pending vs lifetime total). A top-up (even an attacker funding the victim)
+ *  must never SHRINK a receiver's effective inbox capacity, so a finite paid cap must be >= the finite free
+ *  cap. Returns true if the current env would let paid be a downgrade (both caps finite and paid < free);
+ *  asserted false by a test, and the deployment sets the paid cap >= the free cap. */
+export function paidTierDowngrades(env: Env): boolean {
+  const free = receiverInboundCap(env);
+  const paid = paidAtRestCap(env);
+  return free > 0 && paid > 0 && paid < free;
 }
 /** Free credit seeded into a new account when billing is on (default 1 GB, decimal). Unlike envInt, an
  *  explicit "0" is honored (a deliberate no-free-grant config), not coerced to the default. */
-function freeGrantBytes(env: Env): number {
+export function freeGrantBytes(env: Env): number {
   if (env.FREE_GRANT_BYTES === undefined) return DEFAULT_FREE_GRANT_BYTES;
   const n = parseInt(env.FREE_GRANT_BYTES, 10);
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_FREE_GRANT_BYTES;
 }
-/** Whether the per-file download charge is live. Off (default) = downloads are free (Phase 1 behavior). */
-function billingEnabled(env: Env): boolean {
+/** Whether the per-file download charge (and the account wallet surface) is live. Off (default) = downloads
+ *  are free (Phase 1 behavior) and the /account/* endpoints 503, so Phase 2a ships inert until billing is on. */
+export function billingEnabled(env: Env): boolean {
   const v = env.BILLING_ENABLED?.toLowerCase();
   return v === "1" || v === "true";
 }
@@ -192,7 +205,8 @@ const stripControl = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, "");
 
 // Canonicalize for abuse-limit keys only (we still deliver to the exact unsealed
 // address): trim + lowercase so "User@x.com " and "user@x.com" share a quota.
-const canonEmail = (s: string) => s.trim().toLowerCase();
+// Exported so the account-login rate-limit key matches register's exactly.
+export const canonEmail = (s: string) => s.trim().toLowerCase();
 
 /**
  * Decode a Drop link and verify the server signature against the signing PUBLIC
@@ -301,7 +315,13 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
     const decoded = decodeDropLink(full);
     const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
     const email = await unsealEmail(kemPriv, decoded.sealedEmail);
-    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, billingEnabled(env));
+    // Billing on: bake a reusable (7-day) account magic-link into the setup email so the receiver can add
+    // credit straight from it (Phase 2a Flow B). rid is derived from the email here, never stored.
+    let accountUrl: string | undefined;
+    if (billingEnabled(env)) {
+      accountUrl = `${linkOrigin(env)}/account#${await mintMagicToken(env, await receiverId(env, email), true)}`;
+    }
+    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, accountUrl);
   } catch {
     /* page already showed both links */
   }
@@ -677,7 +697,10 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     if (billingEnabled(env)) {
       try {
         const s = await acct.summary(freeGrantBytes(env));
-        creditLine = { balanceBytes: s.balance, tier: s.tier, buyUrl: `${linkOrigin(env)}/d/${finalId}?buy=1` };
+        // "Add credit" now points at the account wallet (Phase 2a Flow B) via a reusable magic-link, not the
+        // old /d/<id>?buy=1 file-unlock detour. rid is already resolved above.
+        const accountUrl = `${linkOrigin(env)}/account#${await mintMagicToken(env, rid, true)}`;
+        creditLine = { balanceBytes: s.balance, tier: s.tier, buyUrl: accountUrl };
       } catch {
         /* leave creditLine undefined -> unchanged legacy email */
       }

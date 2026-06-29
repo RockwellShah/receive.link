@@ -652,7 +652,7 @@ test("credit UX: the delivery email carries the credit status line when billing 
   expect(delivery.text).toContain("download credit left."); // the credit line is now its own fenced block...
   expect(delivery.text).toContain("Add credit:"); // ...with "Add credit:" on its own line (not crowded inline)
   expect(delivery.text).toContain("free plan"); // a brand-new account is on the free tier
-  expect(delivery.text).toContain("?buy=1"); // the proactive add-credit link lands on this file's buy view
+  expect(delivery.text).toContain("/account#"); // the proactive add-credit link is an account magic-link (Phase 2a)
   expect(delivery.html).toContain("download credit left."); // HTML part carries it too
 });
 
@@ -661,7 +661,7 @@ test("credit UX: the delivery email has NO credit status line when billing is of
   await deliver(h, await setupLink(h), 200);
   const delivery = h.email.sent.at(-1)!;
   expect(delivery.text).not.toContain("download credit");
-  expect(delivery.text).not.toContain("?buy=1");
+  expect(delivery.text).not.toContain("/account#");
 });
 
 test("credit UX: the /confirm response carries billingEnabled (gates the result page messaging)", async () => {

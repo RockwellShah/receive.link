@@ -56,19 +56,21 @@ export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string,
 
 /** Post-confirm email: a durable copy of the receiver's link (to share) and their
  *  private manage/revoke link, so neither is lost if they close the tab. */
-export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, manageUrl: string, label: string, billing = false): Promise<void> {
+export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, manageUrl: string, label: string, accountUrl?: string): Promise<void> {
   const subject = `Your share link is ready${label ? ` · ${label}` : ""}`;
   const lbl = label ? ` "${label}"` : "";
-  // Free-credit explainer, billing ON only: tell the new receiver receiving is free + they start with
-  // download credit. Generic (no live balance, no buy link): the account isn't created until a file lands.
-  const creditText = billing
+  // Free-credit explainer + a real "Add credit" button, billing ON only (accountUrl set). The balance is
+  // generic (the account isn't created until a file lands); the button is an email magic-link into the wallet.
+  const creditText = accountUrl
     ? `YOUR DOWNLOAD CREDIT\n` +
       `You start with 1 GB of free download credit, spent only when you download a file. Add more anytime, it never expires.\n\n` +
+      `Add credit: ${accountUrl}\n\n` +
       `- - - - - -\n\n`
     : "";
-  const creditHtml = billing
+  const creditHtml = accountUrl
     ? head("Your download credit") +
       para("You start with 1 GB of free download credit, spent only when you download a file. Add more anytime, it never expires.") +
+      button(accountUrl, "Add credit") +
       rule
     : "";
   const text =
@@ -101,6 +103,28 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
       rule +
       creditHtml +
       para("Only you can open the files. We can't see them, and we don't store your email address."),
+  );
+  await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
+}
+
+/** Account sign-in email: a passwordless magic-link into the WALLET (see balance + add credit), sent when a
+ *  receiver asks to sign in at /account. The link carries a single-use, short-lived token; possession of the
+ *  email proves control of the address (the account is email-derived). Mail never carries the balance. */
+export async function sendAccountLoginEmail(env: Env, to: string, accountUrl: string): Promise<void> {
+  const subject = "Sign in to receive.link";
+  const text =
+    `Open your receive.link account to see your download credit and add more.\n\n` +
+    `SIGN IN\n` +
+    `${accountUrl}\n\n` +
+    `- - - - - -\n\n` +
+    `This link expires in 15 minutes and can be used once. If you didn't request it, you can ignore this email.\n`;
+  const html = wrap(
+    intro("Open your receive.link account to see your download credit and add more.") +
+      head("Sign in") +
+      para("Click below to open your account, where you can see your balance and add credit.") +
+      button(accountUrl, "Open my account") +
+      rule +
+      note("This link expires in 15 minutes and can be used once. If you didn't request it, you can ignore this email."),
   );
   await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
 }

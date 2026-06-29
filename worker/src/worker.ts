@@ -19,7 +19,12 @@
 //   GET  /billing/packs    the prepaid credit tiers at the current price (for the top-up picker)
 //   POST /billing/checkout passkey-proof -> a Stripe Checkout URL to add prepaid credit
 //   POST /billing/webhook  Stripe -> us: verify the signature, credit the account on a paid session
+//   POST /account/login    email magic-link sign-in: sealed email -> emailed sign-in link, uniform 202
+//   POST /account/session  redeem a magic token -> a 30-min Bearer session + opening balance
+//   POST /account/summary  (Bearer) -> the account's tier + balance
+//   POST /account/checkout (Bearer) -> a Stripe Checkout URL to add prepaid credit (no file needed)
 
+import { accountCheckout, accountLogin, accountSession, accountSummary } from "./account";
 import { billingCheckout, billingPacks, billingWebhook, confirm, discardObject, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
 import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
 import type { Env } from "./types";
@@ -71,6 +76,14 @@ export default {
         return billingCheckout(req, env);
       case "POST /billing/webhook":
         return billingWebhook(req, env);
+      case "POST /account/login":
+        return accountLogin(req, env);
+      case "POST /account/session":
+        return accountSession(req, env);
+      case "POST /account/summary":
+        return accountSummary(req, env);
+      case "POST /account/checkout":
+        return accountCheckout(req, env);
       default:
         return json({ error: "not found" }, 404, origin);
     }
