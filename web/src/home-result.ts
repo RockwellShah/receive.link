@@ -83,10 +83,6 @@ function renderReveal(shareUrl: string, opts: { heading: string; sub: string; no
   const note = el("note");
   if (opts.note) { note.textContent = opts.note; note.hidden = false; } else { note.hidden = true; }
 
-  // Free-credit explainer: ONLY when the worker says billing is on (the confirm flow passes the flag; the
-  // QR flow never does, so it stays hidden there). The copy is static in the HTML; we just toggle it.
-  el("creditmsg").hidden = !opts.billingEnabled;
-
   const copy = el("copy");
   const flashCopy = (msg: string) => { copy.textContent = msg; setTimeout(() => { copy.textContent = "Copy link"; }, 1800); };
   copy.onclick = () => {

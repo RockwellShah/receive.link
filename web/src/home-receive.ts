@@ -145,7 +145,7 @@ function showReady(): void {
 // the email, and the pack labels: a 1 TB balance reads "1,000 GB credit" (big numbers feel generous).
 // Decimal GB (1 GB = 1e9), never a dollar price. (Binary fmtBytes stays for raw file sizes.)
 function creditSize(bytes: number): string {
-  const gb = bytes / 1_000_000_000;
+  const gb = Math.round((bytes / 1_000_000_000) * 10) / 10; // round to 0.1 GB so float noise can't render a spurious ".0"
   const s = Number.isInteger(gb) ? String(gb) : gb.toFixed(1);
   const [intPart, frac] = s.split(".");
   const withCommas = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -309,6 +309,12 @@ async function main(): Promise<void> {
   } catch (e) {
     showError(humanError(e));
     return;
+  }
+  if (wantBuy) {
+    // Arrived via the email's "Add credit" link (?buy=1): reframe the unlock screen for adding credit, so it
+    // doesn't read as "open a file". The passkey identifies the account; after unlock the picker auto-opens.
+    el("lockh1").textContent = "Add credit";
+    el("locksub").textContent = "Unlock with your passkey to add credit to your account.";
   }
   show("locked"); // wait for the Unlock click before touching the passkey (Safari needs the user gesture)
 }

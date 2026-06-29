@@ -649,7 +649,8 @@ test("credit UX: the delivery email carries the credit status line when billing 
   const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000000000" }); // 1 GB grant
   await deliver(h, await setupLink(h), 200);
   const delivery = h.email.sent.at(-1)!;
-  expect(delivery.text).toContain("download credit left. Add credit:");
+  expect(delivery.text).toContain("download credit left."); // the credit line is now its own fenced block...
+  expect(delivery.text).toContain("Add credit:"); // ...with "Add credit:" on its own line (not crowded inline)
   expect(delivery.text).toContain("free plan"); // a brand-new account is on the free tier
   expect(delivery.text).toContain("?buy=1"); // the proactive add-credit link lands on this file's buy view
   expect(delivery.html).toContain("download credit left."); // HTML part carries it too

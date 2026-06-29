@@ -41,7 +41,7 @@ function bytesForCents(amountCents: number, priceCentsPerGb: number): number {
  *  surfaces (delivery email status line, the /fetch/preview balance headers consumer) and the pack picker
  *  all render credit in the same unit. Decimal GB (1 GB = 1e9). No em dash per house style. */
 export function humanSize(bytes: number): string {
-  const gb = bytes / GB;
+  const gb = Math.round((bytes / GB) * 10) / 10; // round to 0.1 GB so float noise can't render a spurious ".0"
   const s = Number.isInteger(gb) ? String(gb) : gb.toFixed(1);
   const [intPart, frac] = s.split(".");
   const withCommas = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");

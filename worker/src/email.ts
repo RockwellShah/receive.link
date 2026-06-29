@@ -128,9 +128,11 @@ export async function sendDownloadEmail(
   // Credit status line (billing on only). "about <X>" reads naturally for a rounded balance; free tier
   // also names the plan, so a free user learns a paid path exists.
   const creditText = credit
-    ? credit.tier === "free"
-      ? `\nYou're on the free plan, with about ${humanSize(credit.balanceBytes)} of download credit left. Add credit: ${credit.buyUrl}\n`
-      : `\nYou have about ${humanSize(credit.balanceBytes)} of download credit left. Add credit: ${credit.buyUrl}\n`
+    ? (credit.tier === "free"
+        ? `You're on the free plan, with about ${humanSize(credit.balanceBytes)} of download credit left.\n`
+        : `You have about ${humanSize(credit.balanceBytes)} of download credit left.\n`) +
+      `Add credit: ${credit.buyUrl}\n\n` +
+      `- - - - - -\n\n`
     : "";
   const creditHtml = credit
     ? note(
@@ -146,8 +148,8 @@ export async function sendDownloadEmail(
     `${downloadUrl}\n\n` +
     `Link expires in 7 days.\n\n` +
     `- - - - - -\n\n` +
-    `Only you can open this file.\n` +
     creditText +
+    `Only you can open this file.\n` +
     (manageUrl ? `\nNeed to stop receiving files through ${label ? `"${label}"` : "this link"}?\n${manageUrl}\n` : "");
   const html = wrap(
     intro(`A file was sent to your link${label ? ` <strong>"${esc(label)}"</strong>` : ""}.`) +
@@ -156,8 +158,9 @@ export async function sendDownloadEmail(
       button(downloadUrl, "Open File") +
       para("Link expires in 7 days.") +
       rule +
-      para("Only you can open this file.") +
       creditHtml +
+      (credit ? rule : "") +
+      para("Only you can open this file.") +
       (manageUrl
         ? para(`Need to stop receiving files through ${label ? `<strong>${esc(label)}</strong>` : "this link"}?`) +
           quietLink(manageUrl, "Disable this link")
