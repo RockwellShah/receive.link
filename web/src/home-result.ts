@@ -76,8 +76,12 @@ function linkLabel(payload: string): string {
 function renderReveal(shareUrl: string, opts: { heading: string; sub: string; note?: string; qrOpen: boolean; name?: string; billingEnabled?: boolean }): void {
   el("revh").textContent = opts.heading;
   el("revsub").innerHTML = opts.sub; // sub is a trusted constant; may contain <br>
+  // Named links show the name chip in place of the lock icon (saves vertical space, better on mobile);
+  // unnamed links show the lock icon. Exactly one of the two renders.
   const nameEl = el("revname");
-  if (opts.name) { el("revnametext").textContent = opts.name; nameEl.hidden = false; } else { nameEl.hidden = true; }
+  const iconEl = el("revicon");
+  if (opts.name) { el("revnametext").textContent = opts.name; nameEl.hidden = false; iconEl.hidden = true; }
+  else { nameEl.hidden = true; iconEl.hidden = false; }
   el("url").textContent = shareUrl;
 
   const note = el("note");
