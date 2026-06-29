@@ -44,7 +44,12 @@ let api: DropApi | null = null;
 let objectId = "";
 // Returning from a top-up (Stripe -> ?paid=1): the crediting webhook can lag the redirect a second or two.
 const justPaid = new URLSearchParams(location.search).has("paid");
+// Proactive add-credit from the delivery email (?buy=1): after unlock, auto-open the top-up picker.
+const wantBuy = new URLSearchParams(location.search).has("buy");
 let firstSave = true;
+// Low-balance nudge floor: if this file is affordable but leaves under 200 MB, show a soft note (mirrors
+// the worker's projected-remaining nudge logic). Affordable-only; an unaffordable file hits the wall instead.
+const LOW_CREDIT_FLOOR = 200 * 1024 * 1024;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // Offer the "try a different passkey" recovery only for failures a different passkey can fix (passkey
@@ -130,7 +135,44 @@ function showReady(): void {
     el("rfsize").textContent = fmtBytes(delivery.originalSize);
     box.hidden = true;
   }
+  renderCredit();
   show("ready");
+}
+
+// Credit UI on the ready panel, ALL gated on delivery.credit (billing on). No-ops cleanly when it's
+// undefined (billing off): every element stays hidden and the add-credit link is inert. Reuses the page's
+// Decimal GB/TB for credit, to match the worker's humanSize, the email, and the pack labels ($10 · 1 TB),
+// so a 1 TB pack reads "1 TB credit" not "0.9 TB". (Binary fmtBytes stays for raw file sizes.) Never a price.
+function creditSize(bytes: number): string {
+  const gb = bytes / 1_000_000_000;
+  if (gb >= 1000) { const tb = gb / 1000; return `${Number.isInteger(tb) ? tb : tb.toFixed(1)} TB`; }
+  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
+}
+function renderCredit(): void {
+  const chipRow = el("rcreditrow");
+  const chip = el("rcredit");
+  const low = el("rlownote");
+  const paidNote = el("rpaidnote");
+  const addLink = el("raddcredit") as HTMLButtonElement;
+  const credit = delivery?.credit;
+  if (!credit) {
+    // Billing off: hide the whole credit cluster.
+    chipRow.hidden = true;
+    low.hidden = true;
+    paidNote.hidden = true;
+    addLink.hidden = true;
+    return;
+  }
+  chip.textContent = `${creditSize(credit.balanceBytes)} credit`;
+  chipRow.hidden = false;
+  addLink.hidden = false;
+  // After a top-up (?paid=1) the chip already reflects the refreshed balance (a fresh loadDelivery re-read
+  // the header on unlock); confirm it with a brief "Credit added" note.
+  paidNote.hidden = !justPaid;
+  // Low-balance nudge: affordable file (projected remaining >= 0) but it leaves under the floor. An
+  // unaffordable file is the existing wall, not this soft note.
+  const projected = credit.balanceBytes - (delivery?.originalSize ?? 0);
+  low.hidden = !(projected >= 0 && projected < LOW_CREDIT_FLOOR);
 }
 
 function makeUI(): ReceiveUI {
@@ -239,7 +281,13 @@ function doOpen(forceOpen = false): void {
   opening = true;
   show("loading");
   loadDelivery(a, objectId, forceOpen)
-    .then((d) => { delivery = d; showReady(); })
+    .then((d) => {
+      delivery = d;
+      showReady();
+      // Proactive add-credit from the email's ?buy=1 link: open the top-up picker once the file is unlocked
+      // (only if billing is on, so an off deployment ignores a stray ?buy). showTopUp swaps to the topup panel.
+      if (wantBuy && d.credit) void showTopUp();
+    })
     .catch((e) => showError(humanError(e), canRetryWithDifferentPasskey(e)))
     .finally(() => { opening = false; });
 }
@@ -266,5 +314,6 @@ el("reopen").onclick = () => doOpen(true); // explicit "try a different passkey"
 el("save").onclick = () => void doSave();
 el("saveagain").onclick = () => void doSave();
 el("delfile").onclick = () => void doDelete();
+el("raddcredit").onclick = () => void showTopUp(); // proactive add-credit (billing on; the element is hidden otherwise)
 el("topupback").onclick = () => showReady();
 void main();

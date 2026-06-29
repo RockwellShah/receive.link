@@ -73,7 +73,7 @@ function linkLabel(payload: string): string {
 }
 
 // Reveal the link: the URL, copy + share, and the QR toggle.
-function renderReveal(shareUrl: string, opts: { heading: string; sub: string; note?: string; qrOpen: boolean; name?: string }): void {
+function renderReveal(shareUrl: string, opts: { heading: string; sub: string; note?: string; qrOpen: boolean; name?: string; billingEnabled?: boolean }): void {
   el("revh").textContent = opts.heading;
   el("revsub").innerHTML = opts.sub; // sub is a trusted constant; may contain <br>
   const nameEl = el("revname");
@@ -82,6 +82,10 @@ function renderReveal(shareUrl: string, opts: { heading: string; sub: string; no
 
   const note = el("note");
   if (opts.note) { note.textContent = opts.note; note.hidden = false; } else { note.hidden = true; }
+
+  // Free-credit explainer: ONLY when the worker says billing is on (the confirm flow passes the flag; the
+  // QR flow never does, so it stays hidden there). The copy is static in the HTML; we just toggle it.
+  el("creditmsg").hidden = !opts.billingEnabled;
 
   const copy = el("copy");
   const flashCopy = (msg: string) => { copy.textContent = msg; setTimeout(() => { copy.textContent = "Copy link"; }, 1800); };
@@ -150,13 +154,14 @@ async function confirmFlow(nonce: string): Promise<void> {
     const cfg = await ensureConfig();
     if (!isConfigured(cfg)) { showError("This site isn't configured for sign-up yet. Try again shortly."); return; }
     const api = new DropApi(cfg.apiBase);
-    const { link } = await api.confirm(nonce);
+    const { link, billingEnabled } = await api.confirm(nonce);
     renderReveal(`${location.origin}/#${link}`, {
       heading: "Your link is ready",
       sub: "Share it with anyone.<br>Only you can open what they send.",
       note: "Also, we emailed you this info.",
       qrOpen: false,
       name: linkLabel(link),
+      billingEnabled,
     });
   } catch (e) { showError(humanError(e)); }
 }

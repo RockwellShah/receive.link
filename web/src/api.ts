@@ -55,8 +55,9 @@ export class DropApi {
     return this.postJson("/register", body);
   }
 
-  /** Confirm: exchange the one-time nonce for the finished signed Drop link. */
-  confirm(nonce: string): Promise<{ link: string; revokeToken: string }> {
+  /** Confirm: exchange the one-time nonce for the finished signed Drop link. `billingEnabled` gates the
+   *  result page's free-credit messaging (the worker is the source of truth). */
+  confirm(nonce: string): Promise<{ link: string; revokeToken: string; billingEnabled?: boolean }> {
     return this.postJson("/confirm", { nonce });
   }
 
@@ -145,15 +146,26 @@ export class DropApi {
 
   /** Download gate (free preview): submit the proof -> the head+metadata bytes. The Worker serves them
    *  directly (a presigned URL would be all-or-nothing, i.e. a free full download), so this returns raw
-   *  ciphertext prefix bytes for the client to decrypt into the filename + size. */
-  async fetchPreview(challengeId: string, proof: string): Promise<Uint8Array<ArrayBuffer>> {
+   *  ciphertext prefix bytes for the client to decrypt into the filename + size. When billing is on the
+   *  Worker also stamps the receiver's balance + tier into response headers (X-RL-Credit / X-RL-Tier);
+   *  `credit` is undefined when those headers are absent (billing off, or a legacy binding with no rid). */
+  async fetchPreview(challengeId: string, proof: string): Promise<{ prefix: Uint8Array<ArrayBuffer>; credit?: { balanceBytes: number; tier: "free" | "paid" } }> {
     const res = await fetch(`${this.base}/fetch/preview`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ challengeId, proof }),
     });
     if (!res.ok) throw await asError(res);
-    return new Uint8Array(await res.arrayBuffer());
+    const prefix = new Uint8Array(await res.arrayBuffer());
+    const rawCredit = res.headers.get("X-RL-Credit");
+    const rawTier = res.headers.get("X-RL-Tier");
+    // Only surface credit when BOTH headers are present and parse cleanly (billing on); any gap = billing
+    // off, so the page renders no credit UI.
+    const balanceBytes = rawCredit !== null ? Number(rawCredit) : NaN;
+    const tier: "free" | "paid" | undefined = rawTier === "free" || rawTier === "paid" ? rawTier : undefined;
+    const credit: { balanceBytes: number; tier: "free" | "paid" } | undefined =
+      Number.isFinite(balanceBytes) && tier ? { balanceBytes, tier } : undefined;
+    return { prefix, credit };
   }
 
   /** Download gate (charged download): submit the proof -> a short-lived presigned GET URL, or a

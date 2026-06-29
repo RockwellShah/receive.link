@@ -24,6 +24,9 @@ export interface Delivery {
   filename: string;
   mimeType: string;
   originalSize: number;
+  // The receiver's download credit, read from the /fetch/preview response headers. Present only when
+  // billing is on (and the binding carries a rid); undefined = billing off, so the page shows no credit UI.
+  credit?: { balanceBytes: number; tier: "free" | "paid" };
   // For a multi-file bundle, the file list the sender packed into the encrypted metadata (undefined for
   // a single file or a link without it). `total` is the true count; `names` may be truncated for huge bundles.
   entries?: { total: number; names: string[] };
@@ -189,7 +192,7 @@ export async function loadDelivery(api: DropApi, objectId: string, forceOpen = f
   // bytes (never the payload, no charge), so the filename shows before the receiver commits to (and pays
   // for) the download.
   const { challengeId, proof } = await prove(api, objectId, identity);
-  const prefix = await api.fetchPreview(challengeId, proof);
+  const { prefix, credit } = await api.fetchPreview(challengeId, proof);
   const { metadata } = await openCiphertext(new Blob([prefix]), identity, NS).catch((e) => {
     // This passkey didn't decrypt the file (wrong identity). Drop any stale pin so the next open
     // re-prompts cleanly instead of silently reusing the wrong passkey, then surface the failure.
@@ -203,6 +206,7 @@ export async function loadDelivery(api: DropApi, objectId: string, forceOpen = f
     filename,
     mimeType: metadata.mimeType,
     originalSize: metadata.originalSize,
+    credit,
     entries: parseBundleEntries(metadata.extras),
     save: (ui) => saveToDisk(api, objectId, identity, filename, metadata.mimeType, metadata.originalSize, ui),
     packs: async () => (await api.billingPacks()).packs,

@@ -36,8 +36,10 @@ function bytesForCents(amountCents: number, priceCentsPerGb: number): number {
   return Math.floor((amountCents / priceCentsPerGb) * GB);
 }
 
-/** Human pack size for labels (decimal GB/TB; no em dash per house style). */
-function humanSize(bytes: number): string {
+/** Human pack size for labels (decimal GB/TB; no em dash per house style). Exported so the credit-UX
+ *  surfaces (delivery email status line, /fetch/preview headers consumer) render balances in the same
+ *  rounded capacity units as the pack picker. */
+export function humanSize(bytes: number): string {
   const gb = bytes / GB;
   if (gb >= 1000) {
     const tb = gb / 1000;

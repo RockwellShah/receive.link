@@ -6,6 +6,7 @@
 // receiver's own link label, which is HTML-escaped before it touches the markup.
 
 import type { Env } from "./types";
+import { humanSize } from "./stripe";
 
 const BRAND = "#0F7A45"; // deep receive.link green for the CTA button — white text clears contrast and survives Gmail dark-mode inversion
 
@@ -90,14 +91,38 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
   await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
 }
 
-/** Delivery email: someone sent a file; here is the link to open it. */
-export async function sendDownloadEmail(env: Env, to: string, downloadUrl: string, label: string, manageUrl?: string): Promise<void> {
+/** Delivery email: someone sent a file; here is the link to open it. When `credit` is provided (billing
+ *  on), ONE status line is appended showing the receiver's remaining download credit + an "Add credit"
+ *  link; when it is omitted (billing off), the email is byte-for-byte the legacy one. The line carries
+ *  rounded capacity only (humanSize), never the filename or size (mail never carries those). */
+export async function sendDownloadEmail(
+  env: Env,
+  to: string,
+  downloadUrl: string,
+  label: string,
+  manageUrl?: string,
+  credit?: { balanceBytes: number; tier: "free" | "paid"; buyUrl: string },
+): Promise<void> {
   // Append a short code from the download id so every delivery has a unique subject;
   // otherwise mail clients thread same-subject messages into one conversation. The
   // code is the start of the /d/<id> link, so it lines up with the download URL below.
   const ref = downloadUrl.split("/").pop()?.slice(0, 6) ?? "";
   const subject = `A file was sent to you${label ? ` · ${label}` : ""}${ref ? ` · #${ref}` : ""}`;
   const lbl = label ? ` "${label}"` : "";
+  // Credit status line (billing on only). "about <X>" reads naturally for a rounded balance; free tier
+  // also names the plan, so a free user learns a paid path exists.
+  const creditText = credit
+    ? credit.tier === "free"
+      ? `\nYou're on the free plan, with about ${humanSize(credit.balanceBytes)} of download credit left. Add credit: ${credit.buyUrl}\n`
+      : `\nYou have about ${humanSize(credit.balanceBytes)} of download credit left. Add credit: ${credit.buyUrl}\n`
+    : "";
+  const creditHtml = credit
+    ? note(
+        credit.tier === "free"
+          ? `You're on the free plan, with about <strong>${esc(humanSize(credit.balanceBytes))}</strong> of download credit left. <a href="${credit.buyUrl}" style="color:#1f9d57;text-decoration:underline;">Add credit</a>`
+          : `You have about <strong>${esc(humanSize(credit.balanceBytes))}</strong> of download credit left. <a href="${credit.buyUrl}" style="color:#1f9d57;text-decoration:underline;">Add credit</a>`,
+      )
+    : "";
   const text =
     `A file was sent to your link${lbl}.\n\n` +
     `OPEN THE FILE\n` +
@@ -106,6 +131,7 @@ export async function sendDownloadEmail(env: Env, to: string, downloadUrl: strin
     `Link expires in 7 days.\n\n` +
     `- - - - - -\n\n` +
     `Only you can open this file.\n` +
+    creditText +
     (manageUrl ? `\nNeed to stop receiving files through ${label ? `"${label}"` : "this link"}?\n${manageUrl}\n` : "");
   const html = wrap(
     intro(`A file was sent to your link${label ? ` <strong>"${esc(label)}"</strong>` : ""}.`) +
@@ -115,6 +141,7 @@ export async function sendDownloadEmail(env: Env, to: string, downloadUrl: strin
       para("Link expires in 7 days.") +
       rule +
       para("Only you can open this file.") +
+      creditHtml +
       (manageUrl
         ? para(`Need to stop receiving files through ${label ? `<strong>${esc(label)}</strong>` : "this link"}?`) +
           quietLink(manageUrl, "Disable this link")

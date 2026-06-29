@@ -75,6 +75,10 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
 .textlink:disabled{color:var(--mut);cursor:default;text-decoration:none}
 .btn:focus-visible,.textlink:focus-visible,.cancel:focus-visible{outline:2px solid var(--g);outline-offset:2px}
 .note{font-size:12.5px;color:var(--mut);font-weight:500;margin:22px auto 0;max-width:330px;line-height:1.5}
+.note.ok{color:var(--g);font-weight:700}
+/* Credit chip: ambient balance (capacity), shown near the file card; not a price, never on the Save button. */
+.chiprow{display:flex;justify-content:center;margin:16px 0 0}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--cream);color:var(--mut);border:1px solid var(--ln);border-radius:999px;padding:5px 13px;font-size:12.5px;font-weight:700}
 .err{color:#C0452A}
 .packs{display:flex;flex-direction:column;gap:10px;margin:26px auto 0;max-width:300px}
 .pack{font-family:inherit;width:100%;background:#fff;border:1px solid var(--ln);border-radius:14px;padding:14px 16px;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
@@ -110,7 +114,15 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
         <div class="finfo"><div class="fname" id="rfname">file</div><div class="fsize" id="rfsize"></div></div>
       </div>
       <div class="filelist" id="rfilesbox" hidden><div class="filescroll" id="rfiles"></div></div>
+      <!-- Credit chip (billing on only): the receiver's CURRENT balance as ambient capacity, never a per-download price. -->
+      <div class="chiprow" id="rcreditrow" hidden><span class="chip" id="rcredit"></span></div>
+      <!-- Proactive "credit added" confirmation after a top-up (?paid=1). -->
+      <p class="note ok" id="rpaidnote" hidden>Credit added.</p>
+      <!-- Soft low-balance nudge (affordable case): shown when this file would use most of the remaining credit. -->
+      <p class="note" id="rlownote" hidden>Running low on credit. Add credit to keep downloading.</p>
       <button class="btn full" id="save" type="button">Save file</button>
+      <!-- Proactive add-credit entry point (billing on only): reachable before the out-of-funds wall. -->
+      <button class="textlink" id="raddcredit" type="button" hidden>Add credit</button>
     </div>
 
     <div class="st" data-state="saving" hidden>

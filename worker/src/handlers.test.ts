@@ -621,6 +621,60 @@ test("download gate: preview still requires a valid proof (a wrong proof is 403)
   expect((await fetchPreview(post("/fetch/preview", { challengeId, proof: "00".repeat(32) }), h.env)).status).toBe(403);
 });
 
+// ---- Phase 1 credit UX: preview balance headers + delivery-email status line ----
+
+test("credit UX: preview stamps X-RL-Credit + X-RL-Tier when billing is on (rid present)", async () => {
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000" });
+  const finalId = await deliver(h, await setupLink(h), 200); // delivered, not yet downloaded -> balance still the full grant
+  const { challengeId, proof } = await challengeAndProof(h, finalId, RECEIVER);
+  const res = await fetchPreview(post("/fetch/preview", { challengeId, proof }), h.env);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("X-RL-Credit")).toBe("1000"); // the new account's seeded free grant, in bytes
+  expect(res.headers.get("X-RL-Tier")).toBe("free");
+  // The CORS layer must expose the custom headers so the cross-origin page can read them.
+  expect((res.headers.get("access-control-expose-headers") ?? "")).toContain("X-RL-Credit");
+});
+
+test("credit UX: preview omits BOTH credit headers when billing is off", async () => {
+  const h = await makeTestEnv(); // BILLING_ENABLED unset
+  const finalId = await deliver(h, await setupLink(h), 200);
+  const { challengeId, proof } = await challengeAndProof(h, finalId, RECEIVER);
+  const res = await fetchPreview(post("/fetch/preview", { challengeId, proof }), h.env);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("X-RL-Credit")).toBeNull();
+  expect(res.headers.get("X-RL-Tier")).toBeNull();
+});
+
+test("credit UX: the delivery email carries the credit status line when billing is on", async () => {
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000000000" }); // 1 GB grant
+  await deliver(h, await setupLink(h), 200);
+  const delivery = h.email.sent.at(-1)!;
+  expect(delivery.text).toContain("download credit left. Add credit:");
+  expect(delivery.text).toContain("free plan"); // a brand-new account is on the free tier
+  expect(delivery.text).toContain("?buy=1"); // the proactive add-credit link lands on this file's buy view
+  expect(delivery.html).toContain("download credit left."); // HTML part carries it too
+});
+
+test("credit UX: the delivery email has NO credit status line when billing is off (unchanged email)", async () => {
+  const h = await makeTestEnv(); // BILLING_ENABLED unset
+  await deliver(h, await setupLink(h), 200);
+  const delivery = h.email.sent.at(-1)!;
+  expect(delivery.text).not.toContain("download credit");
+  expect(delivery.text).not.toContain("?buy=1");
+});
+
+test("credit UX: the /confirm response carries billingEnabled (gates the result page messaging)", async () => {
+  const on = await makeTestEnv({ BILLING_ENABLED: "1" });
+  await register(post("/register", { sealedEmail: await sealed(on, "r@example.com"), shareKey: SHARE_KEY, label: "x" }), on.env);
+  const conf = await confirm(post("/confirm", { nonce: nonceFrom(on.email.sent.at(-1)!.text!) }), on.env);
+  expect(((await conf.json()) as { billingEnabled: boolean }).billingEnabled).toBe(true);
+
+  const off = await makeTestEnv(); // billing unset
+  await register(post("/register", { sealedEmail: await sealed(off, "r@example.com"), shareKey: SHARE_KEY, label: "x" }), off.env);
+  const conf2 = await confirm(post("/confirm", { nonce: nonceFrom(off.email.sent.at(-1)!.text!) }), off.env);
+  expect(((await conf2.json()) as { billingEnabled: boolean }).billingEnabled).toBe(false);
+});
+
 test("upload-init pre-check: a free account at its inbound cap bounces (507) before the transfer", async () => {
   const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
   const link = await setupLink(h);

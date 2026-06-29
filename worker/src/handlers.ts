@@ -306,7 +306,9 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
     /* page already showed both links */
   }
 
-  return json({ link: linkB64, revokeToken }, 200, origin);
+  // billingEnabled lets the result/confirm page gate its "you start with free download credit" messaging
+  // (the gating rule: the worker is the source of truth, the client only shows credit copy when this is on).
+  return json({ link: linkB64, revokeToken, billingEnabled: billingEnabled(env) }, 200, origin);
 }
 
 // POST /revoke { token } -> { ok } — the receiver turns their own Drop link off.
@@ -666,8 +668,22 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // throwing into the finally (which would orphan the object + fetchbind and 500 a deliverable send).
     const revokeToken = await env.DROP_KV.get(`linkrev:${linkIdHex}`).catch(() => null);
     const manageUrl = revokeToken ? `${linkOrigin(env)}/revoke#${revokeToken}` : undefined;
+    // Credit status line in the delivery email, ONLY when billing is on. We already hold `acct` (the
+    // reservation), so reading its summary needs no extra round trip; the buy link lands on this file's
+    // /d page with ?buy=1 so the receiver can add credit straight from the email (a proactive entry point,
+    // no wall needed). Best-effort: a summary read that throws must not fail an otherwise-deliverable
+    // send, so fall back to the legacy (no-line) email rather than 500.
+    let creditLine: { balanceBytes: number; tier: "free" | "paid"; buyUrl: string } | undefined;
+    if (billingEnabled(env)) {
+      try {
+        const s = await acct.summary(freeGrantBytes(env));
+        creditLine = { balanceBytes: s.balance, tier: s.tier, buyUrl: `${linkOrigin(env)}/d/${finalId}?buy=1` };
+      } catch {
+        /* leave creditLine undefined -> unchanged legacy email */
+      }
+    }
     try {
-      await sendDownloadEmail(env, email, `${linkOrigin(env)}/d/${finalId}`, link.label, manageUrl);
+      await sendDownloadEmail(env, email, `${linkOrigin(env)}/d/${finalId}`, link.label, manageUrl, creditLine);
     } catch {
       logEvent("delivery_failed", { link: linkIdHex });
       // Best-effort cleanup, each guarded independently so a throw in one can't skip the other (and
@@ -833,7 +849,26 @@ export async function fetchPreview(req: Request, env: Env): Promise<Response> {
   // Fail CLOSED: if the header won't parse we can't tell metadata from payload, so serve nothing rather
   // than risk leaking payload bytes for free. (A delivered object always has a valid header.)
   if (metaLen === null || metaLen > buf.length) return json({ error: "expired or not found" }, 404, origin);
-  return new Response(buf.subarray(0, metaLen), { status: 200, headers: { ...cors(origin), "content-type": "application/octet-stream", "cache-control": "no-store" } });
+  const headers: Record<string, string> = { ...cors(origin), "content-type": "application/octet-stream", "cache-control": "no-store" };
+  // Credit headers ride on the (still raw binary) preview response so the receive page can show the
+  // balance chip with no extra call. ONLY when billing is on AND the binding carries a rid (a legacy
+  // pre-Phase-2 binding has none, so it stays header-less = billing-off to the client). The client infers
+  // "billing on" purely from the presence of these headers (the gating rule); omitting them = no credit UI.
+  // Best-effort: a summary read that throws must not fail the free preview, so just skip the headers.
+  if (billingEnabled(env)) {
+    const bind = await loadFetchbind(env, v.objectId);
+    if (bind?.rid) {
+      try {
+        const acct = env.RECEIVER.get(env.RECEIVER.idFromName(bind.rid));
+        const s = await acct.summary(freeGrantBytes(env));
+        headers["X-RL-Credit"] = String(s.balance);
+        headers["X-RL-Tier"] = s.tier;
+      } catch {
+        /* leave the headers off -> the client treats this as billing-off (no credit UI) */
+      }
+    }
+  }
+  return new Response(buf.subarray(0, metaLen), { status: 200, headers });
 }
 
 // POST /fetch/download { challengeId, proof } -> { url, expiresInSec } | 402 { needBytes, balanceBytes }.

@@ -380,10 +380,11 @@ async function proveFetch(objectId: string, identity: Identity): Promise<{ chall
   const proof = await fetchProofHex(challengeId, objectId, nonce);
   return { challengeId, proof };
 }
-/** Free preview: the head + metadata bytes (the Worker serves them directly; no payload, no charge). */
+/** Free preview: the head + metadata bytes (the Worker serves them directly; no payload, no charge).
+ *  This legacy flow only needs the prefix; the credit headers are consumed by the receive page instead. */
 async function fetchMetaPrefix(objectId: string, identity: Identity): Promise<Uint8Array<ArrayBuffer>> {
   const { challengeId, proof } = await proveFetch(objectId, identity);
-  return api.fetchPreview(challengeId, proof);
+  return (await api.fetchPreview(challengeId, proof)).prefix;
 }
 /** Charged download: a short-lived URL for the full ciphertext, or a needs-funds signal. */
 async function fetchDownloadUrl(objectId: string, identity: Identity) {
