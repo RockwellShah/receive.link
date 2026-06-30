@@ -153,20 +153,23 @@ export function receiverInboundCap(env: Env): number {
 // var is set, so /fetch/download issues a free URL exactly like Phase 1 until Stripe (2b) is live. ----
 const DEFAULT_FREE_GRANT_BYTES = 1_000_000_000; // 1 GB (decimal) of free download credit per new account
 
-/** Paid-tier at-rest (un-downloaded) ceiling in bytes (the 100 GB safety cap). Unset/<=0 => uncapped. */
+/** Paid-tier at-rest (un-downloaded) ceiling in bytes (the 100 GB safety cap). Unset/<=0 => uncapped.
+ *  ENFORCES the no-downgrade invariant: a top-up flips an account free->paid, switching the cap basis, so a
+ *  finite paid cap below the finite free cap would SHRINK a receiver's inbox. We floor the paid cap at the
+ *  free cap, so a misconfig (or an attacker-funded flip) can never reduce capacity. (0 on either side =
+ *  uncapped, so this is a no-op then.) paidTierDowngrades() reports the RAW misconfig for the test/log. */
 export function paidAtRestCap(env: Env): number {
-  return envInt(env.PAID_ATREST_CAP_BYTES, 0);
+  const paid = envInt(env.PAID_ATREST_CAP_BYTES, 0);
+  const free = receiverInboundCap(env);
+  return free > 0 && paid > 0 && paid < free ? free : paid;
 }
 
-/** Config invariant for the account wallet: adding credit flips an account free->paid, and the paid tier uses
- *  a DIFFERENT cap basis (at-rest pending vs lifetime total). A top-up (even an attacker funding the victim)
- *  must never SHRINK a receiver's effective inbox capacity, so a finite paid cap must be >= the finite free
- *  cap. Returns true if the current env would let paid be a downgrade (both caps finite and paid < free);
- *  asserted false by a test, and the deployment sets the paid cap >= the free cap. */
+/** True if the RAW config would make the paid tier a capacity downgrade (both caps finite, paid < free).
+ *  Detection only (paidAtRestCap clamps the actual value); asserted false by a test and surfaced at deploy. */
 export function paidTierDowngrades(env: Env): boolean {
   const free = receiverInboundCap(env);
-  const paid = paidAtRestCap(env);
-  return free > 0 && paid > 0 && paid < free;
+  const paidRaw = envInt(env.PAID_ATREST_CAP_BYTES, 0);
+  return free > 0 && paidRaw > 0 && paidRaw < free;
 }
 /** Free credit seeded into a new account when billing is on (default 1 GB, decimal). Unlike envInt, an
  *  explicit "0" is honored (a deliberate no-free-grant config), not coerced to the default. */
@@ -316,12 +319,13 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
     const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
     const email = await unsealEmail(kemPriv, decoded.sealedEmail);
     // Billing on: bake a reusable (7-day) account magic-link into the setup email so the receiver can add
-    // credit straight from it (Phase 2a Flow B). rid is derived from the email here, never stored.
+    // credit straight from it (Phase 2a Flow B). rid is derived from the email here, never stored. The mint is
+    // scoped so a KV blip can't suppress the whole share/manage email: fall back to no Add-credit button.
     let accountUrl: string | undefined;
     if (billingEnabled(env)) {
-      accountUrl = `${linkOrigin(env)}/account#${await mintMagicToken(env, await receiverId(env, email), true)}`;
+      try { accountUrl = `${linkOrigin(env)}/account#${await mintMagicToken(env, await receiverId(env, email), true)}`; } catch { accountUrl = undefined; }
     }
-    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, accountUrl);
+    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, accountUrl, freeGrantBytes(env));
   } catch {
     /* page already showed both links */
   }

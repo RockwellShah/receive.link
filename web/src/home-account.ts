@@ -100,7 +100,7 @@ function renderAccount(token: string, tier: "free" | "paid", balanceBytes: numbe
   const add = el("add") as HTMLButtonElement;
   const packsBox = el("packs");
   const back = el("packsback") as HTMLButtonElement;
-  const closePacks = () => { packsBox.hidden = true; packsBox.replaceChildren(); back.hidden = true; add.hidden = false; };
+  const closePacks = () => { packsBox.hidden = true; packsBox.replaceChildren(); back.hidden = true; add.hidden = false; add.disabled = false; };
   back.onclick = closePacks;
   add.onclick = async () => {
     add.disabled = true;
@@ -110,16 +110,20 @@ function renderAccount(token: string, tier: "free" | "paid", balanceBytes: numbe
       for (const p of packs) {
         const b = document.createElement("button");
         b.className = "pack"; b.type = "button"; b.textContent = p.label;
-        b.onclick = () => {
+        b.onclick = async () => {
           packsBox.querySelectorAll("button").forEach((x) => ((x as HTMLButtonElement).disabled = true));
-          try { sessionStorage.setItem(BASELINE_KEY, String(balanceBytes)); } catch { /* private mode: the poll just won't fire */ }
-          api.accountCheckout(token, p.id)
-            .then(({ url }) => { window.location.href = url; })
-            .catch((e) => {
-              packsBox.querySelectorAll("button").forEach((x) => ((x as HTMLButtonElement).disabled = false));
-              if (e instanceof DropApiError && e.status === 401) { clearSession(); showEmail("Your session expired. Sign in again to add credit."); return; }
-              showError(humanError(e));
-            });
+          try {
+            // Capture a FRESH baseline right before checkout (not the stale render-time balance) so the ?paid
+            // return reliably detects this top-up even if the balance moved since the page loaded.
+            const fresh = await api.accountSummary(token);
+            try { sessionStorage.setItem(BASELINE_KEY, String(fresh.balanceBytes)); } catch { /* private mode: the poll just won't fire */ }
+            const { url } = await api.accountCheckout(token, p.id);
+            window.location.href = url;
+          } catch (e) {
+            packsBox.querySelectorAll("button").forEach((x) => ((x as HTMLButtonElement).disabled = false));
+            if (e instanceof DropApiError && e.status === 401) { clearSession(); showEmail("Your session expired. Sign in again to add credit."); return; }
+            showError(humanError(e));
+          }
         };
         packsBox.appendChild(b);
       }

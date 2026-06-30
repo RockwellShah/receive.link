@@ -96,10 +96,14 @@ test("session redeems a single-use magic token once, returns the opening balance
   expect((await accountSession(post("/account/session", { magicToken: mt }), h.env)).status).toBe(401); // single-use spent
 });
 
-test("session rejects a malformed token before any KV read, and an unknown well-formed token", async () => {
+test("session rejects a malformed token before any KV work, and counts a well-formed unknown token", async () => {
   const h = await makeTestEnv(BILLING);
   expect((await accountSession(post("/account/session", { magicToken: "short" }), h.env)).status).toBe(401);
+  // Rejected before any HMAC/KV work: no rate-limit counter key was written for the malformed token.
+  expect([...h.kv.store.keys()].some((k) => k.startsWith("rl:acct:session"))).toBe(false);
+  // A well-formed but unknown token IS the real amplification vector: it's counted against the IP cap, then 401s.
   expect((await accountSession(post("/account/session", { magicToken: "a".repeat(43) }), h.env)).status).toBe(401);
+  expect([...h.kv.store.keys()].some((k) => k.startsWith("rl:acct:session"))).toBe(true);
 });
 
 test("a reusable (email-embedded) magic token survives repeated redemption", async () => {
@@ -155,8 +159,9 @@ test("checkout trips the per-account cap", async () => {
   globalThis.fetch = (async () => new Response(JSON.stringify({ url: "https://checkout.stripe.com/x" }), { status: 200 })) as unknown as typeof fetch;
   try {
     let last = 200;
-    for (let i = 0; i < 31; i++) last = (await accountCheckout(post("/account/checkout", { pack: "p10" }, "9.9.9.9", auth), h.env)).status;
-    expect(last).toBe(429); // ACCT_CHECKOUT_{IP,RID}_PER_DAY = 30
+    // Distinct IP each call so the per-IP cap never trips: this isolates the per-ACCOUNT (rid) cap.
+    for (let i = 0; i < 31; i++) last = (await accountCheckout(post("/account/checkout", { pack: "p10" }, `8.8.8.${i}`, auth), h.env)).status;
+    expect(last).toBe(429); // ACCT_CHECKOUT_RID_PER_DAY = 30, same session/rid every call
   } finally {
     globalThis.fetch = realFetch;
   }

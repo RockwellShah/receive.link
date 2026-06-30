@@ -56,20 +56,22 @@ export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string,
 
 /** Post-confirm email: a durable copy of the receiver's link (to share) and their
  *  private manage/revoke link, so neither is lost if they close the tab. */
-export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, manageUrl: string, label: string, accountUrl?: string): Promise<void> {
+export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, manageUrl: string, label: string, accountUrl?: string, grantBytes?: number): Promise<void> {
   const subject = `Your share link is ready${label ? ` · ${label}` : ""}`;
   const lbl = label ? ` "${label}"` : "";
-  // Free-credit explainer + a real "Add credit" button, billing ON only (accountUrl set). The balance is
-  // generic (the account isn't created until a file lands); the button is an email magic-link into the wallet.
+  // Free-credit explainer + a real "Add credit" button, billing ON only (accountUrl set). The grant tracks the
+  // configured free amount (not a hardcoded "1 GB"). The balance is generic (the account isn't created until a
+  // file lands); the button is an email magic-link into the wallet.
+  const grant = humanSize(grantBytes ?? 1_000_000_000);
   const creditText = accountUrl
     ? `YOUR DOWNLOAD CREDIT\n` +
-      `You start with 1 GB of free download credit, spent only when you download a file. Add more anytime, it never expires.\n\n` +
+      `You start with ${grant} of free download credit, spent only when you download a file. Add more anytime, it never expires.\n\n` +
       `Add credit: ${accountUrl}\n\n` +
       `- - - - - -\n\n`
     : "";
   const creditHtml = accountUrl
     ? head("Your download credit") +
-      para("You start with 1 GB of free download credit, spent only when you download a file. Add more anytime, it never expires.") +
+      para(`You start with ${grant} of free download credit, spent only when you download a file. Add more anytime, it never expires.`) +
       button(accountUrl, "Add credit") +
       rule
     : "";

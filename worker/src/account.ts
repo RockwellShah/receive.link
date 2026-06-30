@@ -75,13 +75,15 @@ export async function accountLogin(req: Request, env: Env): Promise<Response> {
 export async function accountSession(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
   if (!billingEnabled(env)) return json({ error: "unavailable" }, 503, origin);
+  const body = await readJson<{ magicToken?: unknown }>(req);
+  // Validate token shape BEFORE any HMAC/KV work (including the rate-limit counter) so malformed-token spam
+  // is rejected for free and can't burn a shared-IP/NAT quota. Well-formed-but-unknown tokens still hit the
+  // IP cap below (that is the real amplification vector).
+  if (!isWellFormedToken(body?.magicToken)) return json({ error: "invalid or expired" }, 401, origin);
   const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `acct:session:ip:${ipHash}`, ACCT_SESSION_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
-  const body = await readJson<{ magicToken?: unknown }>(req);
-  // Validate shape BEFORE the KV read so random-token spam can't amplify into KV reads.
-  if (!isWellFormedToken(body?.magicToken)) return json({ error: "invalid or expired" }, 401, origin);
   const rid = await redeemMagicToken(env, body.magicToken);
   if (!rid) return json({ error: "invalid or expired" }, 401, origin);
   const st = await mintSession(env, rid);
