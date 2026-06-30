@@ -40,8 +40,8 @@ function creditSize(bytes: number): string {
 }
 function humanError(e: unknown): string {
   if (e instanceof DropApiError) {
-    if (e.status === 401) return "That sign-in link expired or was already used. Sign in again.";
-    if (e.status === 503) return "Accounts aren't available here yet. Try again shortly.";
+    if (e.status === 401) return "That link expired or was already used. Enter your email to get a new one.";
+    if (e.status === 503) return "Download credit isn't available here yet. Try again shortly.";
     if (/rate limited|too many/i.test(e.message)) return "Too many requests right now. Please try again in a bit.";
     return e.message;
   }
@@ -71,12 +71,12 @@ function showEmail(note?: string): void {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { input.focus(); return; }
     send.disabled = true; send.textContent = "Sending…";
     try {
-      if (!isConfigured(cfg)) { showError("This site isn't wired up for accounts yet. Try again shortly."); return; }
+      if (!isConfigured(cfg)) { showError("This site isn't wired up for download credit yet. Try again shortly."); return; }
       const kemPub = await importKemPublicKey(hexToBytes(cfg.serverKemPublicHex));
       await api.accountLogin(base64urlEncode(await sealEmail(kemPub, email)));
       show("sent");
     } catch (e) {
-      send.disabled = false; send.textContent = "Email me a sign-in link";
+      send.disabled = false; send.textContent = "Email me a link";
       showError(humanError(e));
     }
   };
@@ -121,7 +121,7 @@ function renderAccount(token: string, tier: "free" | "paid", balanceBytes: numbe
             window.location.href = url;
           } catch (e) {
             packsBox.querySelectorAll("button").forEach((x) => ((x as HTMLButtonElement).disabled = false));
-            if (e instanceof DropApiError && e.status === 401) { clearSession(); showEmail("Your session expired. Sign in again to add credit."); return; }
+            if (e instanceof DropApiError && e.status === 401) { clearSession(); showEmail("Your link expired. Enter your email to add credit."); return; }
             showError(humanError(e));
           }
         };
@@ -153,7 +153,7 @@ async function settleAfterPayment(token: string, tier: "free" | "paid", balanceB
       balanceBytes = s.balanceBytes;
       renderBalance(s.tier, s.balanceBytes);
     } catch (e) {
-      if (e instanceof DropApiError && e.status === 401) { clearSession(); showEmail("Your session expired. Sign in again to see your updated balance."); return; }
+      if (e instanceof DropApiError && e.status === 401) { clearSession(); showEmail("Your link expired. Enter your email to see your updated balance."); return; }
       break;
     }
   }
@@ -176,14 +176,14 @@ async function main(): Promise<void> {
 
   // 1) A magic link click: redeem it for a session.
   if (mt) {
-    el("loadh").textContent = "Signing you in"; show("loading");
+    el("loadh").textContent = "Opening your credit"; show("loading");
     try {
       const s = await api.accountSession(mt);
       setSession(s.token);
       if (paidReturn) { await settleAfterPayment(s.token, s.tier, s.balanceBytes); return; }
       renderAccount(s.token, s.tier, s.balanceBytes);
     } catch (e) {
-      if (e instanceof DropApiError && e.status === 401) { showEmail("That sign-in link expired or was already used. Sign in again."); return; }
+      if (e instanceof DropApiError && e.status === 401) { showEmail("That link expired or was already used. Enter your email to get a new one."); return; }
       showError(humanError(e));
     }
     return;
@@ -206,7 +206,7 @@ async function main(): Promise<void> {
 
   // 3) No token. If this is a Stripe return, the payment likely went through but the session was lost
   // (slow/new-tab return) - tell the user to sign in to see the updated balance rather than a dead end.
-  showEmail(paidReturn ? "Sign in to see your updated balance." : undefined);
+  showEmail(paidReturn ? "Enter your email to see your updated balance." : undefined);
 }
 
 el("retry").onclick = () => showEmail();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your account · receive.link</title>
+<title>Your download credit · receive.link</title>
 <meta name="robots" content="noindex">
 <!-- Strict CSP: same-origin only, plus connect-src for the Worker API (any *.workers.dev env) so the
      /account/* fetches work. No third-party scripts. The magic token rides in the URL fragment and is
@@ -63,21 +63,21 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
   <main class="col">
     <div class="st" data-state="email">
       <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0 -18"/><path d="M14.8 9a2 2 0 0 0 -1.8 -1h-2a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4h-2a2 2 0 0 1 -1.8 -1"/><path d="M12 7v1"/><path d="M12 16v1"/></svg></div>
-      <h1>Your account</h1>
-      <p class="sub" id="emailsub">See your download credit and add more. We'll email you a sign-in link.</p>
+      <h1>Your download credit</h1>
+      <p class="sub" id="emailsub">Check your balance or add more. We'll email you a link, no password and no account.</p>
       <input class="field" id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com">
-      <button class="btn full" id="send" type="button">Email me a sign-in link</button>
+      <button class="btn full" id="send" type="button">Email me a link</button>
     </div>
 
     <div class="st" data-state="sent" hidden>
       <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M3 7l9 6l9 -6"/></svg></div>
       <h1>Check your email</h1>
-      <p class="sub">If that address has an account, a sign-in link is on its way. It expires in 15 minutes.</p>
+      <p class="sub">If that's a valid address, a link is on its way. It expires in 15 minutes.</p>
     </div>
 
     <div class="st" data-state="loading" hidden>
       <div class="spin"></div>
-      <h1 id="loadh">Loading your account</h1>
+      <h1 id="loadh">Loading your credit</h1>
     </div>
 
     <div class="st" data-state="account" hidden>
@@ -95,11 +95,11 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
       <div class="icon bad"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/></svg></div>
       <h1>Something went wrong</h1>
       <p class="sub err" id="errmsg">Please try again.</p>
-      <button class="btn full" id="retry" type="button">Back to sign in</button>
+      <button class="btn full" id="retry" type="button">Start over</button>
     </div>
   </main>
 </div>
 </div>
-<script type="module" src="/dist/home-account.js?v=97cb34d920"></script>
+<script type="module" src="/dist/home-account.js?v=b40a13ab7f"></script>
 </body>
 </html>

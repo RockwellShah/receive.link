@@ -113,18 +113,18 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
  *  receiver asks to sign in at /account. The link carries a single-use, short-lived token; possession of the
  *  email proves control of the address (the account is email-derived). Mail never carries the balance. */
 export async function sendAccountLoginEmail(env: Env, to: string, accountUrl: string): Promise<void> {
-  const subject = "Sign in to receive.link";
+  const subject = "Your download credit link";
   const text =
-    `Open your receive.link account to see your download credit and add more.\n\n` +
-    `SIGN IN\n` +
+    `Open your receive.link download credit to see your balance and add more.\n\n` +
+    `OPEN YOUR CREDIT\n` +
     `${accountUrl}\n\n` +
     `- - - - - -\n\n` +
     `This link expires in 15 minutes and can be used once. If you didn't request it, you can ignore this email.\n`;
   const html = wrap(
-    intro("Open your receive.link account to see your download credit and add more.") +
-      head("Sign in") +
-      para("Click below to open your account, where you can see your balance and add credit.") +
-      button(accountUrl, "Open my account") +
+    intro("Open your receive.link download credit to see your balance and add more.") +
+      head("Open your credit") +
+      para("Click below to see your balance and add credit. No password, no account.") +
+      button(accountUrl, "Open my credit") +
       rule +
       note("This link expires in 15 minutes and can be used once. If you didn't request it, you can ignore this email."),
   );

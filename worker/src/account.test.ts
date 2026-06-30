@@ -46,7 +46,7 @@ test("login emails a single-use sign-in link and returns 202", async () => {
   expect(res.status).toBe(202);
   const mail = h.email.sent.at(-1)!;
   expect(mail.to).toBe("rcv@example.com");
-  expect(mail.subject.toLowerCase()).toContain("sign in");
+  expect(mail.subject.toLowerCase()).toContain("credit");
   expect(mail.text).toContain("/account#");
 });
 
