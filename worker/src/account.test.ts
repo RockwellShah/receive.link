@@ -146,6 +146,10 @@ test("checkout needs a session + known pack, and builds an /account-return Strip
     expect(((await res.json()) as { url: string }).url).toContain("checkout.stripe.com");
     expect(captured).toContain(`client_reference_id=${rid}`); // credits the session's account
     expect(decodeURIComponent(captured)).toContain("/account?paid=1"); // returns to the wallet, not a file
+    // "Other amount" is accepted too and builds a Stripe custom-amount session.
+    const resCustom = await accountCheckout(post("/account/checkout", { pack: "custom" }, "1.2.3.4", auth), h.env);
+    expect(resCustom.status).toBe(200);
+    expect(captured).toContain("custom_unit_amount");
   } finally {
     globalThis.fetch = realFetch;
   }

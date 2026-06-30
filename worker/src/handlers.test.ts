@@ -798,6 +798,26 @@ test("stripe: checkoutSessionParams encodes a one-time payment and LOCKS the cur
   expect(p.get("line_items[0][price_data][unit_amount]")).toBe("1000"); // $10
 });
 
+test("stripe: checkoutSessionParams uses Stripe custom_unit_amount for the 'Other amount' option", async () => {
+  const { env } = await makeTestEnv({ PRICE_CENTS_PER_GB: "1" });
+  const p = checkoutSessionParams(env, { rid: "rid_z", pack: "custom", successUrl: "https://x/s", cancelUrl: "https://x/c" });
+  expect(p.get("metadata[pack]")).toBe("custom");
+  expect(p.get("line_items[0][price_data][custom_unit_amount][enabled]")).toBe("true");
+  expect(p.get("line_items[0][price_data][custom_unit_amount][minimum]")).toBe("1000"); // $10 floor
+  expect(p.get("line_items[0][price_data][custom_unit_amount][maximum]")).toBe("1000000"); // $10,000 ceiling
+  expect(p.get("line_items[0][price_data][unit_amount]")).toBeNull(); // mutually exclusive with custom_unit_amount
+});
+
+test("stripe: parseCreditFromEvent credits an 'Other amount' from the VERIFIED amount_total, bounded", async () => {
+  const ev = (obj: object) => ({ id: "evt_c", type: "checkout.session.completed", data: { object: { payment_status: "paid", currency: "usd", metadata: { rid: "rid_x", pack: "custom", price: "1" }, ...obj } } });
+  // $30 custom @ 1c/GB = 3,000 GB, derived from the actual amount paid (no fixed tier to re-derive from).
+  expect(parseCreditFromEvent(ev({ amount_total: 3000 }))).toEqual({ rid: "rid_x", bytes: 3_000_000_000_000, eventId: "evt_c" });
+  expect(parseCreditFromEvent(ev({ amount_total: 999 }))).toBeNull(); // below the $10 floor
+  expect(parseCreditFromEvent(ev({ amount_total: 1_000_001 }))).toBeNull(); // above the $10,000 ceiling
+  // The locked price still sets the rate: $30 @ 10c/GB = 300 GB.
+  expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, eventId: "evt_c" });
+});
+
 test("billing: the price is one env knob; packs + labels derive from it", async () => {
   const cheap = await makeTestEnv({ BILLING_ENABLED: "1" }); // default 1¢/GB; billing on so /billing/packs serves
   expect(priceCentsPerGb(cheap.env)).toBe(1);
@@ -809,9 +829,10 @@ test("billing: the price is one env knob; packs + labels derive from it", async 
   expect(p10dear.bytes).toBe(100_000_000_000); // same $10 now buys 100 GB
   expect(p10dear.label).toContain("100 GB");
   // /billing/packs serves the current tiers for the client picker.
-  const out = (await billingPacks(new Request("http://x/billing/packs"), cheap.env).json()) as { packs: { id: string }[]; priceCentsPerGb: number };
+  const out = (await billingPacks(new Request("http://x/billing/packs"), cheap.env).json()) as { packs: { id: string; label: string }[]; priceCentsPerGb: number };
   expect(out.priceCentsPerGb).toBe(1);
-  expect(out.packs.map((x) => x.id)).toEqual(["p10", "p25", "p50", "p100"]);
+  expect(out.packs.map((x) => x.id)).toEqual(["p10", "p25", "p50", "p100", "custom"]); // fixed tiers + "Other amount"
+  expect(out.packs.at(-1)!.label).toBe("Other amount");
 });
 
 test("billing: checkout + packs are 503 when BILLING_ENABLED is off, even with Stripe configured", async () => {

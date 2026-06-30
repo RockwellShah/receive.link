@@ -17,7 +17,7 @@ import { clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./ht
 import { DAY, rateLimit } from "./kv";
 import { isWellFormedToken, mintMagicToken, mintSession, redeemMagicToken, resolveSession } from "./magic";
 import { sendAccountLoginEmail } from "./email";
-import { createCheckoutSession, isPackId, stripeConfigured } from "./stripe";
+import { createCheckoutSession, isCheckoutPack, stripeConfigured } from "./stripe";
 import type { Env } from "./types";
 
 // Soft KV caps (exported so tests assert the source of truth). The login form is low-friction, so cap both the
@@ -112,7 +112,7 @@ export async function accountCheckout(req: Request, env: Env): Promise<Response>
   const rid = await resolveSession(env, req.headers.get("authorization"));
   if (!rid) return json({ error: "unauthorized" }, 401, origin);
   const body = await readJson<{ pack?: unknown }>(req);
-  if (!body || typeof body.pack !== "string" || !isPackId(body.pack)) return json({ error: "unknown pack" }, 400, origin);
+  if (!body || typeof body.pack !== "string" || !isCheckoutPack(body.pack)) return json({ error: "unknown pack" }, 400, origin);
   // A valid session must not mint unlimited Stripe sessions: cap per-IP AND per-account.
   const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `acct:checkout:ip:${ipHash}`, ACCT_CHECKOUT_IP_PER_DAY, DAY))) {

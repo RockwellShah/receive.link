@@ -18,6 +18,18 @@ export function isPackId(s: string): s is PackId {
   return Object.prototype.hasOwnProperty.call(PACK_CENTS, s);
 }
 
+// "Other amount": a custom top-up where Stripe collects the dollar amount on its OWN hosted Checkout page
+// (custom_unit_amount), bounded to a sane range. There is no fixed tier, so the webhook credits from the
+// Stripe-VERIFIED amount_total (signed in the event), never an unsigned client value.
+export const CUSTOM_PACK = "custom";
+const CUSTOM_MIN_CENTS = 1_000; // $10 floor (matches the smallest preset; keeps the 2.9% + $0.30 fee efficient)
+const CUSTOM_MAX_CENTS = 1_000_000; // $10,000 ceiling (bounds a fat-finger + the webhook's byte derivation)
+export type CheckoutPack = PackId | typeof CUSTOM_PACK;
+/** A valid checkout selection: a fixed dollar tier OR the custom "Other amount". */
+export function isCheckoutPack(s: string): s is CheckoutPack {
+  return isPackId(s) || s === CUSTOM_PACK;
+}
+
 const DEFAULT_PRICE_CENTS_PER_GB = 1; // 1¢/GB
 const MAX_PRICE_CENTS_PER_GB = 1000; // $10/GB — a sanity clamp bounding the webhook's byte derivation
 
@@ -72,9 +84,8 @@ export function stripeConfigured(env: Env): boolean {
  *  knob moves mid-payment (the credited bytes are re-derived from pack + locked price, never a raw client
  *  amount). We pass no customer email — Checkout collects whatever billing email the buyer types, in
  *  Stripe's scope, not ours. */
-export function checkoutSessionParams(env: Env, opts: { rid: string; pack: PackId; successUrl: string; cancelUrl: string }): URLSearchParams {
+export function checkoutSessionParams(env: Env, opts: { rid: string; pack: CheckoutPack; successUrl: string; cancelUrl: string }): URLSearchParams {
   const price = priceCentsPerGb(env);
-  const amountCents = PACK_CENTS[opts.pack];
   const p = new URLSearchParams();
   p.set("mode", "payment");
   p.set("success_url", opts.successUrl);
@@ -85,13 +96,25 @@ export function checkoutSessionParams(env: Env, opts: { rid: string; pack: PackI
   p.set("metadata[price]", String(price)); // lock the price for the webhook credit
   p.set("line_items[0][quantity]", "1");
   p.set("line_items[0][price_data][currency]", "usd");
-  p.set("line_items[0][price_data][unit_amount]", String(amountCents));
-  p.set("line_items[0][price_data][product_data][name]", `receive.link credit · ${humanSize(bytesForCents(amountCents, price))}`);
+  if (opts.pack === CUSTOM_PACK) {
+    // Stripe collects the amount on its page; bounded to $10..$10,000. No unit_amount (mutually exclusive with
+    // custom_unit_amount). The webhook credits from the verified amount_total, so the typed amount is never
+    // trusted from unsigned client state.
+    p.set("line_items[0][price_data][custom_unit_amount][enabled]", "true");
+    p.set("line_items[0][price_data][custom_unit_amount][minimum]", String(CUSTOM_MIN_CENTS));
+    p.set("line_items[0][price_data][custom_unit_amount][maximum]", String(CUSTOM_MAX_CENTS));
+    p.set("line_items[0][price_data][custom_unit_amount][preset]", String(CUSTOM_MIN_CENTS));
+    p.set("line_items[0][price_data][product_data][name]", "receive.link credit");
+  } else {
+    const amountCents = PACK_CENTS[opts.pack];
+    p.set("line_items[0][price_data][unit_amount]", String(amountCents));
+    p.set("line_items[0][price_data][product_data][name]", `receive.link credit · ${humanSize(bytesForCents(amountCents, price))}`);
+  }
   return p;
 }
 
 /** Create a Checkout session via the Stripe REST API; returns the hosted Checkout URL to redirect to. */
-export async function createCheckoutSession(env: Env, opts: { rid: string; pack: PackId; successUrl: string; cancelUrl: string }): Promise<string> {
+export async function createCheckoutSession(env: Env, opts: { rid: string; pack: CheckoutPack; successUrl: string; cancelUrl: string }): Promise<string> {
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "content-type": "application/x-www-form-urlencoded" },
@@ -149,13 +172,23 @@ export function parseCreditFromEvent(event: unknown): { rid: string; bytes: numb
   if (!o || o.payment_status !== "paid") return null; // only credit a fully-paid session
   const rid = typeof o.metadata?.rid === "string" ? o.metadata.rid : "";
   const pack = typeof o.metadata?.pack === "string" ? o.metadata.pack : "";
-  if (!rid || !isPackId(pack)) return null;
+  if (!rid || !isCheckoutPack(pack)) return null;
   // REQUIRE a valid locked price (do NOT default — a price-less/garbled session is anomalous, and
   // defaulting to the floor price would credit the MOST bytes; reject it instead).
   const price = typeof o.metadata?.price === "string" ? parseInt(o.metadata.price, 10) : NaN;
   if (!Number.isInteger(price) || price < 1 || price > MAX_PRICE_CENTS_PER_GB) return null;
-  // Credit only if they actually paid (at least) this tier's price in USD — guards a forged same-account
-  // session that underpays but stamps a bigger pack. (We don't enable Stripe tax, so amount_total == tier.)
-  if (o.currency !== "usd" || typeof o.amount_total !== "number" || o.amount_total < PACK_CENTS[pack]) return null;
-  return { rid, bytes: bytesForCents(PACK_CENTS[pack], price), eventId: e.id };
+  if (o.currency !== "usd" || typeof o.amount_total !== "number") return null;
+  // The cents to credit for. A FIXED tier re-derives from its KNOWN pack price (amount_total is only
+  // floor-checked, so a forged same-account session can't underpay yet stamp a bigger tier). "Other amount"
+  // has no fixed tier, so it credits from the Stripe-VERIFIED amount_total (this event is signature-checked
+  // upstream), bounded to the custom min/max so a malformed-but-signed session can't credit absurd bytes.
+  let chargedCents: number;
+  if (pack === CUSTOM_PACK) {
+    if (o.amount_total < CUSTOM_MIN_CENTS || o.amount_total > CUSTOM_MAX_CENTS) return null;
+    chargedCents = o.amount_total;
+  } else {
+    if (o.amount_total < PACK_CENTS[pack]) return null;
+    chargedCents = PACK_CENTS[pack];
+  }
+  return { rid, bytes: bytesForCents(chargedCents, price), eventId: e.id };
 }

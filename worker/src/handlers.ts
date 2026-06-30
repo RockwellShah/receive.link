@@ -27,7 +27,7 @@ import { cors, clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from
 import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes } from "./kv";
 import { mintMagicToken } from "./magic";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, fileKeyMetadataPrefixLen, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
-import { createCheckoutSession, isPackId, packList, parseCreditFromEvent, priceCentsPerGb, stripeConfigured, verifyStripeSignature } from "./stripe";
+import { CUSTOM_PACK, createCheckoutSession, isCheckoutPack, packList, parseCreditFromEvent, priceCentsPerGb, stripeConfigured, verifyStripeSignature } from "./stripe";
 import type { Env } from "./types";
 import { hex, hmacHex, hmacSha256hex, isEmail, isHex, randomBytes } from "../../shared/util";
 
@@ -939,7 +939,7 @@ export async function billingCheckout(req: Request, env: Env): Promise<Response>
   // (e.g. staging mid-rollout), a direct caller must not be able to buy credit that downloads won't spend.
   if (!billingEnabled(env) || !stripeConfigured(env)) return json({ error: "billing unavailable" }, 503, origin);
   const body = await readJson<{ challengeId: string; proof: string; pack: string }>(req);
-  if (!body || typeof body.pack !== "string" || !isPackId(body.pack)) return json({ error: "unknown pack" }, 400, origin);
+  if (!body || typeof body.pack !== "string" || !isCheckoutPack(body.pack)) return json({ error: "unknown pack" }, 400, origin);
   // Prove passkey possession on the file being unlocked -> the owning account (rid) to credit.
   const v = await verifyFetchProof(req, env, origin, body);
   if (!v.ok) return v.resp;
@@ -993,7 +993,14 @@ export async function billingWebhook(req: Request, env: Env): Promise<Response> 
 export function billingPacks(req: Request, env: Env): Response {
   const origin = corsOrigin(env, req);
   if (!billingEnabled(env)) return json({ error: "billing unavailable" }, 503, origin);
-  return json({ packs: packList(env), priceCentsPerGb: priceCentsPerGb(env) }, 200, origin);
+  // The fixed dollar tiers, then an "Other amount" option. The client picker renders id + label; the custom
+  // one's amount is collected on Stripe's page, so it carries no precomputed bytes. Both pickers (the receive
+  // 402 wall and the account page) get it automatically since they render whatever this returns.
+  const packs: { id: string; amountCents: number; bytes: number; label: string }[] = [
+    ...packList(env),
+    { id: CUSTOM_PACK, amountCents: 0, bytes: 0, label: "Other amount" },
+  ];
+  return json({ packs, priceCentsPerGb: priceCentsPerGb(env) }, 200, origin);
 }
 
 // Delete-after-download calls one IP can make in a day. The object id is an unguessable bearer
