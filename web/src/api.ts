@@ -201,4 +201,37 @@ export class DropApi {
   discard(objectId: string): Promise<{ ok: true }> {
     return this.postJson("/discard", { objectId });
   }
+
+  // ---- Account wallet (Phase 2a): magic-link sign-in -> session -> balance + add credit (no file needed) ----
+
+  /** Ask the Worker to email a magic sign-in link. Always resolves (uniform 202; never an account oracle). */
+  accountLogin(sealedEmail: string): Promise<{ ok: true }> {
+    return this.postJson("/account/login", { sealedEmail });
+  }
+
+  /** Redeem an emailed magic token for a 30-min session token + the opening balance (so the page renders
+   *  without a second round trip). Throws DropApiError(401) if the link expired / was already used. */
+  accountSession(magicToken: string): Promise<{ token: string; tier: "free" | "paid"; balanceBytes: number }> {
+    return this.postJson("/account/session", { magicToken });
+  }
+
+  private async postAuthed<T>(path: string, token: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.base}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await asError(res);
+    return (await res.json()) as T;
+  }
+
+  /** Current balance + tier for a session (Authorization: Bearer). 401 once the 30-min session lapses. */
+  accountSummary(token: string): Promise<{ tier: "free" | "paid"; balanceBytes: number }> {
+    return this.postAuthed("/account/summary", token, {});
+  }
+
+  /** Start a top-up from the account page (Authorization: Bearer) -> a Stripe-hosted Checkout URL. */
+  accountCheckout(token: string, pack: string): Promise<{ url: string }> {
+    return this.postAuthed("/account/checkout", token, { pack });
+  }
 }

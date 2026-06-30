@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your account · receive.link</title>
+<meta name="robots" content="noindex">
+<!-- Strict CSP: same-origin only, plus connect-src for the Worker API (any *.workers.dev env) so the
+     /account/* fetches work. No third-party scripts. The magic token rides in the URL fragment and is
+     scrubbed (history.replaceState) on load by home-account.ts. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.workers.dev; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<!-- The ACCOUNT WALLET page (Phase 2a): an email magic-link sign-in -> see prepaid balance + add credit,
+     with no delivered file needed. Served at /account via _redirects -> /account/. Drives the [data-state]
+     panels and calls /account/* on the Worker. Fonts absolute (/home/fonts/). -->
+<style>
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+a{text-decoration:none;color:inherit}
+body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+.frame{min-height:100svh;display:flex;flex-direction:column;align-items:center;padding:46px 22px 72px}
+.logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:21px;letter-spacing:-.01em;margin-bottom:48px}
+.logo .dotp{color:var(--g)}.logo .tld{color:#9499A3;font-weight:600}
+.col{width:100%;max-width:464px;text-align:center}
+.st[hidden]{display:none}
+.icon{width:58px;height:58px;border-radius:17px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+.icon.ok{background:#E7F2EB;color:var(--g)}
+.icon.bad{background:#FBEAE7;color:#D2502E}
+.spin{width:46px;height:46px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
+.sub{font-size:15px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 auto;max-width:360px}
+.field{display:block;width:100%;max-width:340px;margin:22px auto 0;font-family:inherit;font-size:16px;font-weight:500;color:var(--ink);background:#fff;border:1px solid var(--ln);border-radius:12px;padding:13px 15px;text-align:center}
+.field::placeholder{color:#AEA897}
+.field:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 3px rgba(35,162,103,.16)}
+.btn{font-family:inherit;background:var(--g);color:#fff;border:0;border-radius:22px;padding:13px 24px;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(35,162,103,.2);transition:background .15s,box-shadow .15s}
+.btn:hover{background:#1F9760;box-shadow:0 2px 10px rgba(35,162,103,.26)}
+.btn:active{background:#1C8957}
+.btn:disabled{opacity:.55;cursor:default;box-shadow:none}
+.btn.full{display:block;width:100%;max-width:300px;margin:20px auto 0;text-align:center}
+.textlink{background:none;border:0;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--mut);cursor:pointer;margin-top:18px;padding:2px;text-decoration:underline;text-decoration-color:#CFC7B6;text-underline-offset:3px}
+.textlink:hover{color:var(--ink)}
+.chiprow{display:flex;justify-content:center;align-items:center;gap:12px;margin:22px 0 0}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--cream);color:var(--ink);border:1px solid var(--ln);border-radius:999px;padding:8px 18px;font-size:15px;font-weight:700}
+.note{font-size:12.5px;color:var(--mut);font-weight:500;margin:18px auto 0;max-width:330px;line-height:1.5}
+.note.ok{color:var(--g);font-weight:700}
+.err{color:#C0452A}
+.packs{display:flex;flex-direction:column;gap:10px;margin:22px auto 0;max-width:300px}
+.pack{font-family:inherit;width:100%;background:#fff;border:1px solid var(--ln);border-radius:14px;padding:14px 16px;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
+.pack:hover{border-color:var(--g);background:#FBFDFC}
+.pack:disabled{opacity:.5;cursor:default}
+.btn:focus-visible,.textlink:focus-visible,.pack:focus-visible,.field:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+@media(max-width:480px){h1{font-size:27px}.logo{margin-bottom:40px}.frame{padding:40px 20px 64px}}
+</style>
+</head>
+<body>
+<div class="rk">
+<div class="frame">
+  <a class="logo" href="/"><svg width="23" height="23" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span>receive<span class="dotp">.</span><span class="tld">link</span></span></a>
+  <main class="col">
+    <div class="st" data-state="email">
+      <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0 -18"/><path d="M14.8 9a2 2 0 0 0 -1.8 -1h-2a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4h-2a2 2 0 0 1 -1.8 -1"/><path d="M12 7v1"/><path d="M12 16v1"/></svg></div>
+      <h1>Your account</h1>
+      <p class="sub" id="emailsub">See your download credit and add more. We'll email you a sign-in link.</p>
+      <input class="field" id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com">
+      <button class="btn full" id="send" type="button">Email me a sign-in link</button>
+    </div>
+
+    <div class="st" data-state="sent" hidden>
+      <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M3 7l9 6l9 -6"/></svg></div>
+      <h1>Check your email</h1>
+      <p class="sub">If that address has an account, a sign-in link is on its way. It expires in 15 minutes.</p>
+    </div>
+
+    <div class="st" data-state="loading" hidden>
+      <div class="spin"></div>
+      <h1 id="loadh">Loading your account</h1>
+    </div>
+
+    <div class="st" data-state="account" hidden>
+      <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0 -18"/><path d="M14.8 9a2 2 0 0 0 -1.8 -1h-2a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4h-2a2 2 0 0 1 -1.8 -1"/><path d="M12 7v1"/><path d="M12 16v1"/></svg></div>
+      <h1>Your download credit</h1>
+      <p class="sub" id="acctsub">Spent only when you download a file. It never expires.</p>
+      <div class="chiprow"><span class="chip" id="balance"></span></div>
+      <p class="note ok" id="paidnote" hidden></p>
+      <button class="btn full" id="add" type="button">Add credit</button>
+      <div class="packs" id="packs" hidden></div>
+      <button class="textlink" id="packsback" type="button" hidden>Not now</button>
+    </div>
+
+    <div class="st" data-state="error" hidden>
+      <div class="icon bad"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/></svg></div>
+      <h1>Something went wrong</h1>
+      <p class="sub err" id="errmsg">Please try again.</p>
+      <button class="btn full" id="retry" type="button">Back to sign in</button>
+    </div>
+  </main>
+</div>
+</div>
+<script type="module" src="/dist/home-account.js?v=0d1d1040a7"></script>
+</body>
+</html>

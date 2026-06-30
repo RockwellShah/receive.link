@@ -10,7 +10,7 @@ rmSync("web/dist", { recursive: true, force: true });
 const { version } = (await Bun.file("package.json").json()) as { version: string };
 
 const result = await Bun.build({
-  entrypoints: ["web/src/app.ts", "web/src/home-create.ts", "web/src/home-result.ts", "web/src/home-send.ts", "web/src/home-receive.ts"],
+  entrypoints: ["web/src/app.ts", "web/src/home-create.ts", "web/src/home-result.ts", "web/src/home-send.ts", "web/src/home-receive.ts", "web/src/home-account.ts"],
   outdir: "web/dist",
   target: "browser",
   minify: true,
@@ -32,6 +32,7 @@ const PAGE_BUNDLES: { html: string; bundle: string }[] = [
   { html: "web/send/index.html", bundle: "home-send.js" },
   { html: "web/result/index.html", bundle: "home-result.js" },
   { html: "web/receive/index.html", bundle: "home-receive.js" },
+  { html: "web/account/index.html", bundle: "home-account.js" },
 ];
 for (const { html, bundle } of PAGE_BUNDLES) {
   const hash = createHash("sha256").update(readFileSync(`web/dist/${bundle}`)).digest("hex").slice(0, 10);
