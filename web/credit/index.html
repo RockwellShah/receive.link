@@ -10,9 +10,9 @@
      scrubbed (history.replaceState) on load by home-account.ts. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.workers.dev; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
-<!-- The ACCOUNT WALLET page (Phase 2a): an email magic-link sign-in -> see prepaid balance + add credit,
-     with no delivered file needed. Served at /account via _redirects -> /account/. Drives the [data-state]
-     panels and calls /account/* on the Worker. Fonts absolute (/home/fonts/). -->
+<!-- The DOWNLOAD CREDIT page (Phase 2a): an email magic-link -> see prepaid balance + add credit, with no
+     delivered file needed. Public URL is /credit (via _redirects -> /credit/); the Worker API endpoints keep
+     the /account/* names. Drives the [data-state] panels. Fonts absolute (/home/fonts/). -->
 <style>
 @font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}

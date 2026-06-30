@@ -323,7 +323,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
     // scoped so a KV blip can't suppress the whole share/manage email: fall back to no Add-credit button.
     let accountUrl: string | undefined;
     if (billingEnabled(env)) {
-      try { accountUrl = `${linkOrigin(env)}/account#${await mintMagicToken(env, await receiverId(env, email), true)}`; } catch { accountUrl = undefined; }
+      try { accountUrl = `${linkOrigin(env)}/credit#${await mintMagicToken(env, await receiverId(env, email), true)}`; } catch { accountUrl = undefined; }
     }
     await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, accountUrl, freeGrantBytes(env));
   } catch {
@@ -703,7 +703,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
         const s = await acct.summary(freeGrantBytes(env));
         // "Add credit" now points at the account wallet (Phase 2a Flow B) via a reusable magic-link, not the
         // old /d/<id>?buy=1 file-unlock detour. rid is already resolved above.
-        const accountUrl = `${linkOrigin(env)}/account#${await mintMagicToken(env, rid, true)}`;
+        const accountUrl = `${linkOrigin(env)}/credit#${await mintMagicToken(env, rid, true)}`;
         creditLine = { balanceBytes: s.balance, tier: s.tier, buyUrl: accountUrl };
       } catch {
         /* leave creditLine undefined -> unchanged legacy email */

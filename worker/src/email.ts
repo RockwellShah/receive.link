@@ -110,7 +110,7 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
 }
 
 /** Account sign-in email: a passwordless magic-link into the WALLET (see balance + add credit), sent when a
- *  receiver asks to sign in at /account. The link carries a single-use, short-lived token; possession of the
+ *  receiver asks to sign in at /credit. The link carries a single-use, short-lived token; possession of the
  *  email proves control of the address (the account is email-derived). Mail never carries the balance. */
 export async function sendAccountLoginEmail(env: Env, to: string, accountUrl: string): Promise<void> {
   const subject = "Your download credit link";

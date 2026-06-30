@@ -18,7 +18,7 @@ async function sealed(h: TestHarness, email: string): Promise<string> {
   return base64urlEncode(await sealEmail(await importKemPublicKey(h.kemPublicRaw), email));
 }
 function magicFrom(text: string): string {
-  const m = text.match(/\/account#([A-Za-z0-9_-]+)/);
+  const m = text.match(/\/credit#([A-Za-z0-9_-]+)/);
   if (!m) throw new Error(`no magic token in: ${text}`);
   return m[1]!;
 }
@@ -47,7 +47,7 @@ test("login emails a single-use sign-in link and returns 202", async () => {
   const mail = h.email.sent.at(-1)!;
   expect(mail.to).toBe("rcv@example.com");
   expect(mail.subject.toLowerCase()).toContain("credit");
-  expect(mail.text).toContain("/account#");
+  expect(mail.text).toContain("/credit#");
 });
 
 test("login is a uniform 202 for valid, garbage, and non-email inputs (no enumeration oracle)", async () => {
@@ -127,7 +127,7 @@ test("summary returns the live balance/tier for a valid Bearer session, 401 othe
   expect((await accountSummary(post("/account/summary", {}, "1.2.3.4", "Bearer " + "z".repeat(43)), h.env)).status).toBe(401); // unknown token
 });
 
-test("checkout needs a session + known pack, and builds an /account-return Stripe session for the right rid", async () => {
+test("checkout needs a session + known pack, and builds a /credit-return Stripe session for the right rid", async () => {
   const h = await makeTestEnv(STRIPE);
   const { rid, token } = await sessionFor(h, "rcv@example.com");
   const auth = `Bearer ${token}`;
@@ -145,7 +145,7 @@ test("checkout needs a session + known pack, and builds an /account-return Strip
     expect(res.status).toBe(200);
     expect(((await res.json()) as { url: string }).url).toContain("checkout.stripe.com");
     expect(captured).toContain(`client_reference_id=${rid}`); // credits the session's account
-    expect(decodeURIComponent(captured)).toContain("/account?paid=1"); // returns to the wallet, not a file
+    expect(decodeURIComponent(captured)).toContain("/credit?paid=1"); // returns to the credit page, not a file
     // "Other amount" is accepted too and builds a Stripe custom-amount session.
     const resCustom = await accountCheckout(post("/account/checkout", { pack: "custom" }, "1.2.3.4", auth), h.env);
     expect(resCustom.status).toBe(200);

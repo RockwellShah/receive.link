@@ -63,7 +63,7 @@ export async function accountLogin(req: Request, env: Env): Promise<Response> {
   const rid = await receiverId(env, email);
   const mt = await mintMagicToken(env, rid, false); // self-service: single-use, 15 min
   try {
-    await sendAccountLoginEmail(env, email, `${linkOrigin(env)}/account#${mt}`);
+    await sendAccountLoginEmail(env, email, `${linkOrigin(env)}/credit#${mt}`);
   } catch {
     logEvent("account_login_email_failed"); // still 202 (uniform); the user can retry
   }
@@ -126,8 +126,8 @@ export async function accountCheckout(req: Request, env: Env): Promise<Response>
     const url = await createCheckoutSession(env, {
       rid,
       pack: body.pack,
-      successUrl: `${base}/account?paid=1`, // back to the account page; it polls summary until the balance rises
-      cancelUrl: `${base}/account`,
+      successUrl: `${base}/credit?paid=1`, // back to the credit page; it polls summary until the balance rises
+      cancelUrl: `${base}/credit`,
     });
     return json({ url }, 200, origin);
   } catch {

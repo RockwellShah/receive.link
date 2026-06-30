@@ -1,6 +1,7 @@
 // The ACCOUNT WALLET page (Phase 2a): an email magic-link sign-in -> see prepaid balance + add credit, with
-// no delivered file needed. Renders into web/account/index.html's [data-state] panels and calls /account/* on
-// the Worker. Served at /account via _redirects -> /account/. One flat bundle: web/dist/home-account.js.
+// no delivered file needed. Renders into web/credit/index.html's [data-state] panels and calls /account/* on
+// the Worker (the page lives at the public URL /credit; the API endpoints keep the /account/* names). Served at
+// /credit via _redirects -> /credit/. One flat bundle: web/dist/home-account.js.
 //
 // Entry: arriving with `#<magicToken>` redeems it (the token is scrubbed from history immediately) for a
 // 30-min session; otherwise a session in sessionStorage is restored; otherwise the enter-email form shows.

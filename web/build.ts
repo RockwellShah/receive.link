@@ -32,7 +32,7 @@ const PAGE_BUNDLES: { html: string; bundle: string }[] = [
   { html: "web/send/index.html", bundle: "home-send.js" },
   { html: "web/result/index.html", bundle: "home-result.js" },
   { html: "web/receive/index.html", bundle: "home-receive.js" },
-  { html: "web/account/index.html", bundle: "home-account.js" },
+  { html: "web/credit/index.html", bundle: "home-account.js" },
 ];
 for (const { html, bundle } of PAGE_BUNDLES) {
   const hash = createHash("sha256").update(readFileSync(`web/dist/${bundle}`)).digest("hex").slice(0, 10);

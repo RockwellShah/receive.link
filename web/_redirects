@@ -12,5 +12,5 @@
 /qr        /result/  200
 /d/*       /receive/ 200
 /u         /send/    200
-/account   /account/ 200
+/credit    /credit/  200
 /          /home/    200
