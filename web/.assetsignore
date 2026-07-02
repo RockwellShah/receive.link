@@ -1,6 +1,5 @@
-# Files that live in web/ but must NOT publish to the CDN. The browser only needs
-# index.html, /dist/app.js, /style.css, /fonts/*, /logo.svg, and _redirects.
-# Everything below is TypeScript source, tests, or local dev/build scripts.
+# Files that live in web/ but must NOT publish to the CDN. NOTE: Cloudflare Pages IGNORES this file —
+# it documents intent; the curated-dir deploy in the README is what actually enforces it.
 *.ts
 src/
 fk/
@@ -8,3 +7,6 @@ core/
 og-card.html
 og-card-v2.html
 tsconfig.json
+# Legacy pre-redesign UI, retired at the go-live audit: do not publish (its /app URL 301s home).
+app.html
+dist/app.js

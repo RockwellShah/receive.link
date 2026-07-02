@@ -14,3 +14,7 @@
 /u         /send/    200
 /credit    /credit/  200
 /          /home/    200
+# Legacy /app (the pre-redesign single-page UI) is RETIRED: app.html + dist/app.js are excluded from the
+# curated publish (pre-launch audit), so bounce stray bookmarks home. Every real deep link (/d/*, /confirm,
+# /u, /#code) already lands on the per-page site above.
+/app       /         301

@@ -58,7 +58,8 @@ Deploys need the Cloudflare secrets, which are not in the repo, so contributors 
    rm -rf /tmp/web-publish && cp -R web /tmp/web-publish
    rm -rf /tmp/web-publish/src /tmp/web-publish/fk /tmp/web-publish/core \
           /tmp/web-publish/*.ts /tmp/web-publish/tsconfig.json \
-          /tmp/web-publish/og-card*.html /tmp/web-publish/.assetsignore
+          /tmp/web-publish/og-card*.html /tmp/web-publish/.assetsignore \
+          /tmp/web-publish/app.html /tmp/web-publish/dist/app.js
    wrangler pages deploy /tmp/web-publish --project-name <pages-project> --branch main
    ```
 
