@@ -49,8 +49,19 @@ bun run typecheck     # worker/shared AND the browser client
 
 Deploys need the Cloudflare secrets, which are not in the repo, so contributors develop against the mock server instead. For the owner:
 
-1. `bun run gen:keys` per environment, then `wrangler secret put` the two private keys (`SERVER_SIGN_PRIVATE_JWK`, `SERVER_KEM_PRIVATE_JWK`) and the two R2 S3 credentials (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`); paste the public values into `wrangler.toml` / the client config.
+1. `bun run gen:keys` per environment, then `wrangler secret put` every secret in the `wrangler.toml` checklist: the two private keys (`SERVER_SIGN_PRIVATE_JWK`, `SERVER_KEM_PRIVATE_JWK`), the two R2 S3 credentials (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`), `HASH_SECRET`, and `RECEIVER_ID_SECRET` (plus the Stripe pair when billing goes live); paste the public values into `wrangler.toml` / the client config.
 2. Create the R2 bucket with lifecycle rules (7-day object expiry + abort-incomplete-multipart) and a CORS rule allowing browser-direct PUT/GET; create the KV namespace; DKIM-verify the `MAIL_FROM` sender domain.
-3. `bun run deploy` (Worker) and `wrangler pages deploy web` (client) to staging; smoke-test; then the `--env production` equivalents.
+3. `bun run deploy` (Worker), then build + publish the client from a CURATED directory. Never `wrangler pages deploy web` directly: Cloudflare Pages ignores `.assetsignore`, so the raw form publishes all TypeScript source to the CDN (with a ~7-day edge cache).
+
+   ```sh
+   bun run build:web
+   rm -rf /tmp/web-publish && cp -R web /tmp/web-publish
+   rm -rf /tmp/web-publish/src /tmp/web-publish/fk /tmp/web-publish/core \
+          /tmp/web-publish/*.ts /tmp/web-publish/tsconfig.json \
+          /tmp/web-publish/og-card*.html /tmp/web-publish/.assetsignore
+   wrangler pages deploy /tmp/web-publish --project-name <pages-project> --branch main
+   ```
+
+   Smoke-test staging, then the `--env production` Worker deploy.
 
 Secrets never go in git or `wrangler.toml`. `keys/`, `.dev.vars`, and `.env` are gitignored.

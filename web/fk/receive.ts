@@ -20,6 +20,11 @@ export interface ReceiveUI {
   onCancel(fn: () => void): void;
 }
 
+// A save attempt's outcome. The needs-funds case carries the 402's numbers (what this file costs vs the
+// live balance) so the page can poll for a lagging payment against a concrete target instead of blindly
+// re-entering save() (whose OS save dialog needs a live user gesture).
+export type SaveOutcome = "saved" | "stopped" | { needsFunds: true; needBytes: number; balanceBytes: number };
+
 export interface Delivery {
   filename: string;
   mimeType: string;
@@ -31,9 +36,13 @@ export interface Delivery {
   // a single file or a link without it). `total` is the true count; `names` may be truncated for huge bundles.
   entries?: { total: number; names: string[] };
   // Stream the full file to disk (the CHARGED download). "saved" on success; "stopped" if the user
-  // cancels or dismisses the OS save dialog (the page returns to ready); "needsFunds" when the receiver
-  // is out of credit (the page shows the top-up wall); throws on a real failure.
-  save(ui: ReceiveUI): Promise<"saved" | "stopped" | "needsFunds">;
+  // cancels or dismisses the OS save dialog (the page returns to ready); a needsFunds object when the
+  // receiver is out of credit (the page shows the top-up wall); throws on a real failure.
+  save(ui: ReceiveUI): Promise<SaveOutcome>;
+  // Re-read the live balance via a fresh proof + FREE preview (no charge, no save dialog, no passkey
+  // prompt — the identity is held in memory). null = billing off / headers absent. Used to wait out a
+  // lagging Stripe webhook after ?paid without re-entering save() from a timer.
+  refreshCredit(): Promise<{ balanceBytes: number; tier: "free" | "paid" } | null>;
   // Out-of-funds top-up (the only place money surfaces): the prepaid tiers (server-priced) for the wall,
   // and a tap that proves possession of this file (so the right account is credited) then redirects to
   // Stripe-hosted Checkout.
@@ -125,7 +134,7 @@ async function prove(api: DropApi, objectId: string, identity: Identity): Promis
 
 // Stream the full ciphertext to disk (the CHARGED download): re-prove, request the gated download URL
 // (or a needs-funds signal), then a fresh fetch per call (naturally restartable), decrypt, write.
-async function saveToDisk(api: DropApi, objectId: string, identity: Identity, filename: string, mimeType: string, totalSize: number, ui: ReceiveUI): Promise<"saved" | "stopped" | "needsFunds"> {
+async function saveToDisk(api: DropApi, objectId: string, identity: Identity, filename: string, mimeType: string, totalSize: number, ui: ReceiveUI): Promise<SaveOutcome> {
   const name = sanitizeName(filename);
   const ctrl = new AbortController();
   let cancelled = false;
@@ -140,7 +149,7 @@ async function saveToDisk(api: DropApi, objectId: string, identity: Identity, fi
     const { challengeId, proof } = await prove(api, objectId, identity);
     if (cancelled) return "stopped"; // cancelled during the proof step, before the gate charges — never debit on a cancel
     const got = await api.fetchDownload(challengeId, proof);
-    if ("needsFunds" in got) return "needsFunds";
+    if ("needsFunds" in got) return { needsFunds: true, needBytes: got.needBytes, balanceBytes: got.balanceBytes };
     const chunks = await openStream(got.url, identity, ctrl.signal);
     if (w.showSaveFilePicker) {
       // Chrome/Edge: pick a destination, then stream chunks straight to it.
@@ -209,6 +218,11 @@ export async function loadDelivery(api: DropApi, objectId: string, forceOpen = f
     credit,
     entries: parseBundleEntries(metadata.extras),
     save: (ui) => saveToDisk(api, objectId, identity, filename, metadata.mimeType, metadata.originalSize, ui),
+    refreshCredit: async () => {
+      const { challengeId: cid, proof: pf } = await prove(api, objectId, identity);
+      const { credit: fresh } = await api.fetchPreview(cid, pf);
+      return fresh ?? null;
+    },
     packs: async () => (await api.billingPacks()).packs,
     checkout: async (packId) => {
       const { challengeId: cid, proof: pf } = await prove(api, objectId, identity);

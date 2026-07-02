@@ -77,23 +77,25 @@ MULTIPART_MIN_PART = "5242880"                      # 5 MiB
 REG_EMAIL_PER_DAY = "1000"
 REG_IP_PER_DAY = "1000"
 # Monetization (download charge). Ships INERT: leave BILLING_ENABLED unset so downloads stay free until
-# launch, then flip it to "1" + set the price. PRICE_CENTS_PER_GB is the price knob (default 1 = 1¢/GB ->
-# $10 = 1 TB); set it to your intended price (e.g. "10" = 10¢/GB -> $10 = 100 GB). Caps unset = uncapped.
-# All env-tunable in the dashboard, no code change.
+# launch, then flip it to "1". PRICE_CENTS_PER_GB: the LAUNCH price IS the code default (1 = 1¢/GB ->
+# $10 = 1,000 GB), so LEAVE IT UNSET unless the price ever changes. All byte knobs are DECIMAL
+# (1 GB = 1000000000), matching the product copy + credit labels — do not use binary (GiB) values.
+# If both caps are set, PAID_ATREST_CAP_BYTES must be >= RECEIVER_INBOUND_CAP_BYTES (a top-up must never
+# shrink an inbox; the code clamps paid up to free if misconfigured). All env-tunable, no code change.
 # BILLING_ENABLED = "1"
-# PRICE_CENTS_PER_GB = "10"
-# FREE_GRANT_BYTES = "1073741824"             # 1 GB free download credit/account (unset = code default)
-# RECEIVER_INBOUND_CAP_BYTES = "1073741824"   # free-tier lifetime inbound cap (unset = uncapped)
-# PAID_ATREST_CAP_BYTES = "107374182400"      # paid-tier at-rest cap = 100 GB (unset = uncapped)
+# FREE_GRANT_BYTES = "1000000000"             # 1 GB (decimal) free download credit/account (unset = code default, same value)
+# RECEIVER_INBOUND_CAP_BYTES = "1000000000"   # free-tier lifetime inbound cap, decimal (unset = uncapped)
+# PAID_ATREST_CAP_BYTES = "100000000000"      # paid-tier at-rest cap = 100 GB decimal (unset = uncapped); keep >= the free cap
 
 # Secrets (DO NOT put here) — set with:
 #   wrangler secret put SERVER_KEM_PRIVATE_JWK    # from gen-keys
 #   wrangler secret put SERVER_SIGN_PRIVATE_JWK   # from gen-keys
 #   wrangler secret put R2_ACCESS_KEY_ID          # R2 > Manage API tokens
 #   wrangler secret put R2_SECRET_ACCESS_KEY
-#   wrangler secret put RECEIVER_ID_SECRET        # long random; derives the per-recipient account id from the confirmed email
+#   wrangler secret put HASH_SECRET               # long random (openssl rand -hex 32); keys ALL rate-limit hashing (IPs, emails, tokens). REQUIRED: without it every endpoint 503s (config_error)
+#   wrangler secret put RECEIVER_ID_SECRET        # long random; derives the per-recipient account id from the confirmed email. REQUIRED for every delivery even with billing off
 #   wrangler secret put STRIPE_SECRET_KEY         # sk_*; checkout 503s until BOTH this + the webhook secret are set
-#   wrangler secret put STRIPE_WEBHOOK_SECRET     # whsec_*; from the Stripe webhook (event checkout.session.completed)
+#   wrangler secret put STRIPE_WEBHOOK_SECRET     # whsec_*; from the Stripe webhook (event checkout.session.completed) — register it at the WORKER url (/billing/webhook), never the Pages domain
 
 [env.production]
 name = "receive-link"
@@ -135,11 +137,12 @@ SERVER_SIGN_KEY_ID = "1"                                # see staging note on ke
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "receive-link-prod"
 MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (see staging note above)
-# Monetization (same as staging; INERT until launch). Flip BILLING_ENABLED + set PRICE_CENTS_PER_GB when
-# going live on prod. Caps unset = uncapped. Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET + RECEIVER_ID_SECRET
-# as prod secrets (`wrangler secret put --env production`).
+# Monetization (same as staging; INERT until launch). Flip BILLING_ENABLED when going live on prod —
+# ONLY after the Stripe secrets are set (else the 402 wall shows packs whose checkout 503s). The launch
+# price IS the code default (1¢/GB), so PRICE_CENTS_PER_GB stays unset. Byte knobs are DECIMAL; if both
+# caps are set, keep PAID_ATREST >= RECEIVER_INBOUND (the code clamps a misconfig). Set HASH_SECRET +
+# RECEIVER_ID_SECRET + STRIPE_* as prod secrets (`wrangler secret put --env production`) BEFORE deploying.
 # BILLING_ENABLED = "1"
-# PRICE_CENTS_PER_GB = "10"
-# FREE_GRANT_BYTES = "1073741824"
-# RECEIVER_INBOUND_CAP_BYTES = "1073741824"
-# PAID_ATREST_CAP_BYTES = "107374182400"
+# FREE_GRANT_BYTES = "1000000000"
+# RECEIVER_INBOUND_CAP_BYTES = "1000000000"
+# PAID_ATREST_CAP_BYTES = "100000000000"

@@ -63,4 +63,4 @@ Branch off `main`, push your branch, open a PR, and keep `main` deployable. The 
 
 ## Deploy (owner only, for reference)
 
-The owner deploys with `bun run deploy` (Worker) plus `wrangler pages deploy web` (client), after setting the Cloudflare secrets and resource ids. Contributors do not need this; the mock server covers local development. Full steps are in the [README](README.md#deploy-owner-only).
+The owner deploys with `bun run deploy` (Worker) plus a CURATED-directory `wrangler pages deploy` for the client (never `wrangler pages deploy web` raw: Pages ignores `.assetsignore` and would publish the TypeScript source), after setting the Cloudflare secrets and resource ids. Contributors do not need this; the mock server covers local development. Full steps are in the [README](README.md#deploy-owner-only).

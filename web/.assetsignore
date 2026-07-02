@@ -6,3 +6,5 @@ src/
 fk/
 core/
 og-card.html
+og-card-v2.html
+tsconfig.json

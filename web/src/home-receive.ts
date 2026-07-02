@@ -46,7 +46,6 @@ let objectId = "";
 const justPaid = new URLSearchParams(location.search).has("paid");
 // Proactive add-credit from the delivery email (?buy=1): after unlock, auto-open the top-up picker.
 const wantBuy = new URLSearchParams(location.search).has("buy");
-let firstSave = true;
 // Low-balance nudge floor: if this file is affordable but leaves under 200 MB, show a soft note (mirrors
 // the worker's projected-remaining nudge logic). Affordable-only; an unaffordable file hits the wall instead.
 const LOW_CREDIT_FLOOR = 200 * 1024 * 1024;
@@ -206,17 +205,38 @@ async function doSave(): Promise<void> {
   el("barfill").style.width = "0%"; el("barfill").parentElement!.classList.add("indet");
   show("saving");
   try {
-    let result = await delivery.save(makeUI());
-    // On the first Save after paying, re-prove + retry briefly so a lagging credit webhook doesn't bounce
-    // the user back to the wall they just paid at.
-    for (let i = 0; justPaid && firstSave && result === "needsFunds" && i < 4; i++) {
-      await sleep(1500);
-      if (cancelBtn.disabled) { result = "stopped"; break; } // user hit Cancel during the post-payment wait (the button disables on click)
-      result = await delivery.save(makeUI());
-    }
-    firstSave = false;
+    const result = await delivery.save(makeUI());
     if (result === "stopped") { showReady(); return; } // cancelled or dismissed the save dialog
-    if (result === "needsFunds") { await showTopUp(); return; } // out of credit -> the only money moment
+    if (typeof result !== "string") {
+      // Out of credit. If the user JUST paid (?paid return), the crediting webhook may simply lag the
+      // redirect — do NOT re-enter save() from a timer (the OS save dialog needs a live user gesture;
+      // Chrome's activation expires ~5s, so a late retry throws SecurityError right after a successful
+      // payment), and NEVER bounce them back to the wall they just paid at (that invites a double
+      // purchase). Instead poll the FREE credit read (no charge, no dialog, no passkey prompt) until the
+      // balance covers this file, then hand back a fresh Save click.
+      if (justPaid) {
+        el("phase").textContent = "Confirming payment"; el("bytes").textContent = "";
+        el("barfill").parentElement!.classList.add("indet");
+        const before = result.balanceBytes;
+        let balance = before;
+        for (let i = 0; i < 8 && balance < result.needBytes; i++) {
+          await sleep(1500);
+          if (cancelBtn.disabled) { showReady(); return; } // user hit Cancel during the wait (the button disables on click)
+          const fresh = await delivery.refreshCredit().catch(() => null);
+          if (fresh) { balance = fresh.balanceBytes; delivery.credit = fresh; }
+        }
+        if (balance < result.needBytes && balance > before) { await showTopUp(); return; } // payment landed but under-bought -> the wall, with the new balance
+        showReady(); // covers it (tap Save again) or still processing -- either way, never the wall
+        const note = el("rpaidnote");
+        note.textContent = balance >= result.needBytes
+          ? "Payment received. Tap Save to download."
+          : "Your payment is still processing. Give it a moment, then tap Save again.";
+        note.hidden = false;
+        return;
+      }
+      await showTopUp(); // out of credit, no recent payment -> the only money moment
+      return;
+    }
     show("saved");
   } catch (e) {
     showError(humanError(e));
@@ -300,6 +320,13 @@ async function main(): Promise<void> {
   const path = location.pathname;
   objectId = path.startsWith("/d/") ? path.slice("/d/".length).replace(/\/+$/, "") : "";
   if (!objectId) { showError("This download link is incomplete. Use the link from your delivery email."); return; }
+  // Scrub ?paid from the URL once captured, so a refresh/bookmark doesn't replay the "Credit added" note
+  // forever. (justPaid was already read at module load; this page-view keeps its behavior.)
+  if (justPaid) {
+    const u = new URL(location.href);
+    u.searchParams.delete("paid");
+    history.replaceState(null, "", u.pathname + u.search + u.hash);
+  }
   const gateErr = await receiveSupportError();
   if (gateErr) { showError(gateErr); return; }
   try {
