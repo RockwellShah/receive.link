@@ -26,7 +26,7 @@
 
 import { accountCheckout, accountLogin, accountSession, accountSummary } from "./account";
 import { billingCheckout, billingPacks, billingWebhook, confirm, discardObject, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
-import { corsOrigin, cors, isForbiddenCrossOrigin, json } from "./http";
+import { corsOrigin, cors, isForbiddenCrossOrigin, json, logEvent } from "./http";
 import type { Env } from "./types";
 
 // Durable Object classes must be exported from the entry module so the runtime can construct them.
@@ -39,6 +39,14 @@ export default {
     const origin = corsOrigin(env, req);
 
     if (req.method === "OPTIONS") return new Response(null, { headers: { ...cors(origin), "cache-control": "no-store" } });
+
+    // Fail fast on a missing rate-limit hash key: nearly every endpoint HMACs abuse-limit keys with it
+    // (hmacHex throws on an empty key), so an unset secret would otherwise surface as opaque 500s deep in
+    // random handlers. One loud, obvious config error instead — same policy as RECEIVER_ID_SECRET.
+    if (!env.HASH_SECRET) {
+      logEvent("config_error", { what: "HASH_SECRET" });
+      return json({ error: "service misconfigured" }, 503, origin);
+    }
 
     // CORS only hides the response, so reject a cross-site POST (present-but-disallowed Origin)
     // before any handler side effect runs. No-Origin callers and allow-listed origins pass.

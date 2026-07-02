@@ -1,12 +1,13 @@
 // End-to-end handler tests: the full register -> confirm -> upload protocol run
 // through the real codec + crypto against in-memory bindings.
 import { expect, test } from "bun:test";
-import { base64urlDecode, base64urlEncode } from "../../shared/codec";
-import { FETCH_CHALLENGE_INFO, fetchProofHex, generateKemKeyPair, hpkeUnseal, importKemPublicKey, sealEmail, serializeKemPublicKey } from "../../shared/crypto";
-import { hex, hmacSha256hex } from "../../shared/util";
+import { DROP_PAYLOAD_VERSION, LINK_ID_LEN, base64urlDecode, base64urlEncode, signableBytes } from "../../shared/codec";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, generateKemKeyPair, hpkeUnseal, importKemPublicKey, importSignPrivateKey, sealEmail, serializeKemPublicKey, signRegion } from "../../shared/crypto";
+import { hex, hmacSha256hex, randomBytes } from "../../shared/util";
 import { p256 } from "@noble/curves/nist.js";
 import { bech32m } from "@scure/base";
 import {
+  BILLING_CHECKOUT_RID_PER_DAY,
   REG_EMAIL_PER_DAY,
   billingCheckout,
   billingPacks,
@@ -18,6 +19,7 @@ import {
   parseAndVerify,
   receiverId,
   register,
+  uploadAbort,
   uploadComplete,
   uploadInit,
   uploadParts,
@@ -543,9 +545,23 @@ test("download gate: a challenge for an unbound object id is 404 (hard cutover, 
 
 test("upload-complete fails closed (no delivery) when the share key can't be decoded for the gate", async () => {
   const h = await makeTestEnv();
-  const badShareKey = base64urlEncode(new Uint8Array(38).fill(9)); // not a valid Bech32m "fkey" string
-  await register(post("/register", { sealedEmail: await sealed(h, "r@example.com"), shareKey: badShareKey, label: "x" }), h.env);
-  const link = ((await (await confirm(post("/confirm", { nonce: nonceFrom(h.email.sent.at(-1)!.text!) }), h.env)).json()) as { link: string }).link;
+  // register now REJECTS an undecodable share key at mint time, so forge a signed link directly — the
+  // shape of a LEGACY link minted before that validation. The completion-time decode is the
+  // defense-in-depth gate and must still fail closed for such a link.
+  const region = signableBytes({
+    version: DROP_PAYLOAD_VERSION,
+    keyId: 1,
+    linkId: randomBytes(LINK_ID_LEN),
+    shareKey: new Uint8Array(38).fill(9), // not a valid Bech32m "fkey" string
+    label: "x",
+    sealedEmail: base64urlDecode(await sealed(h, "r@example.com")),
+  });
+  const signPriv = await importSignPrivateKey(JSON.parse(h.env.SERVER_SIGN_PRIVATE_JWK) as JsonWebKey);
+  const sig = await signRegion(signPriv, region);
+  const full = new Uint8Array(region.length + sig.length);
+  full.set(region, 0);
+  full.set(sig, region.length);
+  const link = base64urlEncode(full);
   const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
   h.r2.putRaw(objectId, fkeyCiphertext(200));
   const before = h.email.sent.length;
@@ -833,6 +849,65 @@ test("billing: the price is one env knob; packs + labels derive from it", async 
   expect(out.priceCentsPerGb).toBe(1);
   expect(out.packs.map((x) => x.id)).toEqual(["p10", "p25", "p50", "p100", "custom"]); // fixed tiers + "Other amount"
   expect(out.packs.at(-1)!.label).toBe("Other amount");
+});
+
+test("upload-abort: only the owning link can clear an in-flight upload binding", async () => {
+  const h = await makeTestEnv();
+  const linkA = await setupLink(h, "a@example.com", "A");
+  const linkB = await setupLink(h, "b@example.com", "B");
+  const init = (await (await uploadInit(post("/upload-init", { payload: linkA, size: 100 }), h.env)).json()) as { objectId: string };
+  expect(h.kv.store.has(`upload:${init.objectId}`)).toBe(true);
+  // A stranger's otherwise-valid link can't kill the upload (200 by design: abort is idempotent and must
+  // not leak whether the object exists, but the binding survives).
+  expect((await uploadAbort(post("/upload-abort", { payload: linkB, objectId: init.objectId }), h.env)).status).toBe(200);
+  expect(h.kv.store.has(`upload:${init.objectId}`)).toBe(true);
+  // The owner can.
+  expect((await uploadAbort(post("/upload-abort", { payload: linkA, objectId: init.objectId }), h.env)).status).toBe(200);
+  expect(h.kv.store.has(`upload:${init.objectId}`)).toBe(false);
+});
+
+test("config fail-fast: confirm 503s on a garbled signing key WITHOUT burning the one-time nonce", async () => {
+  const h = await makeTestEnv();
+  await register(post("/register", { sealedEmail: await sealed(h, "r@example.com"), shareKey: SHARE_KEY, label: "x" }), h.env);
+  const nonce = nonceFrom(h.email.sent.at(-1)!.text!);
+  const good = h.env.SERVER_SIGN_PRIVATE_JWK;
+  h.env.SERVER_SIGN_PRIVATE_JWK = "not json";
+  expect((await confirm(post("/confirm", { nonce }), h.env)).status).toBe(503);
+  // The nonce survived the misconfig: fixing the secret lets the same confirm succeed.
+  h.env.SERVER_SIGN_PRIVATE_JWK = good;
+  expect((await confirm(post("/confirm", { nonce }), h.env)).status).toBe(200);
+});
+
+test("config fail-fast: register 503s (server misconfig) on a garbled KEM private key, not a client 400", async () => {
+  const h = await makeTestEnv();
+  h.env.SERVER_KEM_PRIVATE_JWK = "not json";
+  const res = await register(post("/register", { sealedEmail: await sealed(h, "r@example.com"), shareKey: SHARE_KEY, label: "x" }), h.env);
+  expect(res.status).toBe(503);
+});
+
+test("register rejects an undecodable share key (would otherwise mint a permanent trap link)", async () => {
+  const h = await makeTestEnv();
+  const bad = base64urlEncode(new TextEncoder().encode("not-a-fkey-sharekey"));
+  const res = await register(post("/register", { sealedEmail: await sealed(h, "r@example.com"), shareKey: bad, label: "x" }), h.env);
+  expect(res.status).toBe(400);
+});
+
+test("billing: the file-proof checkout trips the per-account cap", async () => {
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
+  const finalId = await deliver(h, await setupLink(h), 200);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ url: "https://checkout.stripe.com/x" }), { status: 200 })) as unknown as typeof fetch;
+  try {
+    let last = 200;
+    // Distinct IP per call so the per-IP cap never trips: this isolates the per-ACCOUNT (rid) cap.
+    for (let i = 0; i <= BILLING_CHECKOUT_RID_PER_DAY; i++) {
+      const { challengeId, proof } = await challengeAndProof(h, finalId, RECEIVER);
+      last = (await billingCheckout(post("/billing/checkout", { challengeId, proof, pack: "p10" }, `7.7.${Math.floor(i / 250)}.${i % 250}`), h.env)).status;
+    }
+    expect(last).toBe(429);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("billing: checkout + packs are 503 when BILLING_ENABLED is off, even with Stripe configured", async () => {

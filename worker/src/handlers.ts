@@ -39,6 +39,8 @@ export const UPLOAD_LINK_PER_DAY = 25; // files one Drop link accepts (anti-floo
 export const UPLOAD_IP_PER_DAY = 100; // files one IP can push across all links
 export const FETCH_IP_PER_DAY = 1000; // download-gate challenge + prove calls one IP can make per day
 export const REVOKE_IP_PER_DAY = 60; // revoke calls one IP can make (tokens are unguessable; this just caps probing)
+export const BILLING_CHECKOUT_IP_PER_DAY = 30; // Stripe sessions one IP can mint via the file-proof top-up
+export const BILLING_CHECKOUT_RID_PER_DAY = 30; // Stripe sessions one account can mint via the file-proof top-up
 const UPLOAD_BYTES_LINK_FACTOR = 5; // per-link daily byte budget defaults to 5x the per-file cap
 const UPLOAD_BYTES_IP_FACTOR = 10; // per-IP daily byte budget defaults to 10x the per-file cap
 const DEFAULT_SIGN_KEY_ID = 1; // key id stamped into links when SERVER_SIGN_KEY_ID is unset
@@ -251,11 +253,16 @@ export async function register(req: Request, env: Env): Promise<Response> {
   let sealedEmailBytes: Uint8Array;
   try {
     sealedEmailBytes = base64urlDecode(body.sealedEmail);
+    const shareKeyBytes = base64urlDecode(body.shareKey);
+    // Reject a share key the download gate could never use BEFORE we sign it into a permanent link.
+    // Signing an undecodable key would mint a trap link: every send transfers the whole file, then
+    // fails at completion forever (this is the exact decode uploadComplete runs later).
+    recipientPkFromShareKeyBytes(shareKeyBytes);
     region = signableBytes({
       version: DROP_PAYLOAD_VERSION,
       keyId: currentSignKeyId(env),
       linkId: randomBytes(LINK_ID_LEN),
-      shareKey: base64urlDecode(body.shareKey),
+      shareKey: shareKeyBytes,
       label,
       sealedEmail: sealedEmailBytes,
     });
@@ -263,9 +270,17 @@ export async function register(req: Request, env: Env): Promise<Response> {
     return json({ error: "invalid payload" }, 400, origin);
   }
 
+  // Split server misconfig from client error: a bad/missing KEM private key must read as OUR 503 (with a
+  // config_error log), never as the client-blamed 400 below.
+  let kemPriv: CryptoKey;
+  try {
+    kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
+  } catch {
+    logEvent("config_error", { what: "SERVER_KEM_PRIVATE_JWK" });
+    return json({ error: "service misconfigured" }, 503, origin);
+  }
   let email: string;
   try {
-    const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
     email = await unsealEmail(kemPriv, sealedEmailBytes);
   } catch {
     return json({ error: "invalid sealed email" }, 400, origin);
@@ -293,10 +308,19 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
 
   const stored = await env.DROP_KV.get(`pending:${body.nonce}`);
   if (!stored) return json({ error: "invalid or expired" }, 404, origin);
+  // Parse the signing key BEFORE consuming the one-time nonce: a garbled/missing secret must not burn the
+  // user's registration (the nonce would be spent with no link minted, and they could never confirm again).
+  // Fail loud + retryable instead; the nonce survives for a retry once the config is fixed.
+  let signPriv: CryptoKey;
+  try {
+    signPriv = await importSignPrivateKey(JSON.parse(env.SERVER_SIGN_PRIVATE_JWK) as JsonWebKey);
+  } catch {
+    logEvent("config_error", { what: "SERVER_SIGN_PRIVATE_JWK" });
+    return json({ error: "service misconfigured" }, 503, origin);
+  }
   await env.DROP_KV.delete(`pending:${body.nonce}`); // single use
 
   const region = base64urlDecode(stored);
-  const signPriv = await importSignPrivateKey(JSON.parse(env.SERVER_SIGN_PRIVATE_JWK) as JsonWebKey);
   const sig = await signRegion(signPriv, region);
   const full = new Uint8Array(region.length + sig.length);
   full.set(region, 0);
@@ -493,11 +517,16 @@ export async function uploadAbort(req: Request, env: Env): Promise<Response> {
   if (bindRaw) {
     try {
       const bind = JSON.parse(bindRaw) as UploadBinding;
-      if (bind.link === linkIdHex && bind.mp) await abortMultipart(env, body.objectId, bind.mp.uploadId);
+      // Abort + delete ONLY for the link that owns this upload: any other valid-link holder who learns a
+      // stranger's staging objectId must not be able to kill their in-flight upload. Unowned or
+      // unparseable bindings are left to their TTL (1h single / 24h multipart) instead.
+      if (bind.link === linkIdHex) {
+        if (bind.mp) await abortMultipart(env, body.objectId, bind.mp.uploadId);
+        await env.DROP_KV.delete(`upload:${body.objectId}`);
+      }
     } catch {
-      /* unparseable binding — nothing to abort */
+      /* unparseable binding — nothing to abort; the TTL reaps it */
     }
-    await env.DROP_KV.delete(`upload:${body.objectId}`);
   }
   return json({ ok: true }, 200, origin);
 }
@@ -945,6 +974,16 @@ export async function billingCheckout(req: Request, env: Env): Promise<Response>
   if (!v.ok) return v.resp;
   const bind = await loadFetchbind(env, v.objectId);
   if (!bind?.rid) return json({ error: "expired or not found" }, 404, origin);
+  // A proven passkey must not mint unlimited Stripe sessions: per-IP + per-account caps, parity with the
+  // account-page checkout (which has its own 30/day pair). Separate key namespaces, so a receiver using
+  // both paths gets each path's allowance rather than sharing one counter.
+  const checkoutIpHash = await hmacHex(env.HASH_SECRET, clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `billing:checkout:ip:${checkoutIpHash}`, BILLING_CHECKOUT_IP_PER_DAY, DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
+  if (!(await rateLimit(env.DROP_KV, `billing:checkout:rid:${bind.rid}`, BILLING_CHECKOUT_RID_PER_DAY, DAY))) {
+    return json({ error: "rate limited" }, 429, origin);
+  }
   const base = linkOrigin(env);
   try {
     const url = await createCheckoutSession(env, {
