@@ -73,20 +73,24 @@ export function json(data: unknown, status: number, origin: string): Response {
   });
 }
 
-// All Drop JSON bodies are tiny (a link payload + a couple of base64 fields); the
+// Most Drop JSON bodies are tiny (a link payload + a couple of base64 fields); the
 // file bytes go direct to R2, never through these endpoints. Cap the body so an
 // attacker can't force a huge allocation before the codec's length checks run.
+// EXCEPTION: /upload-complete's `parts` array scales with the part count (up to
+// ~10k parts x ~60 B each, ~600 KB for a multi-TB multipart), so that one route
+// passes a larger explicit cap — the 5.5 GB live experiment caught a 1,050-part
+// completion bouncing off this 64 KB default as a bogus "missing fields" 400.
 const MAX_JSON_BYTES = 64 * 1024;
 
-export async function readJson<T = Record<string, unknown>>(req: Request): Promise<T | null> {
+export async function readJson<T = Record<string, unknown>>(req: Request, maxBytes: number = MAX_JSON_BYTES): Promise<T | null> {
   // Reject before buffering when the client declares an oversized body. The
   // post-read check is a backstop for chunked / Content-Length-absent requests
   // (those are additionally bounded by Cloudflare's platform body limit).
   const declared = parseInt(req.headers.get("content-length") || "0", 10);
-  if (Number.isFinite(declared) && declared > MAX_JSON_BYTES) return null;
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
   try {
     const text = await req.text();
-    if (text.length > MAX_JSON_BYTES) return null;
+    if (text.length > maxBytes) return null;
     return JSON.parse(text) as T;
   } catch {
     return null;

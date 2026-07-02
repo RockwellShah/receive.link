@@ -533,9 +533,14 @@ export async function uploadAbort(req: Request, env: Env): Promise<Response> {
 
 // POST /upload-complete { payload, objectId, parts? } -> { ok }
 // `parts` ({partNumber, etag} per part) is required for multipart; omitted for single PUT.
+// The parts array scales with partCount — up to ~10k entries x ~60 B each (~600 KB) for a multi-TB
+// upload — so this ONE route reads with a 1 MiB body cap instead of the 64 KB default. Found live:
+// a 5.5 GB (1,050-part) completion bounced off the default cap as a bogus "missing fields" 400,
+// capping real multipart uploads at ~1k parts (~17 GB at prod's 16 MiB part floor).
+const COMPLETE_JSON_BYTES = 1024 * 1024;
 export async function uploadComplete(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
-  const body = await readJson<{ payload: string; objectId: string; parts?: unknown }>(req);
+  const body = await readJson<{ payload: string; objectId: string; parts?: unknown }>(req, COMPLETE_JSON_BYTES);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string") {
     return json({ error: "missing fields" }, 400, origin);
   }
