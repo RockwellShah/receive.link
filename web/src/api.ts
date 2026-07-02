@@ -197,9 +197,11 @@ export class DropApi {
     return this.postJson("/billing/checkout", { challengeId, proof, pack });
   }
 
-  /** Receive: remove a delivered object from storage after saving it (frees R2 + clears the server copy). */
-  discard(objectId: string): Promise<{ ok: true }> {
-    return this.postJson("/discard", { objectId });
+  /** Receive: remove a delivered object from storage after saving it (frees R2 + clears the server copy).
+   *  PROOF-GATED like a download: deliveries are served in place, so the sender knows the object id and a
+   *  bare-id delete would let them destroy the receiver's file. The server deletes the challenge-bound id. */
+  discard(challengeId: string, proof: string): Promise<{ ok: true }> {
+    return this.postJson("/discard", { challengeId, proof });
   }
 
   // ---- Account wallet (Phase 2a): magic-link sign-in -> session -> balance + add credit (no file needed) ----

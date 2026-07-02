@@ -181,6 +181,7 @@ export class MemoryReceiver {
   private balances = new Map<string, number>(); // present once seeded/changed; absent = lazy-default to grant
   private tiers = new Map<string, Tier>();
   private paid = new Map<string, Set<string>>(); // rid -> finalIds already charged
+  private committedIds = new Map<string, Set<string>>(); // rid -> finalIds already counted into total (cmt)
   private holds = new Map<string, Map<string, number>>(); // rid -> token -> reserved bytes
   private events = new Map<string, Set<string>>(); // rid -> stripe event ids already credited
   idFromName(name: string): DurableObjectId {
@@ -188,11 +189,12 @@ export class MemoryReceiver {
   }
   get(id: DurableObjectId) {
     const name = id.toString();
-    const { totals, pendingFiles, balances, tiers, paid, holds, events } = this;
+    const { totals, pendingFiles, balances, tiers, paid, committedIds, holds, events } = this;
     const clamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
     const held = () => holds.get(name) ?? holds.set(name, new Map<string, number>()).get(name)!;
     const pend = () => pendingFiles.get(name) ?? pendingFiles.set(name, new Map<string, number>()).get(name)!;
     const paidSet = () => paid.get(name) ?? paid.set(name, new Set<string>()).get(name)!;
+    const cmtSet = () => committedIds.get(name) ?? committedIds.set(name, new Set<string>()).get(name)!;
     const tierOf = (): Tier => tiers.get(name) ?? "free";
     const bal = (grant: number) => balances.get(name) ?? clamp(grant);
     const sum = (m: Map<string, number>) => {
@@ -211,12 +213,11 @@ export class MemoryReceiver {
         held().set(token, add);
         return { ok: true, token };
       },
-      async commit(token: string, finalId: string, accruePending: boolean): Promise<void> {
-        const b = held().get(token);
-        if (b === undefined) return;
-        held().delete(token);
-        totals.set(name, (totals.get(name) ?? 0) + b);
-        if (accruePending) pend().set(finalId, b); // delivered, un-downloaded (only tracked when the cap is on)
+      async commitDelivered(finalId: string, bytes: number, accruePending: boolean): Promise<void> {
+        if (cmtSet().has(finalId)) return; // already counted (idempotent per delivery id)
+        cmtSet().add(finalId);
+        totals.set(name, (totals.get(name) ?? 0) + clamp(bytes));
+        if (accruePending) pend().set(finalId, clamp(bytes)); // delivered, un-downloaded (only tracked when the cap is on)
       },
       async release(token: string): Promise<void> {
         held().delete(token);

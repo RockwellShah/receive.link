@@ -67,7 +67,10 @@ const MAX_PART_SIZE = 1024 * 1024 * 1024; // 1 GiB ceiling per part (keeps one i
 const TARGET_PARTS = 9000; // aim under R2's 10k-part hard limit, with headroom
 const MAX_PARTS = 10000; // R2 hard limit
 const PART_PRESIGN_BATCH = 100; // presign part URLs in batches, on demand (not all 10k up front)
-const MULTIPART_TTL_SEC = DAY; // the upload binding must outlive a multi-hour upload
+// The multipart upload binding must outlive the longest legitimate transfer: a 5 TB upload at 100 Mbps
+// runs ~5.5 days. 8 days = one day of slack past the bucket's 7-day abort-incomplete-multipart lifecycle
+// (the REAL upload deadline), so the KV binding never expires before R2 aborts the upload itself.
+const MULTIPART_TTL_SEC = 8 * DAY;
 
 // Both knobs are env-overridable (tunable without a code edit; tests set them low
 // so multipart exercises with tiny payloads).
@@ -113,7 +116,11 @@ function validateParts(parts: unknown, partCount: number): { partNumber: number;
 
 // The KV upload-binding: which link minted this object, and (for multipart) the
 // in-progress upload's id + sizing. JSON so single + multipart share one key.
-type UploadBinding = { link: string; mp?: { uploadId: string; size: number; partSize: number; partCount: number } };
+// `inplace` (cutover versioning, SPEC-large-files A2): stamped true on NEW multipart bindings, whose
+// deliveries skip the copy promotion (finalId = objectId). A binding WITHOUT it — minted by the previous
+// worker build — keeps the legacy copy path until it drains (its TTL), so a mixed old/new retry can never
+// deliver one upload under two different ids.
+type UploadBinding = { link: string; inplace?: boolean; mp?: { uploadId: string; size: number; partSize: number; partCount: number } };
 
 function maxUploadBytes(env: Env): number {
   const n = env.MAX_UPLOAD_BYTES ? parseInt(env.MAX_UPLOAD_BYTES, 10) : NaN;
@@ -454,7 +461,9 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (partCount > MAX_PARTS) return json({ error: "file too large", maxBytes: cap }, 413, origin);
 
   const uploadId = await createMultipart(env, objectId);
-  const bind: UploadBinding = { link: linkIdHex, mp: { uploadId, size: body.size, partSize, partCount } };
+  // `inplace: true` — this upload delivers WITHOUT the copy promotion (SPEC-large-files): the assembled
+  // multipart object is immutable once complete consumes the uploadId, so it is served where it sits.
+  const bind: UploadBinding = { link: linkIdHex, inplace: true, mp: { uploadId, size: body.size, partSize, partCount } };
   await env.DROP_KV.put(`upload:${objectId}`, JSON.stringify(bind), { expirationTtl: MULTIPART_TTL_SEC });
   const partUrls = await presignParts(env, objectId, uploadId, 1, PART_PRESIGN_BATCH, partCount);
   return json(
@@ -591,9 +600,9 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       : json({ error: "completion already in progress, try again" }, 409, origin);
   }
   let finished = false;
-  // The recipient-capacity reservation taken before the delivery email (below). Committed iff this
-  // attempt wins the exactly-once delivery race; released on every other path. Held here so the finally
-  // can release it on an abort. A crash before either frees the hold via the DO's reservation TTL.
+  // The recipient-capacity reservation taken before the delivery email (below). A pure cap-check HOLD:
+  // the meters are counted by the finalId-idempotent commitDelivered, so the hold is ALWAYS released in
+  // the finally (never consumed). A crash frees it via the DO's reservation TTL.
   let reservation: { acct: ReturnType<Env["RECEIVER"]["get"]>; token: string } | null = null;
   try {
     // Multipart: validate the part set strictly, then assemble — but only if a prior attempt hasn't
@@ -622,15 +631,23 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "file too large" }, 413, origin);
     }
 
-    // Per-link flood cap on the delivery link (gates the expensive copy below).
+    // Per-link flood cap on the delivery link (gates the promotion/validation work below).
     if (!(await rateLimit(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
       return json({ error: "link is over its daily limit" }, 429, origin);
     }
 
-    // Promote to an immutable, sender-unknown final key, then validate THAT copy. The sender holds no
-    // PUT URL for the final key, so it can't be swapped after the check (closes the mutable-PUT TOCTOU).
-    const finalId = hex(randomBytes(OBJECT_ID_BYTES));
-    if (!(await copyObject(env, body.objectId, finalId))) return json({ error: "object not found" }, 404, origin);
+    // WHERE the delivered bytes live (SPEC-large-files):
+    // IN-PLACE (new multipart bindings, `inplace: true`): the assembled object is already immutable —
+    //   CompleteMultipartUpload consumed the uploadId (every sender part-URL is dead; no single-PUT URL
+    //   was ever minted for a multipart id; create/complete/abort are Worker-binding-only) and the
+    //   assembly is pinned to the exact validated part etags. Deliver it where it sits: finalId IS the
+    //   staging id, completion is O(1) at ANY size, and the 5 GiB CopyObject wall is gone.
+    // COPY (single-PUT + legacy pre-cutover bindings): the sender's 1h PUT URL is a real overwrite
+    //   window, so promote to a sender-unknown final key and validate THAT copy (<= the 64 MiB
+    //   threshold, far under the copy limit).
+    const inPlace = bind.inplace === true && !!bind.mp;
+    const finalId = inPlace ? body.objectId : hex(randomBytes(OBJECT_ID_BYTES));
+    if (!inPlace && !(await copyObject(env, body.objectId, finalId))) return json({ error: "object not found" }, 404, origin);
     const finalInfo = await objectInfo(env, finalId);
     if (!finalInfo || finalInfo.size > maxUploadBytes(env) || !(await validateFileKeyHeader(env, finalId, finalInfo.size))) {
       logEvent("invalid_ciphertext", { link: linkIdHex, size: finalInfo?.size ?? null });
@@ -648,21 +665,21 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
 
     // If a stalled attempt was reclaimed while we worked, the reclaimer now owns delivery — abort
-    // before the email rather than send a duplicate (fences the side effect, not just the state). The
-    // reclaimer mints its own final key, so drop ours instead of leaking it until TTL.
+    // before the email rather than send a duplicate (fences the side effect, not just the state).
+    // Copy: the reclaimer mints its OWN final key, so drop our private copy. In-place: the reclaimer
+    // delivers the SAME object — touch nothing.
     if (!(await guard.heldBy(claim.token))) {
-      await deleteObject(env, finalId);
+      if (!inPlace) await deleteObject(env, finalId);
       return json({ error: "completion was retried elsewhere, try again" }, 409, origin);
     }
 
     // Recipient capacity FIRST among the post-fence gates, on the ACTUAL final-object size: RESERVE the
     // bytes against the cap (atomic in the DO, so two concurrent uploads to one recipient can't both
-    // slip a tight cap). The hold is committed only if THIS attempt wins delivery (below) and released
-    // on every other path (byte-budget reject, failed email, abort, or a duplicate that lost the
-    // exactly-once race), so the charge is exactly-once; a crash frees the hold via the DO's reservation
-    // TTL. An over-cap upload rejects here WITHOUT burning the byte budget. We reserve the actual
-    // final-object size on every (re)try, so overwriting mutable staging to deliver more is caught here.
-    // Uncapped deployments still meter (commit accrues `total`) for accurate history.
+    // slip a tight cap). The hold is a pure cap-check: the meters accrue via the finalId-idempotent
+    // commitDelivered (below), and the hold is ALWAYS released in the finally; a crash frees it via the
+    // DO's reservation TTL. An over-cap upload rejects here WITHOUT burning the byte budget. We reserve
+    // the actual final-object size on every (re)try, so overwriting mutable staging to deliver more is
+    // caught here. Uncapped deployments still meter (commitDelivered accrues `total`) for history.
     const rid = await receiverId(env, email);
     const acct = env.RECEIVER.get(env.RECEIVER.idFromName(rid));
     const hold = await acct.reserve(finalInfo.size, receiverInboundCap(env), paidAtRestCap(env));
@@ -690,18 +707,25 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     // if a budget rejects here). Per-link + per-IP daily caps keep a multi-TB per-file cap from
     // becoming petabytes/day. IP hash is the reimplementation's keyed digest (HASH_SECRET), not a plain
     // SHA-256 — low-entropy IPs must not be brute-forceable from a leaked rate-limit key.
+    // RETRY-IDEMPOTENT (SPEC-large-files A3): the burn is recorded per objectId, so a 502-then-retry of
+    // the SAME upload doesn't consume the budget twice (two retries of one 5 TB send would otherwise eat
+    // most of the 25 TB/day link budget). Best-effort marker: a crash between burn and marker can rarely
+    // double-burn, which only under-serves, never over-serves.
     const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
-    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, finalInfo.size, bytesPerLinkDay(env), DAY))) {
-      logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: finalInfo.size });
-      await deleteObject(env, finalId);
-      await deleteObject(env, body.objectId);
-      return json({ error: "link is over its daily transfer limit" }, 429, origin);
-    }
-    if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:ip:${ipHash}`, finalInfo.size, bytesPerIpDay(env), DAY))) {
-      logEvent("byte_budget_exceeded", { scope: "ip", link: linkIdHex, size: finalInfo.size });
-      await deleteObject(env, finalId);
-      await deleteObject(env, body.objectId);
-      return json({ error: "rate limited" }, 429, origin);
+    if (!(await env.DROP_KV.get(`bb:${body.objectId}`))) {
+      if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:link:${linkIdHex}`, finalInfo.size, bytesPerLinkDay(env), DAY))) {
+        logEvent("byte_budget_exceeded", { scope: "link", link: linkIdHex, size: finalInfo.size });
+        await deleteObject(env, finalId);
+        await deleteObject(env, body.objectId);
+        return json({ error: "link is over its daily transfer limit" }, 429, origin);
+      }
+      if (!(await rateLimitBytes(env.DROP_KV, `up:bytes:ip:${ipHash}`, finalInfo.size, bytesPerIpDay(env), DAY))) {
+        logEvent("byte_budget_exceeded", { scope: "ip", link: linkIdHex, size: finalInfo.size });
+        await deleteObject(env, finalId);
+        await deleteObject(env, body.objectId);
+        return json({ error: "rate limited" }, 429, origin);
+      }
+      await env.DROP_KV.put(`bb:${body.objectId}`, "1", { expirationTtl: DAY });
     }
 
     // Bind the delivered object to the receiver's (already-decoded) key so the download gate can prove
@@ -748,51 +772,57 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     } catch {
       logEvent("delivery_failed", { link: linkIdHex });
       // Best-effort cleanup, each guarded independently so a throw in one can't skip the other (and
-      // neither masks the 502 the client retries on): drop the gate binding AND the final object. A
-      // residual of either is harmless and TTL-bounded (fetchbind ~8d; the object via the 7-day lifecycle).
+      // neither masks the 502 the client retries on): drop the gate binding, and for the COPY path the
+      // private final copy too. IN-PLACE keeps the object — it IS the retryable upload (staging), and the
+      // binding survives, so the client's 502-retry can deliver it. Residuals are TTL-bounded.
       await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {});
-      await deleteObject(env, finalId).catch(() => {});
+      if (!inPlace) await deleteObject(env, finalId).catch(() => {});
       return json({ error: "delivery failed, try again" }, 502, origin);
     }
     // The email is OUT — from here we must never release the completion lock (that would let a retry
-    // send a duplicate). Commit the recipient charge IFF we WON the exactly-once delivery transition; if
-    // a stalled+reclaimed sibling already delivered (a duplicate email, the completion guard's accepted
-    // residual), finish() is "already"/"lost" and we RELEASE the hold instead, so the receiver is
-    // charged exactly once. Then best-effort cleanup; a cleanup failure must NOT 500 after a successful
-    // delivery (the client doesn't retry 500, so it would report a false failure).
+    // send a duplicate). Inbound accounting via the finalId-IDEMPOTENT commitDelivered (SPEC-large-files
+    // A1). Accrue total always; track per-file pending only when the at-rest cap is BOTH configured AND
+    // billing is on (a cap without billing would let pending drift up with no downloads to clear it).
+    const accruePending = billingEnabled(env) && paidAtRestCap(env) > 0;
+    // IN-PLACE: commit BEFORE finish. The id is shared by every retry/sibling of this upload, so the
+    // marker makes the count exactly-once no matter where a crash lands (after finish, a retry's early
+    // "already" return can no longer under-count — the meter was settled first).
+    if (inPlace) await acct.commitDelivered(finalId, finalInfo.size, accruePending);
     finished = true;
     const outcome = await guard.finish(claim.token);
-    // Accrue total always; track per-file pending only when the at-rest cap is BOTH configured AND billing
-    // is on — i.e. only when downloads actually run through charge() to clear it. (Setting the cap without
-    // billing would otherwise let pending drift up with no downloads to decrement it.)
-    if (outcome === "won") await acct.commit(hold.token, finalId, billingEnabled(env) && paidAtRestCap(env) > 0);
-    else {
-      // "already"/"lost": a sibling completion is the authoritative delivery, so THIS attempt is a duplicate.
-      // Release the hold AND tear down this attempt's now-orphan artifacts — the gate binding + object behind
-      // its /d/<finalId> link — so opening the duplicate email can't trigger a SECOND download charge (billing
-      // is keyed by finalId, so the duplicate would otherwise be a separately-chargeable file). Best-effort +
-      // TTL-bounded; the winning attempt's finalId is distinct and untouched.
+    if (outcome === "won") {
+      // COPY: commit only as the winner (this attempt's finalId is private; a loser committing its own
+      // id would double-count). Crash between finish and here under-counts at most one <= 64 MiB file.
+      if (!inPlace) await acct.commitDelivered(finalId, finalInfo.size, accruePending);
+    } else {
+      // "already"/"lost": a sibling completion is the authoritative delivery; this attempt is a duplicate.
       logEvent("delivery_duplicate", { link: linkIdHex });
-      await acct.release(hold.token);
-      await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {});
-      await deleteObject(env, finalId).catch(() => {});
+      if (!inPlace) {
+        // COPY: tear down this attempt's now-orphan private artifacts — the gate binding + object behind
+        // its /d/<finalId> link — so opening the duplicate email can't trigger a SECOND download charge.
+        await env.DROP_KV.delete(`fetchbind:${finalId}`).catch(() => {});
+        await deleteObject(env, finalId).catch(() => {});
+      }
+      // IN-PLACE: the sibling delivered the SAME id — the fetchbind rewrite was byte-identical (same
+      // pk/size/rid) and the object is shared, so there is NOTHING to tear down (deleting would destroy
+      // the winner's delivery). The duplicate email's link is the same file; charge() dedupes by finalId.
     }
     logEvent("delivered", { link: linkIdHex, size: finalInfo.size });
     try {
-      await deleteObject(env, body.objectId);
+      // IN-PLACE: the staging object IS the delivery — only the upload binding is spent.
+      if (!inPlace) await deleteObject(env, body.objectId);
       await env.DROP_KV.delete(`upload:${body.objectId}`);
     } catch {
       /* orphaned staging object — the 7-day lifecycle reaps it */
     }
     return json({ ok: true }, 200, origin);
   } finally {
-    if (!finished) {
-      // Abort path (before delivery): release the capacity hold so it doesn't sit against the cap until
-      // its TTL, then free the completion claim for a retry. Best-effort: a release failure must not mask
-      // the real result (the DO's reservation alarm reclaims the hold either way).
-      if (reservation) await reservation.acct.release(reservation.token).catch(() => logEvent("receiver_release_failed", { link: linkIdHex }));
-      await guard.release(claim.token);
-    }
+    // The reservation is a pure cap-check hold (commitDelivered owns the meters), so release it on EVERY
+    // exit — success, duplicate, or abort. Best-effort: a release failure must not mask the real result
+    // (the DO's reservation alarm reclaims the hold either way). The completion claim frees only on the
+    // pre-delivery abort path: a finished lock must never release (a retry would duplicate the email).
+    if (reservation) await reservation.acct.release(reservation.token).catch(() => logEvent("receiver_release_failed", { link: linkIdHex }));
+    if (!finished) await guard.release(claim.token);
   }
 }
 
@@ -1047,25 +1077,26 @@ export function billingPacks(req: Request, env: Env): Response {
   return json({ packs, priceCentsPerGb: priceCentsPerGb(env) }, 200, origin);
 }
 
-// Delete-after-download calls one IP can make in a day. The object id is an unguessable bearer
-// capability, so this just caps abuse (forcing R2 delete ops against valid-looking ids); generous
-// enough for a real receiver clearing their own deliveries.
+// Delete-after-download calls one IP can make in a day. Deletion is proof-gated (below), so this just
+// caps the work a hot IP can force; generous enough for a real receiver clearing their own deliveries.
 const DISCARD_IP_PER_DAY = 100;
 
-// POST /discard { objectId } -> { ok }. The receiver removes a delivered object from storage after
-// saving it: frees R2, and lets the recipient clear the only server-side copy for peace of mind. The
-// object id is a bearer capability held only by the receiver (it arrived in their delivery email) - the
-// same trust level as GET /fetch/:id. Idempotent and safe to repeat; auto-expiry still sweeps the rest.
+// POST /discard { challengeId, proof } -> { ok }. The receiver removes a delivered object from storage
+// after saving it: frees R2, and clears the only server-side copy for peace of mind. PROOF-GATED like a
+// download (SPEC-large-files A4): with in-place delivery the SENDER knows the object id, so a bare-id
+// delete would let a malicious sender destroy the file before (or after) the receiver saves it. The
+// Worker deletes ONLY the challenge-bound objectId — any caller-supplied id is ignored by construction.
+// Idempotent and safe to repeat; auto-expiry still sweeps the rest.
 export async function discardObject(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
-  const body = await readJson<{ objectId?: unknown }>(req);
-  const objectId = typeof body?.objectId === "string" ? body.objectId : "";
-  if (!isHex(objectId, OBJECT_ID_BYTES)) return json({ error: "bad object id" }, 400, origin);
-  // Cheap per-IP cap so a caller can't flood R2 delete ops against arbitrary valid-looking ids (codex P2).
   const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
   if (!(await rateLimit(env.DROP_KV, `discard:ip:${ipHash}`, DISCARD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
-  await deleteObject(env, objectId); // R2 delete is idempotent: an already-gone/expired object is a no-op
+  const v = await verifyFetchProof(req, env, origin, await readJson(req));
+  if (!v.ok) return v.resp;
+  await deleteObject(env, v.objectId); // R2 delete is idempotent: an already-gone/expired object is a no-op
+  // Drop the gate binding too: with the object gone it only mints unanswerable challenges until its TTL.
+  await env.DROP_KV.delete(`fetchbind:${v.objectId}`).catch(() => {});
   return json({ ok: true }, 200, origin);
 }

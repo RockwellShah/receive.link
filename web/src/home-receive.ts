@@ -274,18 +274,19 @@ async function showTopUp(): Promise<void> {
 }
 
 // Remove the delivered ciphertext from the server after a successful save: frees our storage and lets
-// the recipient clear the only remaining server copy for peace of mind. The object id is the capability
-// (it came in their delivery email), so no re-auth is needed. Offered only from the "saved" state, so
-// the file is already safely on disk before its server copy goes.
+// the recipient clear the only remaining server copy for peace of mind. Proof-gated via the delivery's
+// in-memory identity (no passkey prompt): under in-place delivery the SENDER knows the object id, so
+// only a possession proof may delete. Offered only from the "saved" state, so the file is already
+// safely on disk before its server copy goes.
 async function doDelete(): Promise<void> {
-  if (deleting || !api || !objectId) return;
+  if (deleting || !delivery) return;
   deleting = true;
   const btn = el("delfile") as HTMLButtonElement;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Removing…";
   try {
-    await api.discard(objectId);
+    await delivery.discard();
     show("deleted");
   } catch (e) {
     showError(humanError(e));

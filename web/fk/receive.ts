@@ -43,6 +43,10 @@ export interface Delivery {
   // prompt — the identity is held in memory). null = billing off / headers absent. Used to wait out a
   // lagging Stripe webhook after ?paid without re-entering save() from a timer.
   refreshCredit(): Promise<{ balanceBytes: number; tier: "free" | "paid" } | null>;
+  // Remove the delivered object from the server (post-save cleanup). Proof-gated: proves possession with
+  // the in-memory identity (no passkey prompt), so only the receiver can delete — the sender knows the
+  // object id under in-place delivery and must not be able to destroy the file.
+  discard(): Promise<void>;
   // Out-of-funds top-up (the only place money surfaces): the prepaid tiers (server-priced) for the wall,
   // and a tap that proves possession of this file (so the right account is credited) then redirects to
   // Stripe-hosted Checkout.
@@ -222,6 +226,10 @@ export async function loadDelivery(api: DropApi, objectId: string, forceOpen = f
       const { challengeId: cid, proof: pf } = await prove(api, objectId, identity);
       const { credit: fresh } = await api.fetchPreview(cid, pf);
       return fresh ?? null;
+    },
+    discard: async () => {
+      const { challengeId: cid, proof: pf } = await prove(api, objectId, identity);
+      await api.discard(cid, pf);
     },
     packs: async () => (await api.billingPacks()).packs,
     checkout: async (packId) => {

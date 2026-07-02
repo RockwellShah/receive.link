@@ -463,7 +463,7 @@ body.cmlock{overflow:hidden}
   // forceEnroll=true is the "create a new passkey" path; rlCreate clears the stored pin and re-enrolls.
   var rlPromise=null;
   // Lazy-load the ~620KB crypto bundle on demand (preloaded on modal open) so the homepage stays light.
-  function loadRl(){if(!rlPromise){rlPromise=import("/dist/home-create.js?v=aea745ae80").catch(function(e){rlPromise=null;throw e;});}return rlPromise;}
+  function loadRl(){if(!rlPromise){rlPromise=import("/dist/home-create.js?v=a523adfd1b").catch(function(e){rlPromise=null;throw e;});}return rlPromise;}
   function doCreate(email,label,forceEnroll){
     last={email:email,label:label};btn.disabled=true;cb.working();
     loadRl().then(function(){

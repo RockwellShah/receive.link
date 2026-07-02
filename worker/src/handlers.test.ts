@@ -13,6 +13,7 @@ import {
   billingPacks,
   billingWebhook,
   confirm,
+  discardObject,
   fetchChallenge,
   fetchDownload,
   fetchPreview,
@@ -360,6 +361,90 @@ test("reclaim race: a duplicate delivery that lost the exactly-once race release
   expect((await uploadComplete(post("/upload-complete", { payload: link, objectId: o2 }), h.env)).status).toBe(200);
 });
 
+/** Drive a full multipart upload through init + part PUTs, returning what complete needs. */
+async function multipartUpload(h: TestHarness, link: string, size: number): Promise<{ objectId: string; parts: { partNumber: number; etag: string }[] }> {
+  const init = (await (await uploadInit(post("/upload-init", { payload: link, size }), h.env)).json()) as {
+    mode: string; objectId: string; uploadId: string; partSize: number; partCount: number;
+  };
+  expect(init.mode).toBe("multipart");
+  const blob = fkeyCiphertext(size);
+  const parts: { partNumber: number; etag: string }[] = [];
+  for (let n = 1; n <= init.partCount; n++) {
+    const start = (n - 1) * init.partSize;
+    parts.push({ partNumber: n, etag: h.r2.putPartRaw(init.uploadId, n, blob.subarray(start, Math.min(start + init.partSize, blob.length))) });
+  }
+  return { objectId: init.objectId, parts };
+}
+
+test("in-place delivery: a multipart upload delivers under its OWN id (no copy), object survives", async () => {
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "50" });
+  const link = await setupLink(h);
+  const { objectId, parts } = await multipartUpload(h, link, 200);
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId, parts }), h.env)).status).toBe(200);
+  const emailedId = h.email.sent.at(-1)!.text!.match(/\/d\/([0-9a-f]+)/)![1]!;
+  expect(emailedId).toBe(objectId); // delivered IN PLACE: the emailed id IS the staging id
+  expect(await h.env.DROP_BUCKET.get(objectId)).not.toBeNull(); // the object survives at that key
+  expect(await h.env.DROP_KV.get(`fetchbind:${objectId}`)).not.toBeNull(); // gate bound to the same id
+  expect(h.kv.store.has(`upload:${objectId}`)).toBe(false); // upload binding spent
+});
+
+test("cutover: a LEGACY multipart binding (no inplace flag) still promotes via the copy path", async () => {
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "50" });
+  const link = await setupLink(h);
+  const { objectId, parts } = await multipartUpload(h, link, 200);
+  // Simulate a binding minted by the PREVIOUS worker build: strip the inplace flag (SPEC-large-files A2).
+  const bind = JSON.parse((await h.env.DROP_KV.get(`upload:${objectId}`))!) as { inplace?: boolean };
+  delete bind.inplace;
+  await h.kv.put(`upload:${objectId}`, JSON.stringify(bind));
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId, parts }), h.env)).status).toBe(200);
+  const emailedId = h.email.sent.at(-1)!.text!.match(/\/d\/([0-9a-f]+)/)![1]!;
+  expect(emailedId).not.toBe(objectId); // legacy semantics: promoted to a fresh sender-unknown id
+  expect(await h.env.DROP_BUCKET.get(emailedId)).not.toBeNull();
+  expect(await h.env.DROP_BUCKET.get(objectId)).toBeNull(); // staging cleaned up as before
+});
+
+test("reclaim race (in-place): the duplicate keeps the SHARED object and inbound counts once", async () => {
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "50", RECEIVER_INBOUND_CAP_BYTES: "1000" });
+  const link = await setupLink(h);
+  const { objectId, parts } = await multipartUpload(h, link, 200);
+  const completion = h.env.COMPLETION as unknown as MemoryCompletion;
+  h.env.EMAIL = new (class extends CapturingEmail {
+    async send(m: SentMail): Promise<{ messageId: string }> {
+      completion.forceDone(objectId); // a reclaimed sibling wins the race just before our send lands
+      return super.send(m);
+    }
+  })();
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId, parts }), h.env)).status).toBe(200);
+  // IN-PLACE: the sibling delivered the SAME id, so the duplicate must delete NOTHING (the object and
+  // gate binding are the winner's delivery), and the meter counts the file once (idempotent by id).
+  expect(await h.env.DROP_BUCKET.get(objectId)).not.toBeNull();
+  expect(await h.env.DROP_KV.get(`fetchbind:${objectId}`)).not.toBeNull();
+  const acct = await defaultAccount(h);
+  expect((await acct.summary(0)).total).toBe(200); // once, not twice
+  expect((await acct.summary(0)).reserved).toBe(0); // the hold was released
+});
+
+test("byte budgets burn once per object across a 502 email-failure retry", async () => {
+  const h = await makeTestEnv();
+  const link = await setupLink(h);
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  let failOnce = true;
+  h.env.EMAIL = new (class extends CapturingEmail {
+    async send(m: SentMail): Promise<{ messageId: string }> {
+      if (failOnce) { failOnce = false; throw new Error("smtp down"); }
+      return super.send(m);
+    }
+  })();
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(502);
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(200); // retry delivers
+  // The daily byte budget was consumed ONCE for this object (the retry saw the bb: marker), so a big
+  // file's transient failure can't eat the link's whole daily budget.
+  const linkBudget = [...h.kv.store.entries()].find(([k]) => k.startsWith("rlb:up:bytes:link:"));
+  expect(linkBudget).toBeDefined();
+  expect(Number(linkBudget![1])).toBe(200); // once, not 400
+});
+
 test("recipient capacity: a live reservation holds against the cap so concurrent uploads can't both slip", async () => {
   // The handler path is linear per request, so exercise the hold directly on the account: a still-open
   // reservation must count against the cap, and releasing it must free the space again.
@@ -570,6 +655,22 @@ test("upload-complete fails closed (no delivery) when the share key can't be dec
   expect([...h.kv.store.keys()].some((k) => k.startsWith("rlb:up:bytes:"))).toBe(false); // decode (now pre-budget) didn't burn budget
 });
 
+test("discard is proof-gated: bare object ids are rejected; a valid proof deletes object + binding", async () => {
+  const h = await makeTestEnv();
+  const finalId = await deliver(h, await setupLink(h));
+  // The legacy bare-id form is GONE (under in-place delivery the SENDER knows the id).
+  expect((await discardObject(post("/discard", { objectId: finalId }), h.env)).status).toBe(400);
+  // A wrong proof burns its (single-use) challenge and is rejected.
+  const c1 = await challengeAndProof(h, finalId, RECEIVER);
+  expect((await discardObject(post("/discard", { challengeId: c1.challengeId, proof: "0".repeat(64) }), h.env)).status).toBe(403);
+  expect(await h.env.DROP_BUCKET.get(finalId)).not.toBeNull(); // still there
+  // A valid proof deletes the object AND its gate binding.
+  const c2 = await challengeAndProof(h, finalId, RECEIVER);
+  expect((await discardObject(post("/discard", { challengeId: c2.challengeId, proof: c2.proof }), h.env)).status).toBe(200);
+  expect(await h.env.DROP_BUCKET.get(finalId)).toBeNull();
+  expect(await h.env.DROP_KV.get(`fetchbind:${finalId}`)).toBeNull();
+});
+
 // ---- Phase 2: billing (download charge + free preview + caps) ----
 
 /** The account DO for the default setupLink receiver (to assert balances/pending directly). */
@@ -713,7 +814,8 @@ test("receiver DO: caps are tier-aware (free gates on total, paid gates on at-re
   const acct = recv.get(recv.idFromName("rid-tier"));
   const h1 = await acct.reserve(200, 300, 1000); // free tier: freeCap=300, paidCap=1000
   expect(h1.ok).toBe(true);
-  if (h1.ok) await acct.commit(h1.token, "file-tier", true); // total=200, pending=200
+  if (h1.ok) await acct.release(h1.token); // the hold is a cap check; the meters accrue via commitDelivered
+  await acct.commitDelivered("file-tier", 200, true); // total=200, pending=200
   expect((await acct.reserve(200, 300, 1000)).ok).toBe(false); // free: total 200 + 200 > 300
   await acct.credit(500, 0); // flip to paid (and add credit)
   const h2 = await acct.reserve(200, 300, 1000); // paid now gates on pending (200) vs 1000, not total vs 300
@@ -725,7 +827,8 @@ test("receiver DO: pending rises on delivery and falls once on the first paid do
   const acct = recv.get(recv.idFromName("rid-pending"));
   const h1 = await acct.reserve(500, 0, 0); // uncapped
   expect(h1.ok).toBe(true);
-  if (h1.ok) await acct.commit(h1.token, "file-1", true); // deliver file-1 (pending 500)
+  if (h1.ok) await acct.release(h1.token);
+  await acct.commitDelivered("file-1", 500, true); // deliver file-1 (pending 500)
   expect((await acct.summary(1000)).pending).toBe(500);
   const r = await acct.charge("file-1", 500, 1000);
   expect(r.ok && !r.alreadyPaid).toBe(true);
@@ -735,6 +838,15 @@ test("receiver DO: pending rises on delivery and falls once on the first paid do
   expect(r2.ok && r2.alreadyPaid).toBe(true);
   expect((await acct.summary(1000)).balance).toBe(500); // not charged again
   expect((await acct.summary(1000)).pending).toBe(0); // not decremented again
+});
+
+test("receiver DO: commitDelivered counts a delivery id exactly once (crash-retry / duplicate safe)", async () => {
+  const recv = new MemoryReceiver();
+  const acct = recv.get(recv.idFromName("rid-idem"));
+  await acct.commitDelivered("f1", 300, false);
+  await acct.commitDelivered("f1", 300, false); // a retry / duplicate sibling of the SAME delivery
+  await acct.commitDelivered("f2", 100, false);
+  expect((await acct.summary(0)).total).toBe(400); // f1 once + f2 once
 });
 
 test("receiver DO: credit is idempotent on the Stripe event id", async () => {

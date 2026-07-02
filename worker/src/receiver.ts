@@ -29,6 +29,9 @@
 //   balance  — prepaid credit in bytes; lazy-seeded to the free grant on first touch (Phase 2)
 //   tier     — "free" | "paid"; flips to "paid" on the first credit() (a Stripe top-up)
 //   paid     — finalId -> expiresAt for files already charged (free re-downloads); pruned past expiry
+//   cmt      — finalId -> expiresAt for deliveries already counted into `total` (commitDelivered's
+//              idempotency ledger, so a crashed-then-retried or duplicate completion can never double- or
+//              under-count the inbound meter); pruned past expiry like `paid`
 //   evt:<id> — one key per credited Stripe event (webhook idempotency; per-key, not a growing map; 2b)
 import { DurableObject } from "cloudflare:workers";
 
@@ -51,6 +54,7 @@ type Reservations = Record<string, Reservation>;
 type PendingFile = { bytes: number; expiresAt: number };
 type PendingFiles = Record<string, PendingFile>; // finalId -> {bytes, expiresAt}
 type PaidFiles = Record<string, number>; // finalId -> expiresAt
+type CommittedFiles = Record<string, number>; // finalId -> expiresAt (deliveries already counted into total)
 
 export type Tier = "free" | "paid";
 export type ChargeResult = { ok: true; alreadyPaid: boolean; balance: number } | { ok: false; balance: number; need: number };
@@ -76,6 +80,9 @@ export class ReceiverAccount extends DurableObject {
   }
   private async paidFiles(): Promise<PaidFiles> {
     return (await this.ctx.storage.get<PaidFiles>("paid")) ?? {};
+  }
+  private async committedFiles(): Promise<CommittedFiles> {
+    return (await this.ctx.storage.get<CommittedFiles>("cmt")) ?? {};
   }
 
   /** Sum of still-live reservations (expired holds don't count against the cap). */
@@ -112,6 +119,16 @@ export class ReceiverAccount extends DurableObject {
     for (const k in paid)
       if (paid[k]! <= now) {
         delete paid[k];
+        changed = true;
+      }
+    return changed;
+  }
+  /** Drop commit markers whose object has expired (same shape as prunePaid). */
+  private pruneCmt(cmt: CommittedFiles, now: number): boolean {
+    let changed = false;
+    for (const k in cmt)
+      if (cmt[k]! <= now) {
+        delete cmt[k];
         changed = true;
       }
     return changed;
@@ -153,34 +170,32 @@ export class ReceiverAccount extends DurableObject {
     return { ok: true, token };
   }
 
-  /** Commit a held reservation into the permanent meters — only the exactly-once delivery winner calls
-   *  this. Always accrues lifetime `total`. Records the delivered file in `pendingf` (at-rest, removed on
-   *  its first download or dropped at expiry) ONLY when `accruePending` is set — i.e. when the paid at-rest
-   *  cap is active. While that cap is off (Phase 2a's default), `pendingf` isn't touched, so the delivery
-   *  hot path stays as cheap and bounded as Phase 1 (no growing-map write that could hit the 128 KB DO
-   *  value limit). NOTE for 2b: before enabling the paid cap at scale, move `pendingf`/`paid` from a single
-   *  JSON value to per-file DO keys (storage.list) — a 100 GB cap implies far more entries than one value
-   *  holds. All mutated keys are written in one atomic put. Idempotent: a token already committed/released,
-   *  or expired (pathological >TTL stall, dropped without charging — a safe under-count), is a no-op. */
-  async commit(token: string, finalId: string, accruePending: boolean): Promise<void> {
+  /** Count a DELIVERED file into the permanent meters, idempotent per finalId: the `cmt` marker makes a
+   *  crashed-then-retried completion, or a duplicate/reclaimed sibling delivering the SAME finalId, count
+   *  exactly once — and lets the in-place path commit BEFORE the exactly-once finish() (a crash after
+   *  finish can no longer under-count; see SPEC-large-files A1). Does NOT touch the reservation: the
+   *  caller always release()s its hold separately (the finally). Always accrues lifetime `total`; records
+   *  the file in `pendingf` (at-rest) ONLY when `accruePending` is set — i.e. when the paid at-rest cap is
+   *  active — so the delivery hot path stays cheap while the cap is off. NOTE for 2b: before enabling the
+   *  paid cap at scale, move `pendingf`/`paid`/`cmt` from single JSON values to per-file DO keys (the
+   *  128 KB value limit). All mutated keys are written in one atomic put. */
+  async commitDelivered(finalId: string, bytes: number, accruePending: boolean): Promise<void> {
     const now = Date.now();
-    const res = await this.holds();
-    const r = res[token];
-    if (!r) return; // already committed/released, or pruned by the alarm
-    delete res[token];
-    if (r.expiresAt > now) {
-      const writes: Record<string, unknown> = { total: (await this.committed()) + r.bytes, res };
-      if (accruePending) {
-        const pf = await this.pendingFiles();
-        this.prunePending(pf, now);
-        pf[finalId] = { bytes: r.bytes, expiresAt: now + FILE_TTL_MS };
-        writes.pendingf = pf;
-      }
-      await this.ctx.storage.put(writes);
-    } else {
-      await this.ctx.storage.put("res", res);
+    const cmt = await this.committedFiles();
+    const pruned = this.pruneCmt(cmt, now);
+    if (cmt[finalId] && cmt[finalId]! > now) {
+      if (pruned) await this.ctx.storage.put({ cmt }); // persist the prune; the delivery is already counted
+      return;
     }
-    await this.rescheduleAlarm(res);
+    cmt[finalId] = now + FILE_TTL_MS;
+    const writes: Record<string, unknown> = { total: (await this.committed()) + clampBytes(bytes), cmt };
+    if (accruePending) {
+      const pf = await this.pendingFiles();
+      this.prunePending(pf, now);
+      pf[finalId] = { bytes: clampBytes(bytes), expiresAt: now + FILE_TTL_MS };
+      writes.pendingf = pf;
+    }
+    await this.ctx.storage.put(writes);
   }
 
   /** Release a held reservation: an aborted attempt, or a duplicate delivery that LOST the exactly-once
@@ -252,8 +267,8 @@ export class ReceiverAccount extends DurableObject {
     };
   }
 
-  /** Alarm: prune reservations from crashed attempts, and opportunistically prune dead paid/pending file
-   *  entries while we're awake, then reschedule for the next reservation expiry. */
+  /** Alarm: prune reservations from crashed attempts, and opportunistically prune dead paid/pending/cmt
+   *  file entries while we're awake, then reschedule for the next reservation expiry. */
   async alarm(): Promise<void> {
     const now = Date.now();
     const res = await this.holds();
@@ -263,6 +278,8 @@ export class ReceiverAccount extends DurableObject {
     if (this.prunePending(pf, now)) writes.pendingf = pf;
     const paid = await this.paidFiles();
     if (this.prunePaid(paid, now)) writes.paid = paid;
+    const cmt = await this.committedFiles();
+    if (this.pruneCmt(cmt, now)) writes.cmt = cmt;
     await this.ctx.storage.put(writes);
     await this.rescheduleAlarm(res);
   }

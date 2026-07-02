@@ -12,7 +12,10 @@
 //   for arbitrary object ids.
 import { DurableObject } from "cloudflare:workers";
 
-const RUNNING_TTL_MS = 5 * 60_000; // > any completion (assemble+copy+email); a live attempt is never reclaimed
+// > any completion (assemble+promote+email); a live attempt is never reclaimed. 15 min (was 5): a
+// many-thousand-part CompleteMultipartUpload for a multi-TB in-place delivery can take minutes on the
+// S3 side, and a reclaim during a LIVE complete is the one path to a duplicate email (SPEC-large-files A5).
+const RUNNING_TTL_MS = 15 * 60_000;
 const STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // keep the done record ~ the object lifecycle, then self-clean
 
 type Stored = { phase: "running" | "done"; owner?: string; runAt?: number };
