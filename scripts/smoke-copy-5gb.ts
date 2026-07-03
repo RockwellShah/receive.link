@@ -8,11 +8,11 @@
 //   404 "object not found" here  -> copy FAILED at promotion = the 5 GiB limit is real
 // Mints the link offline (keys/staging.json, same keys as mon). Run: bun run scripts/smoke-copy-5gb.ts
 import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../web/core/src/index";
-import { DROP_PAYLOAD_VERSION, LINK_ID_LEN, base64urlEncode, signableBytes } from "../shared/codec";
-import { importKemPublicKey, importSignPrivateKey, sealEmail, signRegion } from "../shared/crypto";
+import { DROP_PAYLOAD_VERSION, LINK_ID_LEN, base64urlDecode, base64urlEncode, signableBytes } from "../shared/codec";
+import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeUnseal, importKemPublicKey, importSignPrivateKey, sealEmail, signRegion } from "../shared/crypto";
 
 const BASE = "https://receive-link-monetization.rockwellshah.workers.dev";
-const SIZE = 5_500_000_000; // 5.5 GB decimal, safely over 5 GiB
+const SIZE = Number(process.env.SMOKE_SIZE ?? 5_500_000_000); // default 5.5 GB decimal, safely over 5 GiB
 const CONCURRENCY = 6;
 
 const keys = (await Bun.file("keys/staging.json").json()) as { signPriv: JsonWebKey; kemPubHex: string };
@@ -118,15 +118,37 @@ const compText = (await compRes.text()).slice(0, 300);
 console.log(`   -> ${compRes.status} in ${((Date.now() - tC) / 1000).toFixed(1)}s: ${compText}`);
 
 let verdict: string;
-if (compRes.status === 200) verdict = "✅ COPY > 5 GiB WORKS (200: assembled, promoted, delivered end-to-end)";
-else if (compRes.status === 502 && /delivery/i.test(compText)) verdict = "✅ COPY > 5 GiB WORKS (promotion succeeded; only the post-copy email failed, and the worker cleaned up the final object)";
-else if (compRes.status === 404 && /object not found/i.test(compText)) verdict = "❌ COPY FAILED AT PROMOTION — the 5 GiB single-CopyObject limit is real on R2. Cap MAX_UPLOAD_BYTES at launch or build multipart-copy promotion.";
-else if (compRes.status === 502 && /assemble/i.test(compText)) verdict = "⚠️ Failed EARLIER, at multipart assembly (not the copy) — investigate separately.";
+if (compRes.status === 200) verdict = "✅ DELIVERED end-to-end (in-place: no copy, no size wall)";
+else if (compRes.status === 502 && /delivery/i.test(compText)) verdict = "✅ DELIVERY MECHANICS WORK (assembled + promoted/bound; only the throwaway-address email failed)";
+else if (compRes.status === 404 && /object not found/i.test(compText)) verdict = "❌ FAILED AT PROMOTION — the copy wall is still in the path (in-place not active?).";
+else if (compRes.status === 502 && /assemble/i.test(compText)) verdict = "⚠️ Failed at multipart assembly — investigate separately.";
 else verdict = `⚠️ Unexpected outcome ${compRes.status} — see body above.`;
 console.log("\nRESULT:", verdict);
 
-// Cleanup: free the 5.5 GB staging object now instead of waiting out the 7-day lifecycle. Idempotent;
-// on a full 200 the worker already deleted it. (A promoted final object from a 200 outcome expires via
-// the lifecycle; we never learn its id here.)
-const disc = await post("/discard", { objectId: init.objectId });
-console.log(`cleanup: discard staging ${init.objectId} -> ${disc.status}`);
+// Immutability probe: a spent part URL must be DEAD after completion (the uploadId was consumed) — this
+// is the property that makes in-place delivery safe against post-validation swaps.
+try {
+  const spent = init.partUrls[0]!;
+  const replay = await fetch(spent.url, { method: "PUT", body: partBody(spent.partNumber) });
+  console.log(`immutability: replaying part ${spent.partNumber}'s spent URL -> HTTP ${replay.status} ${replay.ok ? "❌ STILL WRITABLE (BAD)" : "✅ dead (uploadId consumed)"}`);
+} catch (e) {
+  console.log(`immutability: spent part URL replay threw (${(e as Error).message}) ✅ dead`);
+}
+
+// Cleanup via the PROOF-GATED discard (the receiver identity lives in this script): frees the object now
+// instead of waiting out the 7-day lifecycle. If the email failed (502), the worker already dropped the
+// fetchbind, so the challenge 404s — the object then just expires via the lifecycle.
+try {
+  const ch = await post("/fetch/challenge", { objectId: init.objectId });
+  if (!ch.ok) {
+    console.log(`cleanup: challenge ${ch.status} (fetchbind gone) — the lifecycle reaps the object`);
+  } else {
+    const { challengeId, sealed: sealedNonce } = (await ch.json()) as { challengeId: string; sealed: string };
+    const nonce = await hpkeUnseal(receiver.keyPair, base64urlDecode(sealedNonce), FETCH_CHALLENGE_INFO);
+    const proof = await fetchProofHex(challengeId, init.objectId, nonce);
+    const disc = await post("/discard", { challengeId, proof });
+    console.log(`cleanup: proof-gated discard of ${init.objectId} -> ${disc.status}`);
+  }
+} catch (e) {
+  console.log(`cleanup: skipped (${(e as Error).message}) — the lifecycle reaps the object`);
+}
