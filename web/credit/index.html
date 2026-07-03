@@ -14,13 +14,13 @@
      delivered file needed. Public URL is /credit (via _redirects -> /credit/); the Worker API endpoints keep
      the /account/* names. Drives the [data-state] panels. Fonts absolute (/home/fonts/). -->
 <style>
-@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 800;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 a{text-decoration:none;color:inherit}
-body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
-.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+body{margin:0;background:#ECF1E9;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#F9FBF7;--ln:#D9E2D4;--cream:#E9EFE6;--g:#23A267;color:var(--ink)}
 .frame{min-height:100svh;display:flex;flex-direction:column;align-items:center;padding:46px 22px 72px}
 .logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:21px;letter-spacing:-.01em;margin-bottom:48px}
 .logo .dotp{color:var(--g)}.logo .tld{color:#9499A3;font-weight:600}
@@ -29,9 +29,9 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-
 .icon{width:58px;height:58px;border-radius:17px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
 .icon.ok{background:#E7F2EB;color:var(--g)}
 .icon.bad{background:#FBEAE7;color:#D2502E}
-.spin{width:46px;height:46px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
+.spin{width:46px;height:46px;border-radius:50%;border:3px solid #DBE4D6;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
+h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
 .sub{font-size:15px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 auto;max-width:360px}
 .field{display:block;width:100%;max-width:340px;margin:22px auto 0;font-family:inherit;font-size:16px;font-weight:500;color:var(--ink);background:#fff;border:1px solid var(--ln);border-radius:12px;padding:13px 15px;text-align:center}
 .field::placeholder{color:#AEA897}

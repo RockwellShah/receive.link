@@ -8,15 +8,15 @@
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
 <!-- Back-half receiver pages in the new design: /confirm (reveal), /revoke, /qr. JS drives the [data-state] panels via /dist/home-result.js. Full-page content spans on the cream bg (no boxed card -- that treatment is only for the homepage modal overlay). Fonts absolute (/home/fonts/) so they load when served at /confirm etc. -->
 <style>
-@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 800;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
 *{box-sizing:border-box}
 /* Make the hidden attribute authoritative -- elements below set display (inline-flex/inline-block) which would otherwise beat the UA [hidden] rule on specificity. */
 [hidden]{display:none!important}
 a{text-decoration:none;color:inherit}
-body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
-.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+body{margin:0;background:#ECF1E9;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#F9FBF7;--ln:#D9E2D4;--cream:#E9EFE6;--g:#23A267;color:var(--ink)}
 
 /* Top-aligned page: logo, then a centered content column. Top-align (not vertical-center) so revealing the QR expands downward instead of shoving everything up. */
 .frame{min-height:100svh;display:flex;flex-direction:column;align-items:center;padding:46px 22px 72px}
@@ -30,9 +30,9 @@ body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-
 .icon.ok{background:#E7F2EB;color:var(--g)}
 .icon.off{background:var(--cream);color:var(--mut)}
 .icon.bad{background:#FBEAE7;color:#D2502E}
-.spin{width:46px;height:46px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
+.spin{width:46px;height:46px;border-radius:50%;border:3px solid #DBE4D6;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
+h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
 .sub{font-size:15px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 auto;max-width:312px}
 /* The link's name (the label chosen at setup), shown as a small chip under the heading. */
 .linkname{display:inline-flex;align-items:center;gap:7px;max-width:290px;margin:2px auto 16px;padding:6px 14px;background:#fff;border:1px solid var(--ln);border-radius:999px;font-size:13px;font-weight:700;color:#4F5159}
@@ -48,7 +48,7 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
 .btn:hover{background:#1F9760;box-shadow:0 2px 10px rgba(35,162,103,.26)}
 .btn:active{background:#1C8957}
 .ghost{font-family:inherit;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:22px;padding:12px 19px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,background .15s}
-.ghost:hover{border-color:#D7D0C1;background:var(--cream)}
+.ghost:hover{border-color:#C7D3C0;background:var(--cream)}
 .ghost .ti{width:16px;height:16px;flex:none}
 .qr{margin:22px auto 0;background:#fff;border:1px solid var(--ln);border-radius:16px;padding:16px;display:inline-block;line-height:0}
 .qr img{width:208px;height:auto;display:block}
@@ -63,7 +63,7 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
 .btns{display:flex;flex-direction:column;gap:11px;margin-top:30px;max-width:300px;margin-left:auto;margin-right:auto}
 .full{width:100%;display:block;padding:13px 0;text-align:center}
 .btn2{font-family:inherit;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:22px;font-size:14px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s}
-.btn2:hover{border-color:#D7D0C1;background:var(--cream)}
+.btn2:hover{border-color:#C7D3C0;background:var(--cream)}
 .solo{margin-top:30px;max-width:300px;margin-left:auto;margin-right:auto}
 .err{color:#C0452A}
 @media(max-width:480px){h1{font-size:27px}.logo{margin-bottom:42px}.frame{padding:40px 20px 64px}}
