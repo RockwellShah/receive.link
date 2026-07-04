@@ -760,6 +760,11 @@ test("credit UX: preview omits BOTH credit headers when billing is off", async (
   expect(res.status).toBe(200);
   expect(res.headers.get("X-RL-Credit")).toBeNull();
   expect(res.headers.get("X-RL-Tier")).toBeNull();
+  // The auto-delete header is billing-INDEPENDENT: present even with billing off, carrying the object's
+  // lifecycle expiry (creation + 7 days, epoch seconds) for the saved screen's "deletes itself" note.
+  const exp = Number(res.headers.get("X-RL-Expires"));
+  const want = Math.floor(Date.now() / 1000) + 7 * 86400;
+  expect(Math.abs(exp - want) < 120).toBe(true); // within 2 min of created+7d
 });
 
 test("credit UX: the delivery email carries the credit status line when billing is on", async () => {

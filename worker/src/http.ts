@@ -44,9 +44,10 @@ export function cors(origin: string): Record<string, string> {
     // `authorization` carries the account-page session token (Bearer) on /account/summary + /account/checkout.
     "access-control-allow-headers": "content-type, authorization",
     // Custom response headers the browser may read cross-origin: the /fetch/preview credit headers
-    // (X-RL-Credit, X-RL-Tier) so the receive page can show the balance chip. (R2's own ETag is exposed
-    // by the bucket CORS config in deploy/r2-cors.*.json, not here, since those PUT/GETs go direct to R2.)
-    "access-control-expose-headers": "X-RL-Credit, X-RL-Tier",
+    // (X-RL-Credit, X-RL-Tier) for the balance chip, and X-RL-Expires (when the file self-deletes) for
+    // the saved screen's auto-delete note. (R2's own ETag is exposed by the bucket CORS config in
+    // deploy/r2-cors.*.json, not here, since those PUT/GETs go direct to R2.)
+    "access-control-expose-headers": "X-RL-Credit, X-RL-Tier, X-RL-Expires",
     "access-control-max-age": "86400",
     vary: "origin",
   };

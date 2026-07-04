@@ -149,7 +149,7 @@ export class DropApi {
    *  ciphertext prefix bytes for the client to decrypt into the filename + size. When billing is on the
    *  Worker also stamps the receiver's balance + tier into response headers (X-RL-Credit / X-RL-Tier);
    *  `credit` is undefined when those headers are absent (billing off, or a legacy binding with no rid). */
-  async fetchPreview(challengeId: string, proof: string): Promise<{ prefix: Uint8Array<ArrayBuffer>; credit?: { balanceBytes: number; tier: "free" | "paid" } }> {
+  async fetchPreview(challengeId: string, proof: string): Promise<{ prefix: Uint8Array<ArrayBuffer>; credit?: { balanceBytes: number; tier: "free" | "paid" }; expiresAt?: number }> {
     const res = await fetch(`${this.base}/fetch/preview`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -165,7 +165,11 @@ export class DropApi {
     const tier: "free" | "paid" | undefined = rawTier === "free" || rawTier === "paid" ? rawTier : undefined;
     const credit: { balanceBytes: number; tier: "free" | "paid" } | undefined =
       Number.isFinite(balanceBytes) && tier ? { balanceBytes, tier } : undefined;
-    return { prefix, credit };
+    // When this file self-deletes (epoch ms), from X-RL-Expires (epoch seconds). Absent/garbled -> undefined
+    // (the page just hides its auto-delete note).
+    const rawExp = res.headers.get("X-RL-Expires");
+    const expiresAt = rawExp !== null && /^\d+$/.test(rawExp) ? Number(rawExp) * 1000 : undefined;
+    return { prefix, credit, expiresAt };
   }
 
   /** Download gate (charged download): submit the proof -> a short-lived presigned GET URL, or a

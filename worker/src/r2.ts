@@ -40,10 +40,12 @@ export function presignGet(env: Env, objectId: string, expiresSec = 3600): Promi
   return presign(env, objectId, "GET", expiresSec);
 }
 
-/** Server-side existence + size check via the binding. Null if missing. */
-export async function objectInfo(env: Env, objectId: string): Promise<{ size: number } | null> {
+/** Server-side existence + size check via the binding. Null if missing. `uploaded` anchors the object's
+ *  lifecycle clock, so the receive page can say how long the file has left before the bucket's 7-day
+ *  expiry rule reaps it. */
+export async function objectInfo(env: Env, objectId: string): Promise<{ size: number; uploaded?: Date } | null> {
   const head = await env.DROP_BUCKET.head(objectId);
-  return head ? { size: head.size } : null;
+  return head ? { size: head.size, uploaded: head.uploaded } : null;
 }
 
 /**

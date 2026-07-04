@@ -19,13 +19,15 @@ export class MemoryKV {
 
 export class MemoryR2 {
   store = new Map<string, Uint8Array>();
+  uploadedAt = new Map<string, Date>(); // creation time per key (drives the lifecycle-expiry header)
   /** Simulate the browser's direct-to-R2 PUT. */
   putRaw(key: string, value: Uint8Array): void {
     this.store.set(key, value);
+    this.uploadedAt.set(key, new Date());
   }
-  async head(key: string): Promise<{ size: number } | null> {
+  async head(key: string): Promise<{ size: number; uploaded?: Date } | null> {
     const v = this.store.get(key);
-    return v ? { size: v.length } : null;
+    return v ? { size: v.length, uploaded: this.uploadedAt.get(key) } : null;
   }
   async get(
     key: string,
@@ -44,6 +46,7 @@ export class MemoryR2 {
     const v = this.store.get(src);
     if (!v) return false;
     this.store.set(dst, v.slice());
+    this.uploadedAt.set(dst, new Date());
     return true;
   }
   async delete(key: string): Promise<void> {
@@ -81,6 +84,7 @@ export class MemoryR2 {
           o += c.length;
         }
         r2.store.set(mpu.key, out);
+        r2.uploadedAt.set(mpu.key, new Date());
         r2.multipart.delete(uploadId);
         return { size };
       },

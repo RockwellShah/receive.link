@@ -156,6 +156,9 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
         <button class="btn full" id="saveagain" type="button">Save another copy</button>
         <button class="btn danger full" id="delfile" type="button">Delete it from the server</button>
       </div>
+      <!-- Auto-delete reassurance (the critical moment: a tester assumed we hold files indefinitely).
+           Filled with the file's ACTUAL remaining lifetime from the X-RL-Expires preview header. -->
+      <p class="note" id="expnote" hidden></p>
     </div>
 
     <div class="st" data-state="deleted" hidden>
@@ -183,6 +186,6 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
   </main>
 </div>
 </div>
-<script type="module" src="/dist/home-receive.js?v=8ae1c711b2"></script>
+<script type="module" src="/dist/home-receive.js?v=43910e34d5"></script>
 </body>
 </html>

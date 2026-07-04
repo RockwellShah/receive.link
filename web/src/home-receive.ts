@@ -51,6 +51,27 @@ const wantBuy = new URLSearchParams(location.search).has("buy");
 const LOW_CREDIT_FLOOR = 200 * 1024 * 1024;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+// The saved screen's auto-delete note ("deletes itself in about N days"), from the file's ACTUAL
+// remaining lifetime. Nobody should think we hold their file indefinitely; this is the moment they
+// wonder. "About" hedges the lifecycle clock; null (expired-or-unknown) keeps the note hidden.
+function expiresPhrase(expiresAt: number | undefined): string | null {
+  if (!expiresAt) return null;
+  const left = expiresAt - Date.now();
+  if (left <= 0) return null;
+  const days = Math.round(left / 86_400_000);
+  if (days >= 2) return `in about ${days} days`;
+  const hours = Math.round(left / 3_600_000);
+  if (hours >= 2) return `in about ${hours} hours`;
+  return "within the hour";
+}
+function renderSaved(): void {
+  const note = el("expnote");
+  const when = expiresPhrase(delivery?.expiresAt);
+  if (when) { note.textContent = `Either way, it deletes itself from our server ${when}.`; note.hidden = false; }
+  else note.hidden = true;
+  show("saved");
+}
+
 // Offer the "try a different passkey" recovery only for failures a different passkey can fix (passkey
 // dismissed / not on this device, or a wrong-identity decrypt) — not for expired/network errors.
 function canRetryWithDifferentPasskey(e: unknown): boolean {
@@ -239,7 +260,7 @@ async function doSave(): Promise<void> {
       await showTopUp(); // out of credit, no recent payment -> the only money moment
       return;
     }
-    show("saved");
+    renderSaved();
   } catch (e) {
     showError(humanError(e));
   } finally {

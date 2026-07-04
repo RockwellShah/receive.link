@@ -941,6 +941,11 @@ export async function fetchPreview(req: Request, env: Env): Promise<Response> {
   // than risk leaking payload bytes for free. (A delivered object always has a valid header.)
   if (metaLen === null || metaLen > buf.length) return json({ error: "expired or not found" }, 404, origin);
   const headers: Record<string, string> = { ...cors(origin), "content-type": "application/octet-stream", "cache-control": "no-store" };
+  // When this file self-deletes (epoch seconds): the object's creation time + the bucket's 7-day
+  // object-expiry lifecycle. The receive page shows it on the saved screen ("deletes itself in about N
+  // days") so nobody thinks we hold files indefinitely. "About": the client hedges, since a multi-day
+  // multipart upload's lifecycle clock may anchor at creation rather than completion (SPEC-large-files A6).
+  if (info.uploaded) headers["X-RL-Expires"] = String(Math.floor((info.uploaded.getTime() + 7 * DAY * 1000) / 1000));
   // Credit headers ride on the (still raw binary) preview response so the receive page can show the
   // balance chip with no extra call. ONLY when billing is on AND the binding carries a rid (a legacy
   // pre-Phase-2 binding has none, so it stays header-less = billing-off to the client). The client infers
