@@ -47,6 +47,10 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
 .btn{font-family:inherit;background:var(--g);color:#fff;border:0;border-radius:22px;padding:12px 21px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(35,162,103,.2);transition:background .15s,box-shadow .15s}
 .btn:hover{background:#1F9760;box-shadow:0 2px 10px rgba(35,162,103,.26)}
 .btn:active{background:#1C8957}
+.btn.danger{background:#D2502E;box-shadow:0 1px 2px rgba(210,80,46,.2)}
+.btn.danger:hover{background:#BE4626;box-shadow:0 2px 10px rgba(210,80,46,.26)}
+.btn.danger:active{background:#AC3F22}
+.btn.danger:focus-visible{outline-color:#D2502E}
 .ghost{font-family:inherit;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:22px;padding:12px 19px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,background .15s}
 .ghost:hover{border-color:#C7D3C0;background:var(--cream)}
 .ghost .ti{width:16px;height:16px;flex:none}
@@ -104,7 +108,7 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
       <h1>Turn off this link?</h1>
       <p class="sub">New files will stop arriving. Anything already sent is unaffected.</p>
       <div class="btns">
-        <button class="btn full" id="revyes" type="button">Turn it off</button>
+        <button class="btn danger full" id="revyes" type="button">Turn it off</button>
         <a class="btn2 full" href="/">Keep it</a>
       </div>
     </div>
