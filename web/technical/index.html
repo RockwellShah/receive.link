@@ -106,8 +106,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;bac
         <li><b>Send.</b> A sender opens your link and drops a file. Their browser mints a throwaway identity, runs <code>HPKE Auth</code> to your public key, and AES-256-GCM-encrypts the file and its metadata in 64 KiB authenticated chunks. Small files finish encrypting before the upload starts; large files stream-encrypt chunk by chunk as they upload.</li>
         <li><b>Upload.</b> The worker verifies your link's signature and returns a presigned R2 URL (several, for multipart on large files). The sender's browser PUTs the ciphertext straight to R2 through it; the worker only signs URLs and verifies links, never handling the bytes. A Durable Object enforces exactly-once delivery.</li>
         <li><b>Notify.</b> The worker unseals your email from the link, in memory only, sends you a delivery link to <code>/d/&lt;id&gt;</code>, then forgets the address. The link and the stored ciphertext both expire in 7 days.</li>
-        <li><b>Receive.</b> You open the delivery link. Your browser re-derives your identity from your passkey, fetches the ciphertext, and runs <code>HPKE SetupAuthR</code> + AES-256-GCM to verify and decrypt each chunk straight to disk. Only your passkey can complete this step.</li>
-        <li><b>Clean up.</b> After saving a file you can delete it from the relay right away, or let the R2 object auto-delete on its 7-day lifecycle. You can disable the link at any time; the worker flags it in KV and refuses further uploads.</li>
+        <li><b>Receive.</b> You open the delivery link and the relay challenges you before serving anything: it seals a one-time nonce to the public key bound to that delivery, your browser unseals it with your passkey-derived key and answers, and only then does the relay hand out a short-lived download URL. Your browser then runs <code>HPKE SetupAuthR</code> + AES-256-GCM to verify and decrypt each chunk straight to disk. Without your passkey, the relay serves nothing.</li>
+        <li><b>Clean up.</b> After saving a file you can delete it from the relay right away; deletion demands the same passkey proof as a download, so nobody else can purge your file. Otherwise the R2 object auto-deletes on its 7-day lifecycle. You can disable the link at any time; the worker flags it in KV and refuses further uploads.</li>
       </ol>
     </div>
 
@@ -122,13 +122,13 @@ identity_ikm = HKDF-Expand(master_prk, "FILEKEY-v1/identity-kem" || namespace, 3
 
     <div class="grp">
       <h2>Cipher suite</h2>
-      <p>Every file uses the same fixed cipher suite, so there's no algorithm negotiation and nothing to downgrade. It's <code>HPKE Auth</code> mode over <code>DHKEM(P-256, HKDF-SHA-256)</code>, with <code>HKDF-SHA-256</code> and <code>AES-256-GCM</code>, per RFC 9180. The implementation uses <code>@hpke/core</code> and <code>@noble/curves</code> (the latter for a Safari-compatible <code>DeriveKeyPair</code>), verified byte-for-byte against the spec's known-answer vectors.</p>
+      <p>Every file uses the same fixed cipher suite, so there's no algorithm negotiation and nothing to downgrade. It's <code>HPKE Auth</code> mode over <code>DHKEM(P-256, HKDF-SHA-256)</code>, with <code>HKDF-SHA-256</code> and <code>AES-256-GCM</code>, per RFC 9180. receive.link shares the FileKey app's crypto core, built on <code>@hpke/core</code> and <code>@noble/curves</code> (the latter for a Safari-compatible <code>DeriveKeyPair</code>) and verified there byte-for-byte against the spec's known-answer vectors.</p>
     </div>
 
     <div class="grp">
       <h2>File format</h2>
       <div class="code">header[12] || sender_pk[65] || hpke_enc[65] || u32(meta_len) || enc_metadata || chunk[0..N]
-header  = "FKEY" || ver=0x01 || suite=0x01 || flags || namespace_tag
+header  = "FKEY" || ver=0x01 || suite=0x01 || flags || reserved || namespace_tag[4]
 chunk_i = AES-256-GCM(payload_key, nonce = I2OSP(counter_i, 11) || last_flag, AAD)   // 64 KiB each
 AAD     = header || sender_pk || hpke_enc</div>
       <p>The filename, MIME type, and exact size live in <code>enc_metadata</code>, sealed with AES-256-GCM under a separate key exported from the same HPKE context. The name, type, and contents never travel in the clear, and every chunk is authenticated, so tampering is caught as you open it.</p>
@@ -145,7 +145,8 @@ AAD     = header || sender_pk || hpke_enc</div>
         <li>Links are signed by the server with <code>ECDSA P-256</code>. The worker verifies the signature before accepting an upload, and rejects revoked or invalid links. (Share links don't expire; the per-file delivery link and its ciphertext do, after 7 days.)</li>
         <li>Your email is <code>HPKE</code>-sealed to the server's public key inside the link, and unsealed only in memory: at sign-up, at confirm, and on each delivery. It is never written to storage as plaintext.</li>
         <li>Ciphertext is PUT to Cloudflare R2 through a presigned URL and auto-deleted on a 7-day lifecycle. A SQLite-backed Durable Object enforces exactly-once delivery.</li>
-        <li>Revocation lives in KV (a revoke-token map plus a "link is off" flag); the abuse limits are short-lived counters keyed by an HMAC of the IP, link, or email, so KV holds only digests, never a raw IP or plaintext email. No file bytes or names are ever stored.</li>
+        <li>Downloads are gated, not public. Each delivery is bound to the recipient's public key, and the relay only issues a download URL (or deletes the file) after a single-use challenge sealed to that key is answered. Knowing a delivery URL proves nothing; holding the passkey does.</li>
+        <li>Revocation lives in KV (a revoke-token map plus a "link is off" flag); the abuse limits are short-lived counters keyed by an HMAC of the IP, link, or email, so KV holds only digests, never a raw IP or plaintext email. Nothing in the relay ever stores a filename or plaintext: R2 holds ciphertext, KV holds flags, digests, and per-delivery key bindings.</li>
       </ul>
     </div>
 
@@ -153,7 +154,7 @@ AAD     = header || sender_pk || hpke_enc</div>
       <h2>Threat model and non-goals</h2>
       <ul>
         <li><b>No forward secrecy.</b> Your identity key is long-lived, so a compromised passkey can decrypt past and future files sent to that link.</li>
-        <li><b>Not post-quantum.</b> Sharing rides on HPKE over P-256, which a large quantum computer could eventually break. receive.link only does sharing; there's no self-encryption mode here.</li>
+        <li><b>Not post-quantum.</b> Sharing rides on HPKE over P-256, which a large quantum computer could eventually break.</li>
         <li><b>Deniable by design.</b> We make no non-repudiation claim. A recipient can forge a file attributing any sender, and senders are ephemeral regardless, so nothing here proves who sent what.</li>
         <li><b>Observable metadata.</b> At request time the relay sees a ciphertext's length, its timing, and the connection IP (which we hash, never store). Length implies an approximate plaintext size.</li>
         <li><b>No escrow.</b> The server holds no key that can read your files, only its own link-signing and email-sealing keys. Your identity key isn't rotatable in v1; you issue a fresh link instead.</li>
