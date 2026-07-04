@@ -15,7 +15,7 @@ const BASE = process.env.SMOKE_BASE ?? "https://receive-link-monetization.rockwe
 const SIZE = Number(process.env.SMOKE_SIZE ?? 5_500_000_000); // default 5.5 GB decimal, safely over 5 GiB
 const CONCURRENCY = 6;
 
-const keys = (await Bun.file("keys/staging.json").json()) as { signPriv: JsonWebKey; kemPubHex: string };
+const keys = (await Bun.file(process.env.SMOKE_KEYS ?? "keys/staging.json").json()) as { signPriv: JsonWebKey; kemPubHex: string };
 const signPriv = await importSignPrivateKey(keys.signPriv);
 const kemPub = await importKemPublicKey(Uint8Array.from(keys.kemPubHex.match(/../g)!.map((h) => parseInt(h, 16))));
 
