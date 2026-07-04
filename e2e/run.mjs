@@ -84,7 +84,7 @@ async function roundTrip(browser) {
     await rx.page.goto(confirmLink, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await rx.page.locator('.st[data-state="reveal"]').waitFor({ state: "visible", timeout: 45_000 });
     const shareUrl = (await rx.page.locator("#url").innerText()).trim();
-    record("confirm: nonce → share link revealed", true, /\/#[A-Za-z0-9_-]+$/.test(shareUrl), shareUrl.slice(0, 56));
+    record("confirm: nonce → share link revealed", true, /\/u#[A-Za-z0-9_-]+$/.test(shareUrl), shareUrl.slice(0, 56));
 
     // EXTRA (this session): the reveal page's link-name chip shows the label we created with.
     const nameText = (await rx.page.locator("#revname").isVisible().catch(() => false))

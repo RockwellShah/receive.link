@@ -155,7 +155,9 @@ async function confirmFlow(nonce: string): Promise<void> {
     if (!isConfigured(cfg)) { showError("This site isn't configured for sign-up yet. Try again shortly."); return; }
     const api = new DropApi(cfg.apiBase);
     const { link, billingEnabled } = await api.confirm(nonce);
-    renderReveal(`${location.origin}/#${link}`, {
+    // /u#<code>: the send page's URL, so a shared link previews as the sender-facing "Send me a file"
+    // card (scrapers fetch the path, never the fragment). Old /#<code> links bounce to /u client-side.
+    renderReveal(`${location.origin}/u#${link}`, {
       heading: "Your link is ready",
       sub: "Share it with anyone.<br>Only you can open what they send.",
       note: "Also, we emailed you this info.",
@@ -178,7 +180,7 @@ async function qrFlow(payload: string): Promise<void> {
     const { signable, signature } = splitSignature(bytes);
     const pub = await importSignPublicKey(cfg.serverSignPublicJwk as JsonWebKey);
     if (!(await verifyRegion(pub, signable, signature))) throw new Error("bad signature");
-    renderReveal(`${location.origin}/#${payload}`, {
+    renderReveal(`${location.origin}/u#${payload}`, {
       heading: "Your link",
       sub: "Share it, or have them scan the QR.<br>Only you can open what they send.",
       qrOpen: true,

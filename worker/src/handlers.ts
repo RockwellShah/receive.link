@@ -356,7 +356,10 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
     if (billingEnabled(env)) {
       try { accountUrl = `${linkOrigin(env)}/credit#${await mintMagicToken(env, await receiverId(env, email), true)}`; } catch { accountUrl = undefined; }
     }
-    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, accountUrl, freeGrantBytes(env));
+    // Share links mint as /u#<code> (the send page), so link previews show the sender-facing "Send me a
+    // file" card instead of the homepage pitch (scrapers never see the fragment, only the path). Old
+    // /#<code> links keep working: the homepage bounces them to /u client-side.
+    await sendDropLinkEmail(env, email, `${linkOrigin(env)}/u#${linkB64}`, `${linkOrigin(env)}/revoke#${revokeToken}`, decoded.label, accountUrl, freeGrantBytes(env));
   } catch {
     /* page already showed both links */
   }

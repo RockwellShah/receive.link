@@ -175,7 +175,7 @@ async function confirmMode(nonce: string): Promise<void> {
         { t: "Your private file link is ready.", b: true },
         " Share it with anyone. When someone sends you a file, we'll email you a secure download link. Only you can open the file.",
       ],
-      `${location.origin}/#${link}`,
+      `${location.origin}/u#${link}`,
     );
     await appMsg(["We just emailed you this link, plus a private one to turn it off later."]);
   } catch (e) {
@@ -537,7 +537,7 @@ async function qrMode(payload: string): Promise<void> {
       { t: "Your link.", b: true },
       " Share it with anyone, or have them scan the QR. Only you can open what they send.",
     ],
-    `${location.origin}/#${payload}`,
+    `${location.origin}/u#${payload}`,
     { qrOpen: true },
   );
   if (!qrShown) {

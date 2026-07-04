@@ -5,6 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Send files · receive.link</title>
 <meta name="robots" content="noindex">
+<!-- Share links are minted as /u#<code>, so THIS page's card is what chat/social previews show when a
+     receiver shares their link. The clicker is a SENDER: the card is the receiver's invitation ("Send me
+     a file"), not the homepage's product pitch. Scrapers never see the #fragment, so the card is generic
+     per page (no per-link personalization possible). -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="receive.link">
+<meta property="og:url" content="https://receive.link/u">
+<meta property="og:title" content="Send me a file">
+<meta property="og:description" content="This is my personal receive.link. Anything you send here is encrypted so only I can open it.">
+<meta property="og:image" content="https://receive.link/og-send.png">
+<meta property="og:image:width" content="2400">
+<meta property="og:image:height" content="1260">
+<meta property="og:image:alt" content="Send me a file. Only I can open it.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Send me a file">
+<meta name="twitter:description" content="This is my personal receive.link. Anything you send here is encrypted so only I can open it.">
+<meta name="twitter:image" content="https://receive.link/og-send.png">
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
 <!-- The SEND page (sender opens a share link to send files). Served at /u via _redirects -> /send/.
      home-send.ts drives the [data-state] panels and calls fk/send.ts. Fonts absolute (/home/fonts/). -->

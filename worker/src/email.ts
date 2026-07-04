@@ -81,7 +81,7 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
     `Give this link to anyone who should be able to send you files. Anything they send ` +
     `is encrypted so that only you can open it:\n\n` +
     `${dropUrl}\n\n` +
-    `Show this link as a QR code:\n${dropUrl.replace("/#", "/qr#")}\n\n` +
+    `Show this link as a QR code:\n${dropUrl.replace("/u#", "/qr#")}\n\n` +
     `- - - - - -\n\n` +
     `DISABLE THIS LINK\n` +
     `Keep this link private. If you ever want to stop receiving files through this ` +
@@ -96,7 +96,7 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
       para("Give this link to anyone who should be able to send you files.") +
       para(`Anything they send is encrypted so that <strong>only you can open it.</strong>`) +
       urlBox(dropUrl) +
-      quietLink(dropUrl.replace("/#", "/qr#"), "Show as a QR code") +
+      quietLink(dropUrl.replace("/u#", "/qr#"), "Show as a QR code") +
       rule +
       head("Disable this link") +
       para("Keep this link private.") +
