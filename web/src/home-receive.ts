@@ -67,7 +67,7 @@ function expiresPhrase(expiresAt: number | undefined): string | null {
 function renderSaved(): void {
   const note = el("expnote");
   const when = expiresPhrase(delivery?.expiresAt);
-  if (when) { note.textContent = `Either way, it deletes itself from our server ${when}.`; note.hidden = false; }
+  if (when) { note.textContent = `File auto-deletes ${when}.`; note.hidden = false; }
   else note.hidden = true;
   show("saved");
 }
