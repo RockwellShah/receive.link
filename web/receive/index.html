@@ -10,26 +10,26 @@
      via _redirects -> /receive/ (the URL stays /d/<id>; home-receive.ts reads the id from the path).
      Drives the [data-state] panels and calls fk/receive.ts. Fonts absolute (/home/fonts/). -->
 <style>
-@font-face{font-family:'Nunito';font-style:normal;font-weight:400 700;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:400 800;font-display:swap;src:url('/home/fonts/nunito.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:400;font-display:swap;src:url('/home/fonts/spectral-400.woff2') format('woff2')}
 @font-face{font-family:'Spectral';font-style:normal;font-weight:500;font-display:swap;src:url('/home/fonts/spectral-500.woff2') format('woff2')}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 a{text-decoration:none;color:inherit}
-body{margin:0;background:#EDE8DF;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
-.rk{--ink:#1A1F2B;--mut:#74767E;--card:#FBF9F4;--ln:#E5DFD2;--cream:#EEEBE6;--g:#23A267;color:var(--ink)}
+body{margin:0;background:#ECF1E9;font-family:'Nunito',system-ui,sans-serif;line-height:1.5}
+.rk{--ink:#1A1F2B;--mut:#74767E;--card:#F9FBF7;--ln:#D9E2D4;--cream:#E9EFE6;--g:#23A267;color:var(--ink)}
 .frame{min-height:100svh;display:flex;flex-direction:column;align-items:center;padding:46px 22px 72px}
 .logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:21px;letter-spacing:-.01em;margin-bottom:48px}
 .logo .dotp{color:var(--g)}.logo .tld{color:#9499A3;font-weight:600}
 .col{width:100%;max-width:464px;text-align:center}
 .st[hidden]{display:none}
 .icon{width:58px;height:58px;border-radius:17px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
-.icon.ok{background:#E7F2EB;color:var(--g)}
-.icon.bad{background:#FBEAE7;color:#D2502E}
-.icon.off{background:var(--cream);color:var(--mut)}
-.spin{width:46px;height:46px;border-radius:50%;border:3px solid #E7E1D4;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
+.icon.ok{background:#fff;border:1px solid var(--ln);color:var(--g)}
+.icon.bad{background:#fff;border:1px solid var(--ln);color:#D2502E}
+.icon.off{background:#fff;border:1px solid var(--ln);color:#D2502E}
+.spin{width:46px;height:46px;border-radius:50%;border:3px solid #DBE4D6;border-top-color:var(--g);margin:6px auto 26px;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
+h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
 .sub{font-size:15px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 auto;max-width:360px}
 
 /* File card */
@@ -40,22 +40,22 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
 .fsize{font-size:12.5px;color:var(--mut);font-weight:500}
 /* Bundle contents (the file list a sender packed into the encrypted metadata). */
 .filelist{margin-top:10px;border:1px solid var(--ln);border-radius:14px;background:#fff;overflow:hidden;text-align:left}
-.filescroll{max-height:182px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CFC8B9 transparent}
+.filescroll{max-height:182px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#C2CCBE transparent}
 .filescroll::-webkit-scrollbar{width:12px}
 .filescroll::-webkit-scrollbar-track{background:transparent}
-.filescroll::-webkit-scrollbar-thumb{background:#CFC8B9;border-radius:9px;border:3px solid #fff;background-clip:padding-box}
-.filescroll::-webkit-scrollbar-thumb:hover{background:#BCB4A2;background-clip:padding-box}
-.filerow{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:500;color:#4F5159;padding:9px 15px;border-top:1px solid #F2EFE8}
+.filescroll::-webkit-scrollbar-thumb{background:#C2CCBE;border-radius:9px;border:3px solid #fff;background-clip:padding-box}
+.filescroll::-webkit-scrollbar-thumb:hover{background:#AFBAAB;background-clip:padding-box}
+.filerow{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:500;color:#4F5159;padding:9px 15px;border-top:1px solid #EEF3EC}
 .filerow:first-child{border-top:0}
-.frowicon{width:15px;height:15px;color:#AEA897;flex:none}
+.frowicon{width:15px;height:15px;color:#A5AFA1;flex:none}
 .frowname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.filemore{font-size:12.5px;color:var(--mut);font-weight:700;padding:9px 15px 9px 39px;border-top:1px solid #F2EFE8}
+.filemore{font-size:12.5px;color:var(--mut);font-weight:700;padding:9px 15px 9px 39px;border-top:1px solid #EEF3EC}
 
 /* Progress (saving) */
 .prog{text-align:left;margin-top:20px}
 .phase{font-weight:700;font-size:14.5px;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .bytes{font-size:12.5px;color:var(--mut);font-weight:600;font-variant-numeric:tabular-nums}
-.bar{height:8px;background:#E7E1D4;border-radius:6px;overflow:hidden;margin-top:11px}
+.bar{height:8px;background:#DBE4D6;border-radius:6px;overflow:hidden;margin-top:11px}
 .barfill{height:100%;background:var(--g);border-radius:6px;width:0;transition:width .2s ease}
 .bar.indet .barfill{width:40%!important;animation:indet 1.1s ease-in-out infinite}
 @keyframes indet{0%{margin-left:-40%}100%{margin-left:100%}}
@@ -66,9 +66,13 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
 .btn{font-family:inherit;background:var(--g);color:#fff;border:0;border-radius:22px;padding:13px 24px;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(35,162,103,.2);transition:background .15s,box-shadow .15s}
 .btn:hover{background:#1F9760;box-shadow:0 2px 10px rgba(35,162,103,.26)}
 .btn:active{background:#1C8957}
+.btn.danger{background:#D2502E;box-shadow:0 1px 2px rgba(210,80,46,.2)}
+.btn.danger:hover{background:#BE4626;box-shadow:0 2px 10px rgba(210,80,46,.26)}
+.btn.danger:active{background:#AC3F22}
+.btn.danger:focus-visible{outline-color:#D2502E}
 .btn.full{display:block;width:100%;max-width:300px;margin:24px auto 0;text-align:center}
-.textlink{background:none;border:0;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--mut);cursor:pointer;margin-top:22px;padding:2px;text-decoration:underline;text-decoration-color:#CFC7B6;text-underline-offset:3px}
-.textlink:hover{color:var(--ink);text-decoration-color:#B9B1A0}
+.textlink{background:none;border:0;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--mut);cursor:pointer;margin-top:22px;padding:2px;text-decoration:underline;text-decoration-color:#C1CCBD;text-underline-offset:3px}
+.textlink:hover{color:var(--ink);text-decoration-color:#ACB7A8}
 .textlink:disabled{color:var(--mut);cursor:default;text-decoration:none}
 /* Saved-state actions: real outline buttons (not text links). Neither is a primary CTA — the file is
    already saved — so both are ghost weight; delete turns red on intent. */
@@ -77,8 +81,6 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
 .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--ln);box-shadow:none}
 .btn.ghost:hover{background:#FBFDFC;border-color:var(--g);box-shadow:none}
 .btn.ghost:active{background:#F4F8F5}
-.btn.ghost.del{color:#C0452A}
-.btn.ghost.del:hover{background:#FCF4F2;border-color:#D2502E}
 .btn:disabled{opacity:.55;cursor:default;box-shadow:none}
 .btn:focus-visible,.textlink:focus-visible,.cancel:focus-visible{outline:2px solid var(--g);outline-offset:2px}
 .note{font-size:12.5px;color:var(--mut);font-weight:500;margin:22px auto 0;max-width:330px;line-height:1.5}
@@ -151,8 +153,8 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
       <h1>Saved</h1>
       <p class="sub">Decrypted and saved to your device.</p>
       <div class="savedacts">
-        <button class="btn ghost full" id="saveagain" type="button">Save another copy</button>
-        <button class="btn ghost del full" id="delfile" type="button">Delete it from the server</button>
+        <button class="btn full" id="saveagain" type="button">Save another copy</button>
+        <button class="btn danger full" id="delfile" type="button">Delete it from the server</button>
       </div>
     </div>
 
@@ -176,11 +178,11 @@ h1{font-family:'Spectral',Georgia,serif;font-weight:500;font-size:31px;letter-sp
       <h1>Something went wrong</h1>
       <p class="sub err" id="errmsg">Please try again.</p>
       <button class="btn full" id="reopen" type="button" hidden>Try a different passkey</button>
-      <a class="textlink" href="/">Back to receive.link</a>
+      <a class="btn full" id="errback" href="/">Back to receive.link</a>
     </div>
   </main>
 </div>
 </div>
-<script type="module" src="/dist/home-receive.js?v=aaebfcd076"></script>
+<script type="module" src="/dist/home-receive.js?v=8ae1c711b2"></script>
 </body>
 </html>
