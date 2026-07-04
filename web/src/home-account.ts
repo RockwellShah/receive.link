@@ -210,5 +210,22 @@ async function main(): Promise<void> {
   showEmail(paidReturn ? "Enter your email to see your updated balance." : undefined);
 }
 
-el("retry").onclick = () => showEmail();
+// The error panel's Back button: a signed-in user (e.g. a transient checkout failure) returns to their
+// credit view, not the enter-email form — only a missing/expired session falls back to sign-in.
+async function backFromError(): Promise<void> {
+  const token = getSession();
+  if (token && api) {
+    show("loading");
+    try {
+      const s = await api.accountSummary(token);
+      renderAccount(token, s.tier, s.balanceBytes);
+      return;
+    } catch {
+      clearSession(); // expired/invalid -> sign in again
+    }
+  }
+  showEmail();
+}
+
+el("retry").onclick = () => void backFromError();
 void main();
