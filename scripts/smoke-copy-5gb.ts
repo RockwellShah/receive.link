@@ -11,7 +11,7 @@ import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "../web/core
 import { DROP_PAYLOAD_VERSION, LINK_ID_LEN, base64urlDecode, base64urlEncode, signableBytes } from "../shared/codec";
 import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeUnseal, importKemPublicKey, importSignPrivateKey, sealEmail, signRegion } from "../shared/crypto";
 
-const BASE = "https://receive-link-monetization.rockwellshah.workers.dev";
+const BASE = process.env.SMOKE_BASE ?? "https://receive-link-monetization.rockwellshah.workers.dev"; // any env's WORKER url
 const SIZE = Number(process.env.SMOKE_SIZE ?? 5_500_000_000); // default 5.5 GB decimal, safely over 5 GiB
 const CONCURRENCY = 6;
 
