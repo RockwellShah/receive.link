@@ -4,6 +4,7 @@
 // and never send the receive.link email to Stripe: a payment ties to the account by `rid` alone
 // (client_reference_id + metadata), credited by the webhook into the ReceiverAccount DO.
 import { hmacSha256hex } from "../../shared/util";
+import { logEvent } from "./http";
 import type { Env } from "./types";
 
 const GB = 1_000_000_000; // decimal GB — the pricing/marketing unit (so $10 = 1 TB is clean, not 0.93 TiB)
@@ -84,7 +85,7 @@ export function stripeConfigured(env: Env): boolean {
  *  knob moves mid-payment (the credited bytes are re-derived from pack + locked price, never a raw client
  *  amount). We pass no customer email — Checkout collects whatever billing email the buyer types, in
  *  Stripe's scope, not ours. */
-export function checkoutSessionParams(env: Env, opts: { rid: string; pack: CheckoutPack; successUrl: string; cancelUrl: string }): URLSearchParams {
+export function checkoutSessionParams(env: Env, opts: { rid: string; pack: CheckoutPack; successUrl: string; cancelUrl: string; customPriceId?: string }): URLSearchParams {
   const price = priceCentsPerGb(env);
   const p = new URLSearchParams();
   p.set("mode", "payment");
@@ -95,33 +96,70 @@ export function checkoutSessionParams(env: Env, opts: { rid: string; pack: Check
   p.set("metadata[pack]", opts.pack);
   p.set("metadata[price]", String(price)); // lock the price for the webhook credit
   p.set("line_items[0][quantity]", "1");
-  p.set("line_items[0][price_data][currency]", "usd");
   if (opts.pack === CUSTOM_PACK) {
-    // Stripe collects the amount on its page; bounded to $10..$10,000. No unit_amount (mutually exclusive with
-    // custom_unit_amount). The webhook credits from the verified amount_total, so the typed amount is never
-    // trusted from unsigned client state.
-    p.set("line_items[0][price_data][custom_unit_amount][enabled]", "true");
-    p.set("line_items[0][price_data][custom_unit_amount][minimum]", String(CUSTOM_MIN_CENTS));
-    p.set("line_items[0][price_data][custom_unit_amount][maximum]", String(CUSTOM_MAX_CENTS));
-    p.set("line_items[0][price_data][custom_unit_amount][preset]", String(CUSTOM_MIN_CENTS));
-    p.set("line_items[0][price_data][product_data][name]", "receive.link credit");
+    // "Other amount" references a PRICE OBJECT created just before the session (customPriceParams below):
+    // Checkout's inline price_data does NOT accept custom_unit_amount — Stripe 400s with parameter_unknown
+    // (found live on mon). Only the Prices API carries the pay-what-you-want config, so the session simply
+    // points at that price. The webhook still credits from the VERIFIED amount_total, bounded to min/max.
+    p.set("line_items[0][price]", opts.customPriceId ?? "");
   } else {
     const amountCents = PACK_CENTS[opts.pack];
+    p.set("line_items[0][price_data][currency]", "usd");
     p.set("line_items[0][price_data][unit_amount]", String(amountCents));
     p.set("line_items[0][price_data][product_data][name]", `receive.link credit · ${humanSize(bytesForCents(amountCents, price))}`);
   }
   return p;
 }
 
-/** Create a Checkout session via the Stripe REST API; returns the hosted Checkout URL to redirect to. */
-export async function createCheckoutSession(env: Env, opts: { rid: string; pack: CheckoutPack; successUrl: string; cancelUrl: string }): Promise<string> {
-  const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+/** Params for the one-off "Other amount" PRICE object (POST /v1/prices): the customer types the amount on
+ *  Stripe's page, bounded $10..$10,000, preset $10. A fresh price per checkout keeps this stateless (no
+ *  cross-env KV cache — mon and staging share a KV namespace but hold DIFFERENT Stripe keys, so a cached
+ *  price id could leak across accounts); the custom path is rare, so the extra API call is negligible. */
+export function customPriceParams(): URLSearchParams {
+  const p = new URLSearchParams();
+  p.set("currency", "usd");
+  p.set("custom_unit_amount[enabled]", "true");
+  p.set("custom_unit_amount[minimum]", String(CUSTOM_MIN_CENTS));
+  p.set("custom_unit_amount[maximum]", String(CUSTOM_MAX_CENTS));
+  p.set("custom_unit_amount[preset]", String(CUSTOM_MIN_CENTS));
+  p.set("product_data[name]", "receive.link credit");
+  return p;
+}
+
+/** One authed form-POST to the Stripe REST API. On failure, logs Stripe's own diagnostic (code/param/
+ *  message only — our requests carry no card data and no PII) so a bad param never again surfaces as an
+ *  opaque 502 with nothing to debug from (the "Other amount" incident). */
+async function stripePost<T>(env: Env, path: string, params: URLSearchParams, what: string): Promise<T> {
+  const res = await fetch(`https://api.stripe.com${path}`, {
     method: "POST",
     headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "content-type": "application/x-www-form-urlencoded" },
-    body: checkoutSessionParams(env, opts).toString(),
+    body: params.toString(),
   });
-  if (!res.ok) throw new Error(`stripe checkout failed (${res.status})`);
-  const body = (await res.json()) as { url?: string };
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const err = (await res.json()) as { error?: { code?: string; param?: string; message?: string } };
+      detail = [err.error?.code, err.error?.param, err.error?.message].filter(Boolean).join(" | ").slice(0, 300);
+    } catch {
+      /* non-JSON error body */
+    }
+    logEvent("stripe_checkout_error", { status: res.status, what, detail });
+    throw new Error(`stripe ${what} failed (${res.status})`);
+  }
+  return (await res.json()) as T;
+}
+
+/** Create a Checkout session via the Stripe REST API; returns the hosted Checkout URL to redirect to.
+ *  "Other amount" is a two-call flow: mint the pay-what-you-want PRICE first (Checkout's inline price_data
+ *  rejects custom_unit_amount), then the session referencing it. Fixed tiers stay a single call. */
+export async function createCheckoutSession(env: Env, opts: { rid: string; pack: CheckoutPack; successUrl: string; cancelUrl: string }): Promise<string> {
+  let customPriceId: string | undefined;
+  if (opts.pack === CUSTOM_PACK) {
+    const price = await stripePost<{ id?: string }>(env, "/v1/prices", customPriceParams(), "custom price");
+    if (!price.id) throw new Error("stripe custom price: no id in response");
+    customPriceId = price.id;
+  }
+  const body = await stripePost<{ url?: string }>(env, "/v1/checkout/sessions", checkoutSessionParams(env, { ...opts, customPriceId }), "checkout");
   if (!body.url) throw new Error("stripe checkout: no url in response");
   return body.url;
 }

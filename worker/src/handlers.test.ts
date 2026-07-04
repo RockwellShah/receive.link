@@ -25,7 +25,7 @@ import {
   uploadInit,
   uploadParts,
 } from "./handlers";
-import { checkoutSessionParams, packList, parseCreditFromEvent, priceCentsPerGb, verifyStripeSignature } from "./stripe";
+import { checkoutSessionParams, createCheckoutSession, customPriceParams, packList, parseCreditFromEvent, priceCentsPerGb, verifyStripeSignature } from "./stripe";
 import { CapturingEmail, MemoryCompletion, MemoryReceiver, makeTestEnv, type SentMail, type TestHarness } from "./testing";
 
 function post(path: string, body: unknown, ip = "1.2.3.4"): Request {
@@ -926,14 +926,40 @@ test("stripe: checkoutSessionParams encodes a one-time payment and LOCKS the cur
   expect(p.get("line_items[0][price_data][unit_amount]")).toBe("1000"); // $10
 });
 
-test("stripe: checkoutSessionParams uses Stripe custom_unit_amount for the 'Other amount' option", async () => {
+test("stripe: 'Other amount' = a custom PRICE object + a session referencing it (price_data rejects custom_unit_amount)", async () => {
   const { env } = await makeTestEnv({ PRICE_CENTS_PER_GB: "1" });
-  const p = checkoutSessionParams(env, { rid: "rid_z", pack: "custom", successUrl: "https://x/s", cancelUrl: "https://x/c" });
+  // The price object carries the pay-what-you-want config...
+  const price = customPriceParams();
+  expect(price.get("custom_unit_amount[enabled]")).toBe("true");
+  expect(price.get("custom_unit_amount[minimum]")).toBe("1000"); // $10 floor
+  expect(price.get("custom_unit_amount[maximum]")).toBe("1000000"); // $10,000 ceiling
+  // ...and the session just points at it: NO inline price_data (Stripe 400s parameter_unknown on it).
+  const p = checkoutSessionParams(env, { rid: "rid_z", pack: "custom", successUrl: "https://x/s", cancelUrl: "https://x/c", customPriceId: "price_test_1" });
   expect(p.get("metadata[pack]")).toBe("custom");
-  expect(p.get("line_items[0][price_data][custom_unit_amount][enabled]")).toBe("true");
-  expect(p.get("line_items[0][price_data][custom_unit_amount][minimum]")).toBe("1000"); // $10 floor
-  expect(p.get("line_items[0][price_data][custom_unit_amount][maximum]")).toBe("1000000"); // $10,000 ceiling
-  expect(p.get("line_items[0][price_data][unit_amount]")).toBeNull(); // mutually exclusive with custom_unit_amount
+  expect(p.get("line_items[0][price]")).toBe("price_test_1");
+  expect([...p.keys()].some((k) => k.includes("price_data"))).toBe(false);
+});
+
+test("stripe: createCheckoutSession for 'custom' is the two-call flow (price, then session)", async () => {
+  const { env } = await makeTestEnv({ BILLING_ENABLED: "1", STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" });
+  const calls: { url: string; body: string }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    calls.push({ url: String(url), body: String(init.body) });
+    if (String(url).endsWith("/v1/prices")) return new Response(JSON.stringify({ id: "price_live_9" }), { status: 200 });
+    return new Response(JSON.stringify({ url: "https://checkout.stripe.com/c/pay/cs_test_9" }), { status: 200 });
+  }) as unknown as typeof fetch;
+  try {
+    const url = await createCheckoutSession(env, { rid: "rid_q", pack: "custom", successUrl: "https://x/s", cancelUrl: "https://x/c" });
+    expect(url).toContain("checkout.stripe.com");
+    expect(calls.length).toBe(2);
+    expect(calls[0]!.url).toContain("/v1/prices");
+    expect(calls[0]!.body).toContain("custom_unit_amount%5Benabled%5D=true");
+    expect(calls[1]!.url).toContain("/v1/checkout/sessions");
+    expect(calls[1]!.body).toContain("line_items%5B0%5D%5Bprice%5D=price_live_9");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("stripe: parseCreditFromEvent credits an 'Other amount' from the VERIFIED amount_total, bounded", async () => {

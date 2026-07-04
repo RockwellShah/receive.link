@@ -136,8 +136,9 @@ test("checkout needs a session + known pack, and builds a /credit-return Stripe 
 
   const realFetch = globalThis.fetch;
   let captured = "";
-  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
     captured = String(init.body);
+    if (String(url).endsWith("/v1/prices")) return new Response(JSON.stringify({ id: "price_test_7" }), { status: 200 });
     return new Response(JSON.stringify({ url: "https://checkout.stripe.com/c/pay/cs_test_1" }), { status: 200 });
   }) as unknown as typeof fetch;
   try {
@@ -146,10 +147,10 @@ test("checkout needs a session + known pack, and builds a /credit-return Stripe 
     expect(((await res.json()) as { url: string }).url).toContain("checkout.stripe.com");
     expect(captured).toContain(`client_reference_id=${rid}`); // credits the session's account
     expect(decodeURIComponent(captured)).toContain("/credit?paid=1"); // returns to the credit page, not a file
-    // "Other amount" is accepted too and builds a Stripe custom-amount session.
+    // "Other amount" is accepted too: the two-call flow ends in a session referencing the minted price.
     const resCustom = await accountCheckout(post("/account/checkout", { pack: "custom" }, "1.2.3.4", auth), h.env);
     expect(resCustom.status).toBe(200);
-    expect(captured).toContain("custom_unit_amount");
+    expect(decodeURIComponent(captured)).toContain("line_items[0][price]=price_test_7");
   } finally {
     globalThis.fetch = realFetch;
   }
