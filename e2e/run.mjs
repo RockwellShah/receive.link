@@ -143,7 +143,7 @@ async function roundTrip(browser) {
 
     // 5. qr (S11/R8). /qr verifies the signed payload then reveals (QR is a raster <img>). Critical: a
     // broken /qr ships a dead feature. (Currently failing — the /result routing bug; see step 6 note.)
-    const qrUrl = shareUrl.replace("/#", "/qr#");
+    const qrUrl = shareUrl.replace("/u#", "/qr#"); // share links are /u#<code> (the send page carries the sender-facing card)
     let qrOk = false;
     try {
       await rx.page.goto(qrUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
