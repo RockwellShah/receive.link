@@ -62,6 +62,8 @@ function canRetryWithDifferentPasskey(e: unknown): boolean {
 function showError(msg: string, offerDifferentPasskey = false): void {
   el("errmsg").textContent = msg;
   (el("reopen") as HTMLButtonElement).hidden = !offerDifferentPasskey;
+  // Back stays the primary green CTA unless the passkey-retry button takes that slot above it.
+  el("errback").className = offerDifferentPasskey ? "btn ghost full" : "btn full";
   show("error");
 }
 
