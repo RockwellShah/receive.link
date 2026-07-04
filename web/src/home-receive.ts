@@ -59,9 +59,9 @@ function expiresPhrase(expiresAt: number | undefined): string | null {
   const left = expiresAt - Date.now();
   if (left <= 0) return null;
   const days = Math.round(left / 86_400_000);
-  if (days >= 2) return `in about ${days} days`;
+  if (days >= 2) return `in ${days} days`;
   const hours = Math.round(left / 3_600_000);
-  if (hours >= 2) return `in about ${hours} hours`;
+  if (hours >= 2) return `in ${hours} hours`;
   return "within the hour";
 }
 function renderSaved(): void {
