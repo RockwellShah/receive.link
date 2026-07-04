@@ -67,12 +67,12 @@ SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"
 SERVER_SIGN_KEY_ID = "1"
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"            # <id>.r2.cloudflarestorage.com
 R2_BUCKET = "filekey-drop-staging"                 # bucket name for S3 presigning
-# 5 GB (decimal, safely under 5 GiB). HARD CEILING for now: delivery promotes the upload via a single S3
-# CopyObject (r2.ts copyObject) and R2 enforces the S3 dialect's 5 GiB single-copy limit — VERIFIED LIVE
-# 2026-07-02 (scripts/smoke-copy-5gb.ts: a 5.5 GB multipart uploaded fine, then failed exactly at
-# promotion). Raising this past ~5 GB requires a multipart-copy (UploadPartCopy ranged) promotion in
-# r2.ts first. The homepage FAQ's max-size answer must match this number.
-MAX_UPLOAD_BYTES = "5000000000"
+# 5 TB. Caps the ciphertext (= the R2 object); R2's hard object ceiling is 4.995 TiB (~5.49 TB), so 5 TB
+# sits under it with room for overhead, and computePartSize keeps partCount ~9000 (under the 10k limit).
+# The old 5 GiB CopyObject promotion wall is GONE: multipart uploads deliver IN PLACE (no copy;
+# SPEC-large-files), verified live 2026-07-04 at 5.5 GB and 11 GB (scripts/smoke-copy-5gb.ts, both
+# delivered end-to-end with completion in ~11-15s). The homepage FAQ's max-size answer matches this.
+MAX_UPLOAD_BYTES = "5000000000000"
 # Staging exercises multipart on small files: anything over 1 MiB splits into >=5 MiB
 # parts (5 MiB is R2's real minimum for non-last parts). Prod will use the higher default.
 MULTIPART_THRESHOLD = "1048576"                     # 1 MiB
@@ -141,7 +141,7 @@ SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"
 SERVER_SIGN_KEY_ID = "1"                                # see staging note on key rotation
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "receive-link-prod"
-MAX_UPLOAD_BYTES = "5000000000"                    # 5 GB: the CopyObject promotion ceiling (see the staging note above; verified live)
+MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (in-place delivery removed the copy wall; see the staging note above)
 # Monetization (same as staging; INERT until launch). Flip BILLING_ENABLED when going live on prod —
 # ONLY after the Stripe secrets are set (else the 402 wall shows packs whose checkout 503s). The launch
 # price IS the code default (1¢/GB), so PRICE_CENTS_PER_GB stays unset. Byte knobs are DECIMAL; if both
