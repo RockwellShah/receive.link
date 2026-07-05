@@ -36,6 +36,16 @@ export { ReceiverAccount } from "./receiver";
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+
+    // www.receive.link exists only as a custom domain on the prod Worker (that's what
+    // creates its DNS record) and always bounces to the apex. Handled before any
+    // config checks so the redirect works even if the API is misconfigured. Link
+    // payloads ride in URL fragments, which browsers re-attach after a redirect.
+    if (url.hostname === "www.receive.link") {
+      url.hostname = "receive.link";
+      return Response.redirect(url.toString(), 301);
+    }
+
     const origin = corsOrigin(env, req);
 
     if (req.method === "OPTIONS") return new Response(null, { headers: { ...cors(origin), "cache-control": "no-store" } });

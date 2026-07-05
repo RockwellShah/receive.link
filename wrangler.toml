@@ -106,6 +106,16 @@ REG_IP_PER_DAY = "1000"
 name = "receive-link"
 account_id = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 
+# The web app calls the API at the workers.dev URL. Declaring ANY route below makes
+# wrangler silently drop the workers.dev trigger unless this stays explicitly true
+# (learned live 2026-07-05: the first custom-domain deploy took prod's API down, error 1042).
+workers_dev = true
+# www -> apex. As a custom domain, Cloudflare creates and owns the www DNS record +
+# cert on deploy; the Worker itself 301s every www request to receive.link (worker.ts).
+routes = [
+  { pattern = "www.receive.link", custom_domain = true }
+]
+
 [[env.production.send_email]]
 name = "EMAIL"
 
