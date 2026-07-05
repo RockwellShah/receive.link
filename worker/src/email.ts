@@ -1,12 +1,39 @@
-// Outbound mail via the Cloudflare Email Service `send_email` Worker binding.
-// One swappable surface: if the Beta send product ever disappoints, only this file
-// changes (e.g. to Amazon SES). Each mail carries an HTML part (clean, single column,
-// inline-styled for broad client support) AND a plain-text fallback with the same copy.
+// Outbound mail. One swappable surface: every sender below goes through sendMail(), which routes by
+// EMAIL_PROVIDER — "postmark" = the Postmark REST API (borrowed corporate-inbox reputation; the Cloudflare
+// beta's young shared IPs get silently filtered by strict M365 tenants despite perfect SPF/DKIM/DMARC),
+// anything else = the Cloudflare Email Service `send_email` binding. Each mail carries an HTML part (clean,
+// single column, inline-styled for broad client support) AND a plain-text fallback with the same copy.
 // Mail never carries the file or the real filename; the only variable echoed is the
 // receiver's own link label, which is HTML-escaped before it touches the markup.
 
+import { logEvent } from "./http";
 import type { Env } from "./types";
 import { humanSize } from "./stripe";
+
+type Mail = { to: string; subject: string; text: string; html: string };
+
+/** Send via the provider EMAIL_PROVIDER selects. Callers treat a throw as "email failed" (they already
+ *  handle that best-effort or with a retryable 502), so both paths throw on failure rather than lie. */
+async function sendMail(env: Env, mail: Mail): Promise<void> {
+  const from = `receive.link <${env.MAIL_FROM}>`;
+  if (env.EMAIL_PROVIDER === "postmark") {
+    if (!env.POSTMARK_SERVER_TOKEN) {
+      logEvent("config_error", { what: "POSTMARK_SERVER_TOKEN" }); // provider selected but no token: fail loud, not silently via the binding
+      throw new Error("email provider misconfigured");
+    }
+    const res = await fetch("https://api.postmarkapp.com/email", {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", "x-postmark-server-token": env.POSTMARK_SERVER_TOKEN },
+      body: JSON.stringify({ From: from, To: mail.to, Subject: mail.subject, TextBody: mail.text, HtmlBody: mail.html, MessageStream: "outbound" }),
+    });
+    if (!res.ok) {
+      logEvent("email_send_failed", { provider: "postmark", status: res.status }); // status only — never the recipient
+      throw new Error(`postmark send failed (${res.status})`);
+    }
+    return;
+  }
+  await env.EMAIL.send({ to: mail.to, from, subject: mail.subject, text: mail.text, html: mail.html });
+}
 
 const BRAND = "#0F7A45"; // deep receive.link green for the CTA button — white text clears contrast and survives Gmail dark-mode inversion
 
@@ -51,7 +78,7 @@ export async function sendConfirmEmail(env: Env, to: string, confirmUrl: string,
       rule +
       note("This link expires in 1 hour. If you didn't request it, you can ignore this email."),
   );
-  await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
+  await sendMail(env, { to, subject, text, html });
 }
 
 /** Post-confirm email: a durable copy of the receiver's link (to share) and their
@@ -106,7 +133,7 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
       creditHtml +
       para("Only you can open the files. We can't see them, and we don't store your email address."),
   );
-  await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
+  await sendMail(env, { to, subject, text, html });
 }
 
 /** Account sign-in email: a passwordless magic-link into the WALLET (see balance + add credit), sent when a
@@ -128,7 +155,7 @@ export async function sendAccountLoginEmail(env: Env, to: string, accountUrl: st
       rule +
       note("This link expires in 15 minutes and can be used once. If you didn't request it, you can ignore this email."),
   );
-  await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
+  await sendMail(env, { to, subject, text, html });
 }
 
 /** Delivery email: someone sent a file; here is the link to open it. When `credit` is provided (billing
@@ -190,5 +217,5 @@ export async function sendDownloadEmail(
           quietLink(manageUrl, "Disable this link")
         : ""),
   );
-  await env.EMAIL.send({ to, from: `receive.link <${env.MAIL_FROM}>`, subject, text, html });
+  await sendMail(env, { to, subject, text, html });
 }

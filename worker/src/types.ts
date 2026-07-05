@@ -31,6 +31,7 @@ export interface Env {
   RECEIVER_ID_SECRET: string; // HMAC key deriving a recipient's account id (rid) from their confirmed email — stable + long-lived (rotating it re-keys every account)
   STRIPE_SECRET_KEY?: string; // Stripe API secret (sk_test_… / sk_live_…); unset = billing/checkout 503s (ships inert)
   STRIPE_WEBHOOK_SECRET?: string; // Stripe endpoint signing secret (whsec_…) for verifying webhook signatures
+  POSTMARK_SERVER_TOKEN?: string; // Postmark Server API token; required when EMAIL_PROVIDER = "postmark"
 
   // Vars (public, in wrangler.toml)
   SERVER_SIGN_PUBLIC_JWK: string; // verify Drop links on upload (public half)
@@ -39,6 +40,7 @@ export interface Env {
   SERVER_SIGN_KEY_ID_PREV?: string; // id of the previous signing key (pairs with _PREV)
   ALLOWED_ORIGIN: string; // comma-separated CORS allowlist; first entry is the canonical link/email base
   MAIL_FROM: string; // e.g. "files@send.filekey.app"
+  EMAIL_PROVIDER?: string; // outbound mail provider: "postmark" routes via the Postmark REST API (needs POSTMARK_SERVER_TOKEN); unset/anything else = the Cloudflare send_email binding. Escape hatch for corporate (M365) deliverability, where Cloudflare's young shared IPs get silently filtered despite perfect SPF/DKIM/DMARC
   R2_ACCOUNT_ID: string; // <id>.r2.cloudflarestorage.com
   R2_BUCKET: string; // bucket name for S3 presigning
   MAX_UPLOAD_BYTES?: string; // optional per-file cap override (default 2 GiB)
