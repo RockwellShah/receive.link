@@ -9,7 +9,7 @@ import { importKemPublicKey, sealEmail } from "../shared/crypto";
 import { confirm, register, uploadComplete, uploadInit } from "../worker/src/handlers";
 import { makeTestEnv } from "../worker/src/testing";
 
-const NS = new NamespaceSet(["filekey.app"]);
+const NS = new NamespaceSet(["receive.link"]);
 const ns = NS.namespaces[0]!;
 const rnd32 = () => crypto.getRandomValues(new Uint8Array(32));
 

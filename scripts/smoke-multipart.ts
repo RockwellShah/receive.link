@@ -13,7 +13,7 @@ const keys = (await Bun.file("keys/staging.json").json()) as { signPriv: JsonWeb
 const signPriv = await importSignPrivateKey(keys.signPriv);
 const kemPub = await importKemPublicKey(Uint8Array.from(keys.kemPubHex.match(/../g)!.map((h) => parseInt(h, 16))));
 
-const ns = new NamespaceSet(["filekey.app"]).namespaces[0]!;
+const ns = new NamespaceSet(["receive.link"]).namespaces[0]!;
 const receiver = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns);
 const shareKey = encodeShareKey(receiver.staticPkRaw, receiver.namespace);
 const sealed = await sealEmail(kemPub, Bun.argv[2] ?? "smoke-multipart@example.com");

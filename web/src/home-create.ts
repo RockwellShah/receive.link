@@ -10,8 +10,9 @@ import { DropApi, DropApiError } from "./api";
 import { ensureConfig, isConfigured } from "./config";
 import { enrollPasskey, getPrfSecret } from "./webauthn";
 
-// Same namespace as the app (interop with filekey.app). Tag = SHA-256("filekey.app")[0:4].
-const NS = new NamespaceSet(["filekey.app"]);
+// The receive.link namespace (tag = SHA-256("receive.link")[0:4]). Re-namespaced from "filekey.app"
+// 2026-07-06: identities and links are receive.link-specific by design (no cross-app compatibility).
+const NS = new NamespaceSet(["receive.link"]);
 const ns = NS.namespaces[0]!;
 
 // The modal's panel switcher (web/home/index.html) hands us these. recovery() is the

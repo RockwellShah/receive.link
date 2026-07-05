@@ -7,7 +7,7 @@ import { NamespaceSet, deriveIdentityFromPrf, encodeShareKey } from "./core/src/
 import { ciphertextLength, encryptFileToParts, openCiphertext, openCiphertextSource, streamSource } from "./fk/stream";
 
 test("encryptFileToParts: parts concatenate to a ciphertext of the predicted size that decrypts to the original", async () => {
-  const NS = new NamespaceSet(["filekey.app"]);
+  const NS = new NamespaceSet(["receive.link"]);
   const ns = NS.namespaces[0]!;
   const receiver = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns);
   const shareKey = encodeShareKey(receiver.staticPkRaw, receiver.namespace);
@@ -49,7 +49,7 @@ test("encryptFileToParts: parts concatenate to a ciphertext of the predicted siz
 });
 
 test("streamSource: decrypts a ciphertext fed through a forward-only ReadableStream (1x-disk receive)", async () => {
-  const NS = new NamespaceSet(["filekey.app"]);
+  const NS = new NamespaceSet(["receive.link"]);
   const ns = NS.namespaces[0]!;
   const receiver = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns);
   const shareKey = encodeShareKey(receiver.staticPkRaw, receiver.namespace);

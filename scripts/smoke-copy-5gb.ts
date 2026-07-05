@@ -19,7 +19,7 @@ const keys = (await Bun.file(process.env.SMOKE_KEYS ?? "keys/staging.json").json
 const signPriv = await importSignPrivateKey(keys.signPriv);
 const kemPub = await importKemPublicKey(Uint8Array.from(keys.kemPubHex.match(/../g)!.map((h) => parseInt(h, 16))));
 
-const ns = new NamespaceSet(["filekey.app"]).namespaces[0]!;
+const ns = new NamespaceSet(["receive.link"]).namespaces[0]!;
 const receiver = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns);
 const shareKey = encodeShareKey(receiver.staticPkRaw, receiver.namespace);
 const sealed = await sealEmail(kemPub, "smoke-copy-5gb@example.com"); // throwaway; a failed send still proves the copy

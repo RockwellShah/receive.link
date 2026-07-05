@@ -115,9 +115,9 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;bac
       <h2>Identity</h2>
       <p>Your keys are derived deterministically from your passkey, on your device, through the WebAuthn <code>PRF</code> extension. Your private key and the passkey secret behind it never reach our servers; only your public key does, carried inside your link. Your passkey itself syncs only through your platform's encrypted keychain, never through us.</p>
       <div class="code">master_prk   = HKDF-Extract(salt="FILEKEY-v1/master-prk", IKM=prf_secret)
-identity_ikm = HKDF-Expand(master_prk, "FILEKEY-v1/identity-kem" || namespace, 32)   // namespace = "filekey.app"
+identity_ikm = HKDF-Expand(master_prk, "FILEKEY-v1/identity-kem" || namespace, 32)   // namespace = "receive.link"
 (sk, pk)     = DHKEM(P-256)-DeriveKeyPair(identity_ikm)        // RFC 9180 §7.1.3</div>
-      <p>The keypair is bound to a fixed namespace, <code>filekey.app</code> (the same one the FileKey app uses), so the identity carries between the two and a file you receive here also opens there with the same passkey. The private key is reproduced from the passkey secret each session and never persisted to disk.</p>
+      <p>The keypair is bound to the <code>receive.link</code> namespace: the domain string is mixed into the derivation, so the same passkey produces an identity that exists only for this service (the FILEKEY container format is shared with the FileKey app, but identities and links are deliberately not interchangeable). The private key is reproduced from the passkey secret each session and never persisted to disk.</p>
     </div>
 
     <div class="grp">

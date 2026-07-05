@@ -5,7 +5,7 @@
 import { expect, test } from "bun:test";
 import { NamespaceSet, decrypt, deriveIdentityFromPrf, encodeShareKey, encryptToShareKey } from "./core/src/index";
 
-const NS = new NamespaceSet(["filekey.app"]);
+const NS = new NamespaceSet(["receive.link"]);
 const ns = NS.namespaces[0]!;
 const rnd32 = () => crypto.getRandomValues(new Uint8Array(32));
 

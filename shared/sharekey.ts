@@ -17,6 +17,13 @@ const COMPRESSED_PK_LEN = 33;
 const PAYLOAD_LEN = 1 + NS_TAG_LEN + COMPRESSED_PK_LEN; // 38
 const BECH32_LIMIT = 1023;
 
+/** The ONLY namespace this relay serves: tag = SHA-256("receive.link")[0:4] (core namespaceTag, section 4.4).
+ *  receive.link identities were re-namespaced from "filekey.app" on 2026-07-06 (a deliberate one-time
+ *  break: browser-decrypted downloads mean cross-app ciphertext compatibility bought nothing). Enforcing
+ *  the tag here makes links minted under the OLD namespace fail LOUDLY at init/complete instead of
+ *  delivering files their receiver's re-derived identity can no longer open. Exported for tests. */
+export const RECEIVE_LINK_NS_TAG = Uint8Array.from([0x02, 0xf2, 0xad, 0x28]);
+
 /**
  * Decode a receiver share key (the UTF-8 bytes of the Bech32m "fkey…" string from a signed link) to a
  * 65-byte SEC1 uncompressed P-256 public key. Throws on any malformation (invalid UTF-8, bad Bech32m,
@@ -29,6 +36,8 @@ export function recipientPkFromShareKeyBytes(shareKeyBytes: Uint8Array): Uint8Ar
   const payload = bech32m.fromWords(words);
   if (payload.length !== PAYLOAD_LEN) throw new Error(`share-key payload length ${payload.length} != ${PAYLOAD_LEN}`);
   if (payload[0] !== SK_VERSION) throw new Error(`unsupported sk_version 0x${payload[0]!.toString(16)}`);
+  const tag = payload.subarray(1, 1 + NS_TAG_LEN);
+  if (!RECEIVE_LINK_NS_TAG.every((b, i) => tag[i] === b)) throw new Error("share-key namespace tag mismatch (a link from a previous namespace)");
   const compressed = payload.subarray(1 + NS_TAG_LEN); // 33-byte compressed point
   if (compressed.length !== COMPRESSED_PK_LEN || (compressed[0] !== 0x02 && compressed[0] !== 0x03)) {
     throw new Error("expected 33-byte compressed SEC1 point (0x02/0x03 prefix)");

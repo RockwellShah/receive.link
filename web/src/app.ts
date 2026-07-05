@@ -16,7 +16,7 @@ import { DropApi, DropApiError, type UploadInit } from "./api";
 import { dropConfig, ensureConfig, isConfigured } from "./config";
 import { checkSupport, enrollPasskey, getPrfSecret, prfBrowserSupport } from "./webauthn";
 
-const NS = new NamespaceSet(["filekey.app"]);
+const NS = new NamespaceSet(["receive.link"]);
 const ns = NS.namespaces[0]!;
 let cfg = dropConfig();
 let api = new DropApi(cfg.apiBase);

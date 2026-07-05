@@ -412,6 +412,14 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
 
   const linkIdHex = hex(link.linkId);
   if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
+  // Fail FAST on an undeliverable share key (undecodable, or minted under the pre-2026-07-06
+  // "filekey.app" namespace whose identities no longer derive): reject BEFORE the transfer, not after
+  // a multi-GB upload dies at completion. Completion still re-validates (defense in depth).
+  try {
+    recipientPkFromShareKeyBytes(link.shareKey);
+  } catch {
+    return json({ error: "invalid link" }, 400, origin);
+  }
   if (!(await rateLimit(env.DROP_KV, `up:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
     return json({ error: "link is over its daily limit" }, 429, origin);
   }

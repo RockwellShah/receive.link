@@ -7,7 +7,7 @@ import { base64urlEncode } from "../shared/codec";
 import { importKemPublicKey, sealEmail } from "../shared/crypto";
 
 const BASE = "http://localhost:8080/api";
-const NS = new NamespaceSet(["filekey.app"]);
+const NS = new NamespaceSet(["receive.link"]);
 const ns = NS.namespaces[0]!;
 const json = (path: string, body: unknown) =>
   fetch(`${BASE}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());

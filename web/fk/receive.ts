@@ -9,8 +9,8 @@ import type { DropApi } from "../src/api";
 import { checkSupport, getPrfSecret, prfBrowserSupport } from "../src/webauthn";
 import { openCiphertext, openCiphertextSource, streamSource } from "./stream";
 
-// Same namespace as the app (interop with filekey.app).
-const NS = new NamespaceSet(["filekey.app"]);
+// The receive.link namespace (identities are receive.link-specific by design).
+const NS = new NamespaceSet(["receive.link"]);
 const ns = NS.namespaces[0]!;
 
 // The page implements this to render save progress + wire the Cancel button.

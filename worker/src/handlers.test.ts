@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { DROP_PAYLOAD_VERSION, LINK_ID_LEN, base64urlDecode, base64urlEncode, signableBytes } from "../../shared/codec";
 import { FETCH_CHALLENGE_INFO, fetchProofHex, generateKemKeyPair, hpkeUnseal, importKemPublicKey, importSignPrivateKey, sealEmail, serializeKemPublicKey, signRegion } from "../../shared/crypto";
+import { RECEIVE_LINK_NS_TAG } from "../../shared/sharekey";
 import { hex, hmacSha256hex, randomBytes } from "../../shared/util";
 import { p256 } from "@noble/curves/nist.js";
 import { bech32m } from "@scure/base";
@@ -48,11 +49,11 @@ async function sealed(h: TestHarness, email: string): Promise<string> {
 
 // A real receiver KEM keypair whose public key we encode as a valid Bech32m "fkey" share key, so the
 // Worker can decode it + seal a download-gate challenge to it; RECEIVER unseals those challenges below.
-// (The namespace tag is irrelevant to the gate decode — it only extracts the public point — so a
-// placeholder 4-zero tag is fine.)
+// The namespace tag must be the receive.link tag: the decode now ENFORCES it (links minted under the old
+// "filekey.app" namespace fail closed by design).
 const RECEIVER = await generateKemKeyPair();
 function shareKeyFor(pkRaw: Uint8Array): string {
-  const payload = new Uint8Array([0x01, 0, 0, 0, 0, ...p256.Point.fromBytes(pkRaw).toBytes(true)]); // version || nsTag(4) || compressed(33)
+  const payload = new Uint8Array([0x01, ...RECEIVE_LINK_NS_TAG, ...p256.Point.fromBytes(pkRaw).toBytes(true)]); // version || nsTag(4) || compressed(33)
   return base64urlEncode(new TextEncoder().encode(bech32m.encode("fkey", bech32m.toWords(payload), 1023)));
 }
 const SHARE_KEY = shareKeyFor(await serializeKemPublicKey(RECEIVER.publicKey));

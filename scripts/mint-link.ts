@@ -18,7 +18,7 @@ const sealedEmail = base64urlEncode(await sealEmail(kemPub, "demo@example.com"))
 // A real, decodable share key (random throwaway identity) so the sender's browser
 // can actually encrypt to it. Decrypt won't work (private key is discarded), but
 // that's fine for exercising the send/upload flow in dev.
-const ns = new NamespaceSet(["filekey.app"]).namespaces[0]!;
+const ns = new NamespaceSet(["receive.link"]).namespaces[0]!;
 const identity = await deriveIdentityFromPrf(crypto.getRandomValues(new Uint8Array(32)), ns);
 const shareKey = base64urlEncode(new TextEncoder().encode(encodeShareKey(identity.staticPkRaw, identity.namespace)));
 
