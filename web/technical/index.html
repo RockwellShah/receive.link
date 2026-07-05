@@ -117,12 +117,12 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;bac
       <div class="code">master_prk   = HKDF-Extract(salt="FILEKEY-v1/master-prk", IKM=prf_secret)
 identity_ikm = HKDF-Expand(master_prk, "FILEKEY-v1/identity-kem" || namespace, 32)   // namespace = "receive.link"
 (sk, pk)     = DHKEM(P-256)-DeriveKeyPair(identity_ikm)        // RFC 9180 §7.1.3</div>
-      <p>The keypair is bound to the <code>receive.link</code> namespace: the domain string is mixed into the derivation, so the same passkey produces an identity that exists only for this service (the FILEKEY container format is shared with the FileKey app, but identities and links are deliberately not interchangeable). The private key is reproduced from the passkey secret each session and never persisted to disk.</p>
+      <p>The keypair is bound to the <code>receive.link</code> namespace: the domain string is mixed into the derivation, so the same passkey produces an identity that exists only for this service. The private key is reproduced from the passkey secret each session and never persisted to disk.</p>
     </div>
 
     <div class="grp">
       <h2>Cipher suite</h2>
-      <p>Every file uses the same fixed cipher suite, so there's no algorithm negotiation and nothing to downgrade. It's <code>HPKE Auth</code> mode over <code>DHKEM(P-256, HKDF-SHA-256)</code>, with <code>HKDF-SHA-256</code> and <code>AES-256-GCM</code>, per RFC 9180. receive.link shares the FileKey app's crypto core, built on <code>@hpke/core</code> and <code>@noble/curves</code> (the latter for a Safari-compatible <code>DeriveKeyPair</code>) and verified there byte-for-byte against the spec's known-answer vectors.</p>
+      <p>Every file uses the same fixed cipher suite, so there's no algorithm negotiation and nothing to downgrade. It's <code>HPKE Auth</code> mode over <code>DHKEM(P-256, HKDF-SHA-256)</code>, with <code>HKDF-SHA-256</code> and <code>AES-256-GCM</code>, per RFC 9180. The crypto core is built on <code>@hpke/core</code> and <code>@noble/curves</code> (the latter for a Safari-compatible <code>DeriveKeyPair</code>), and its test suite verifies the implementation byte-for-byte against the spec's known-answer vectors.</p>
     </div>
 
     <div class="grp">
