@@ -61,7 +61,11 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
 <div class="frame">
   <a class="logo" href="/"><svg width="23" height="23" viewBox="0 0 100 100"><circle cx="50" cy="50" r="24" fill="none" stroke="#23A267" stroke-width="12"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span>receive<span class="dotp">.</span><span class="tld">link</span></span></a>
   <main class="col">
-    <div class="st" data-state="email">
+    <!-- NOT the initial state: arrivals from an email button carry a #mt token (and return visits a
+         stored session), so home-account.ts decides where to land. When the form was the static
+         default it painted for a beat before the script swapped to the account view (a visible flash
+         on phones). The loading spinner below is the default; showEmail() un-hides this. -->
+    <div class="st" data-state="email" hidden>
       <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0 -18"/><path d="M14.8 9a2 2 0 0 0 -1.8 -1h-2a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4h-2a2 2 0 0 1 -1.8 -1"/><path d="M12 7v1"/><path d="M12 16v1"/></svg></div>
       <h1>Your download credit</h1>
       <p class="sub" id="emailsub">Check your balance or add more. We'll email you a link, no password and no account.</p>
@@ -75,7 +79,7 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
       <p class="sub">If that's a valid address, a link is on its way. It expires in 15 minutes.</p>
     </div>
 
-    <div class="st" data-state="loading" hidden>
+    <div class="st" data-state="loading">
       <div class="spin"></div>
       <h1 id="loadh">Loading your credit</h1>
     </div>
