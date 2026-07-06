@@ -1,3 +1,14 @@
+# Baseline security headers for every page. frame-ancestors 'none' + X-Frame-Options block
+# clickjacking (nothing here is meant to be framed; passkey unlock and the destructive /receive
+# actions especially should never render inside a hostile iframe). frame-ancestors can only be set
+# via header, not a <meta> CSP, which is why it lives here. The /credit page keeps its own stricter
+# connect-src CSP meta; these directives are additive, not conflicting.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+
 # Apple App Site Association must be served as application/json (no file extension).
 /.well-known/apple-app-site-association
   Content-Type: application/json

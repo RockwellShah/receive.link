@@ -211,6 +211,13 @@ function revokeFlow(token: string): void {
 
 const path = location.pathname;
 const hash = location.hash.replace(/^#/, "");
+// Scrub the fragment from the address bar + history right after capture (mirrors home-account.ts's #mt
+// handling). The revoke token is a long-lived capability and the confirm nonce is a bearer, so neither
+// should linger in a bookmark or a synced-browser history. The flow functions already hold `hash`, so
+// this is invisible to them. The /qr payload is the share link itself (public by design), so it stays.
+if ((path === "/revoke" || path === "/confirm") && location.hash) {
+  history.replaceState(null, "", location.pathname + location.search);
+}
 if (path === "/revoke") revokeFlow(hash);
 else if (path === "/qr") void qrFlow(hash);
 else void confirmFlow(hash); // /confirm (and a bare /result fallback)

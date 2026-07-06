@@ -1169,3 +1169,27 @@ test("billing webhook: a bad signature is rejected (400) and credits nothing", a
   expect((await billingWebhook(req, h.env)).status).toBe(400);
   expect((await h.env.RECEIVER.get(h.env.RECEIVER.idFromName(rid)).summary(0)).balance).toBe(0);
 });
+
+test("billing webhook: an oversized body is rejected (413) before the signature check", async () => {
+  const h = await makeTestEnv({ STRIPE_WEBHOOK_SECRET: "whsec_test" });
+  const body = "x".repeat(300 * 1024); // > the 256 KB cap
+  const req = new Request("http://x/billing/webhook", { method: "POST", headers: { "stripe-signature": "t=1,v1=bad" }, body });
+  expect((await billingWebhook(req, h.env)).status).toBe(413); // capped before buffering + HMAC
+});
+
+test("confirm: a malformed (oversized) nonce is a clean 404, not a 500", async () => {
+  const h = await makeTestEnv();
+  // A 2000-char nonce would blow KV's key-size limit if it reached the lookup; the shape check bounces it.
+  expect((await confirm(post("/confirm", { nonce: "z".repeat(2000) }), h.env)).status).toBe(404);
+  // A well-shaped but unknown nonce (22 base64url chars) is also a clean 404 (KV miss).
+  expect((await confirm(post("/confirm", { nonce: "A".repeat(22) }), h.env)).status).toBe(404);
+});
+
+test("upload-init: a per-IP request flood is capped (429) before the ECDSA verify", async () => {
+  const h = await makeTestEnv({ UPLOAD_REQ_IP_PER_DAY: "2" });
+  const link = await setupLink(h);
+  // Same IP (post() default), so the up:req:ip counter is shared: 2 through, the 3rd is rate limited.
+  expect((await uploadInit(post("/upload-init", { payload: link, size: 100 }), h.env)).status).toBe(200);
+  expect((await uploadInit(post("/upload-init", { payload: link, size: 100 }), h.env)).status).toBe(200);
+  expect((await uploadInit(post("/upload-init", { payload: link, size: 100 }), h.env)).status).toBe(429);
+});

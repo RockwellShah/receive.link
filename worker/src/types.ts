@@ -59,4 +59,5 @@ export interface Env {
   FETCH_IP_PER_DAY?: string; // optional per-day cap on download-gate challenge + prove calls per IP
   UPLOAD_BYTES_PER_LINK_DAY?: string; // optional daily byte budget per link (default 5x the per-file cap)
   UPLOAD_BYTES_PER_IP_DAY?: string; // optional daily byte budget per IP (default 10x the per-file cap)
+  UPLOAD_REQ_IP_PER_DAY?: string; // optional pre-verify upload-* request cap per IP (default 20000; anti-CPU-burn backstop)
 }

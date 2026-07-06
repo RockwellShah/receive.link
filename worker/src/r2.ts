@@ -26,14 +26,22 @@ function objectUrl(env: Env, objectId: string): string {
   return `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET}/${objectId}`;
 }
 
-async function presign(env: Env, objectId: string, method: "PUT" | "GET", expiresSec: number): Promise<string> {
+async function presign(env: Env, objectId: string, method: "PUT" | "GET", expiresSec: number, contentLength?: number): Promise<string> {
   const url = `${objectUrl(env, objectId)}?X-Amz-Expires=${expiresSec}`;
-  const signed = await client(env).sign(url, { method, aws: { signQuery: true } });
+  // Bind Content-Length into the signature when given, so R2 rejects any upload whose body size differs
+  // from the signed value. aws4fetch leaves content-length OUT of SignedHeaders unless allHeaders is set;
+  // with it set, R2 recomputes the signature over the received Content-Length and 403s a mismatch. The
+  // client declares the EXACT ciphertext length at upload-init (ciphertextLength() is deterministic), so a
+  // legit upload matches to the byte while "declare small, PUT big, never complete" abuse is rejected at R2.
+  const headers = contentLength != null ? { "content-length": String(contentLength) } : undefined;
+  const signed = await client(env).sign(url, { method, headers, aws: { signQuery: true, allHeaders: contentLength != null } });
   return signed.url;
 }
 
-export function presignPut(env: Env, objectId: string, expiresSec = 3600): Promise<string> {
-  return presign(env, objectId, "PUT", expiresSec);
+/** Presign a single PUT. Pass `contentLength` (the exact object size) to bind it into the signature so
+ *  R2 caps the upload at that size; omit it (GET, or an unbounded PUT) for the legacy behavior. */
+export function presignPut(env: Env, objectId: string, expiresSec = 3600, contentLength?: number): Promise<string> {
+  return presign(env, objectId, "PUT", expiresSec, contentLength);
 }
 
 export function presignGet(env: Env, objectId: string, expiresSec = 3600): Promise<string> {
@@ -129,10 +137,12 @@ export async function createMultipart(env: Env, objectId: string): Promise<strin
   return mpu.uploadId;
 }
 
-/** Presign one UploadPart URL (the browser PUTs the part body straight to R2). */
-export async function presignUploadPart(env: Env, objectId: string, uploadId: string, partNumber: number, expiresSec: number): Promise<string> {
+/** Presign one UploadPart URL (the browser PUTs the part body straight to R2). `contentLength` (the exact
+ *  size of THIS part) is bound into the signature so R2 rejects an oversized part, same as the single PUT. */
+export async function presignUploadPart(env: Env, objectId: string, uploadId: string, partNumber: number, expiresSec: number, contentLength?: number): Promise<string> {
   const url = `${objectUrl(env, objectId)}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}&X-Amz-Expires=${expiresSec}`;
-  const signed = await client(env).sign(url, { method: "PUT", aws: { signQuery: true } });
+  const headers = contentLength != null ? { "content-length": String(contentLength) } : undefined;
+  const signed = await client(env).sign(url, { method: "PUT", headers, aws: { signQuery: true, allHeaders: contentLength != null } });
   return signed.url;
 }
 

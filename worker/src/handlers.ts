@@ -37,6 +37,12 @@ export const REG_IP_PER_DAY = 20; // confirmation emails one IP can trigger
 export const REG_EMAIL_PER_DAY = 5; // confirmation emails one address can receive (anti-bombing)
 export const UPLOAD_LINK_PER_DAY = 25; // files one Drop link accepts (anti-flood of the inbox)
 export const UPLOAD_IP_PER_DAY = 100; // files one IP can push across all links
+// Pre-verify anti-flood backstop on the upload-* endpoints (each does an ECDSA verify + key-import
+// before its per-file caps fire, so an unauthenticated flood of garbage payloads could otherwise burn
+// Worker CPU). Set FAR above real use: a power user maxing UPLOAD_IP_PER_DAY (100 files/day) with 5 TB
+// files makes ~90 upload-parts calls each (~9k requests), so this only trips on abuse, and rateLimit
+// fails open under burst anyway (Cloudflare's edge is the real DDoS defense; this is a cheap ceiling).
+export const UPLOAD_REQ_IP_PER_DAY = 20000; // upload-* requests one IP can make per day (pre-verify)
 export const FETCH_IP_PER_DAY = 1000; // download-gate challenge + prove calls one IP can make per day
 export const REVOKE_IP_PER_DAY = 60; // revoke calls one IP can make (tokens are unguessable; this just caps probing)
 export const BILLING_CHECKOUT_IP_PER_DAY = 30; // Stripe sessions one IP can mint via the file-proof top-up
@@ -88,12 +94,17 @@ function computePartSize(size: number, env: Env): number {
   return Math.min(MAX_PART_SIZE, Math.max(minPartSize(env), Math.ceil(size / TARGET_PARTS)));
 }
 
-/** Presign UploadPart URLs for part numbers [from, from+count), clamped to 1..partCount. */
-async function presignParts(env: Env, objectId: string, uploadId: string, from: number, count: number, partCount: number): Promise<{ partNumber: number; url: string }[]> {
+/** Presign UploadPart URLs for part numbers [from, from+count), clamped to 1..partCount. Each URL binds
+ *  the exact size of its part (partSize, or the remainder for the last part) into the signature, so R2
+ *  rejects an oversized part — this is what bounds a multipart upload's total bytes at the R2 layer. */
+async function presignParts(env: Env, objectId: string, uploadId: string, from: number, count: number, partCount: number, partSize: number, totalSize: number): Promise<{ partNumber: number; url: string }[]> {
   const out: { partNumber: number; url: string }[] = [];
   const end = Math.min(from + count, partCount + 1); // part numbers are 1-based, 1..partCount
   for (let n = Math.max(1, from); n < end; n++) {
-    out.push({ partNumber: n, url: await presignUploadPart(env, objectId, uploadId, n, PRESIGN_TTL_SEC) });
+    // Parts 1..(partCount-1) are exactly partSize; the last part is the remainder. Mirrors
+    // encryptFileToParts on the client (partSize-byte parts, remainder last), so signed length == sent.
+    const partLen = n < partCount ? partSize : totalSize - (partCount - 1) * partSize;
+    out.push({ partNumber: n, url: await presignUploadPart(env, objectId, uploadId, n, PRESIGN_TTL_SEC, partLen) });
   }
   return out;
 }
@@ -290,6 +301,10 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
   const body = await readJson<{ nonce: string }>(req);
   if (!body || typeof body.nonce !== "string") return json({ error: "missing nonce" }, 400, origin);
+  // The nonce is base64url(16 bytes) = 22 chars (see register). Validate the exact shape BEFORE the KV
+  // lookup: an oversized nonce would blow KV's key-size limit and surface as a 500 instead of a clean
+  // 404, and there's no reason to touch KV for a structurally impossible token.
+  if (!/^[A-Za-z0-9_-]{22}$/.test(body.nonce)) return json({ error: "invalid or expired" }, 404, origin);
 
   const stored = await env.DROP_KV.get(`pending:${body.nonce}`);
   if (!stored) return json({ error: "invalid or expired" }, 404, origin);
@@ -370,8 +385,21 @@ export async function revoke(req: Request, env: Env): Promise<Response> {
 // POST /upload-init { payload, size } -> single-PUT or multipart upload descriptor.
 //   small (size <= MULTIPART_THRESHOLD): { mode:"single", objectId, uploadUrl }
 //   large: { mode:"multipart", objectId, uploadId, partSize, partCount, partUrls, batchSize }
+/** Pre-verify per-IP flood gate for the upload-* endpoints. Runs BEFORE the ECDSA link verify so an
+ *  unauthenticated garbage flood can't burn Worker CPU on signature checks. Returns the computed ipHash
+ *  so the caller can reuse it for its per-file caps. */
+async function uploadFloodGate(req: Request, env: Env, origin: string): Promise<{ ok: true; ipHash: string } | { ok: false; resp: Response }> {
+  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
+  if (!(await rateLimit(env.DROP_KV, `up:req:ip:${ipHash}`, envInt(env.UPLOAD_REQ_IP_PER_DAY, UPLOAD_REQ_IP_PER_DAY), DAY))) {
+    return { ok: false, resp: json({ error: "rate limited" }, 429, origin) };
+  }
+  return { ok: true, ipHash };
+}
+
 export async function uploadInit(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
+  const gate = await uploadFloodGate(req, env, origin);
+  if (!gate.ok) return gate.resp;
   const body = await readJson<{ payload: string; size: number }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.size !== "number") {
     return json({ error: "missing fields" }, 400, origin);
@@ -401,13 +429,14 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (!(await rateLimit(env.DROP_KV, `up:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
     return json({ error: "link is over its daily limit" }, 429, origin);
   }
-  const ipHash = await hmacHex(env.HASH_SECRET, clientIp(req));
+  const ipHash = gate.ipHash;
   if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);
   }
   // Byte budgets + the AUTHORITATIVE recipient-capacity charge are applied at upload-COMPLETE on the
-  // actual object size, not here — the declared `size` is client-controlled and no presigned PUT enforces
-  // it (see uploadComplete). This is only a FAIL-FAST pre-check on the declared size: bounce an obviously
+  // actual object size, not here. The presigned PUT/part URLs now bind Content-Length, so R2 caps the
+  // uploaded bytes at the declared `size` (no more "declare small, PUT big"); the charge still lands at
+  // complete on the real object size. This is only a FAIL-FAST pre-check on the declared size: bounce an obviously
   // over-capacity upload before the transfer so the sender sees "inbox full" up front. Best-effort +
   // advisory (complete re-checks on the real size), and skipped entirely while billing is off, so it
   // costs nothing — not even the email unseal — until monetization is switched on.
@@ -434,7 +463,9 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   if (body.size <= multipartThreshold(env)) {
     const bind: UploadBinding = { link: linkIdHex };
     await env.DROP_KV.put(`upload:${objectId}`, JSON.stringify(bind), { expirationTtl: PRESIGN_TTL_SEC });
-    const uploadUrl = await presignPut(env, objectId, PRESIGN_TTL_SEC);
+    // Bind the exact declared size into the presigned PUT so R2 rejects a body larger than declared
+    // (the client uploads exactly body.size ciphertext bytes; ciphertextLength() is deterministic).
+    const uploadUrl = await presignPut(env, objectId, PRESIGN_TTL_SEC, body.size);
     return json({ mode: "single", objectId, uploadUrl, expiresInSec: PRESIGN_TTL_SEC }, 200, origin);
   }
 
@@ -451,7 +482,7 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   // multipart object is immutable once complete consumes the uploadId, so it is served where it sits.
   const bind: UploadBinding = { link: linkIdHex, inplace: true, mp: { uploadId, size: body.size, partSize, partCount } };
   await env.DROP_KV.put(`upload:${objectId}`, JSON.stringify(bind), { expirationTtl: MULTIPART_TTL_SEC });
-  const partUrls = await presignParts(env, objectId, uploadId, 1, PART_PRESIGN_BATCH, partCount);
+  const partUrls = await presignParts(env, objectId, uploadId, 1, PART_PRESIGN_BATCH, partCount, partSize, body.size);
   return json(
     { mode: "multipart", objectId, uploadId, partSize, partCount, partUrls, batchSize: PART_PRESIGN_BATCH, expiresInSec: PRESIGN_TTL_SEC },
     200,
@@ -464,6 +495,8 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
 // signatures and we never sign all 10k up front.
 export async function uploadParts(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
+  const gate = await uploadFloodGate(req, env, origin);
+  if (!gate.ok) return gate.resp;
   const body = await readJson<{ payload: string; objectId: string; from: number; count: number }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string" || typeof body.from !== "number" || typeof body.count !== "number") {
     return json({ error: "missing fields" }, 400, origin);
@@ -489,13 +522,15 @@ export async function uploadParts(req: Request, env: Env): Promise<Response> {
 
   const from = Math.max(1, Math.floor(body.from));
   const count = Math.max(1, Math.min(PART_PRESIGN_BATCH, Math.floor(body.count)));
-  const partUrls = from > bind.mp.partCount ? [] : await presignParts(env, body.objectId, bind.mp.uploadId, from, count, bind.mp.partCount);
+  const partUrls = from > bind.mp.partCount ? [] : await presignParts(env, body.objectId, bind.mp.uploadId, from, count, bind.mp.partCount, bind.mp.partSize, bind.mp.size);
   return json({ partUrls }, 200, origin);
 }
 
 // POST /upload-abort { payload, objectId } -> { ok } (cancel cleanup)
 export async function uploadAbort(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
+  const gate = await uploadFloodGate(req, env, origin);
+  if (!gate.ok) return gate.resp;
   const body = await readJson<{ payload: string; objectId: string }>(req);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -533,8 +568,12 @@ export async function uploadAbort(req: Request, env: Env): Promise<Response> {
 // a 5.5 GB (1,050-part) completion bounced off the default cap as a bogus "missing fields" 400,
 // capping real multipart uploads at ~1k parts (~17 GB at prod's 16 MiB part floor).
 const COMPLETE_JSON_BYTES = 1024 * 1024;
+// Stripe webhook events fit well under this; caps an unauthenticated body before we buffer + HMAC it.
+const WEBHOOK_MAX_BYTES = 256 * 1024;
 export async function uploadComplete(req: Request, env: Env): Promise<Response> {
   const origin = corsOrigin(env, req);
+  const gate = await uploadFloodGate(req, env, origin);
+  if (!gate.ok) return gate.resp;
   const body = await readJson<{ payload: string; objectId: string; parts?: unknown }>(req, COMPLETE_JSON_BYTES);
   if (!body || typeof body.payload !== "string" || typeof body.objectId !== "string") {
     return json({ error: "missing fields" }, 400, origin);
@@ -1033,8 +1072,15 @@ export async function billingWebhook(req: Request, env: Env): Promise<Response> 
     logEvent("config_error", { what: "STRIPE_WEBHOOK_SECRET" });
     return new Response("unconfigured", { status: 503 });
   }
+  // Cap the body BEFORE reading it: this is a public, unauthenticated endpoint, and buffering +
+  // HMAC-ing an arbitrarily large body from an unsigned caller is avoidable CPU/memory. Real Stripe
+  // events fit comfortably under 256 KB. The Content-Length header check rejects the common case up
+  // front; the post-read length check is the backstop for a spoofed/absent Content-Length.
+  const declaredLen = parseInt(req.headers.get("content-length") ?? "", 10);
+  if (Number.isFinite(declaredLen) && declaredLen > WEBHOOK_MAX_BYTES) return new Response("too large", { status: 413 });
   const sig = req.headers.get("stripe-signature") ?? "";
   const raw = await req.text(); // RAW body: re-serialized JSON would break the signature
+  if (raw.length > WEBHOOK_MAX_BYTES) return new Response("too large", { status: 413 });
   if (!(await verifyStripeSignature(raw, sig, env.STRIPE_WEBHOOK_SECRET, Math.floor(Date.now() / 1000)))) {
     return new Response("bad signature", { status: 400 });
   }
