@@ -17,10 +17,11 @@ interface StoredMail {
   ts: number;
 }
 
-// Receiver-facing links the worker emails: /confirm#<nonce>, /revoke#<token>, /qr#<payload> (hash), and
-// /d/<id> (path). Pull them straight out of the raw MIME so we don't need a full MIME parser.
+// Receiver-facing links the worker emails: /confirm#<nonce>, /revoke#<token>, /qr#<payload> (hash),
+// /credit#<magic-token> (the wallet sign-in), and /d/<id> (path). Pull them straight out of the raw
+// MIME so we don't need a full MIME parser.
 const LINK_RE =
-  /https?:\/\/[^\s"'<>]*receive\.link\/(?:confirm|revoke|qr)#[^\s"'<>]+|https?:\/\/[^\s"'<>]*receive\.link\/d\/[^\s"'<>]+/gi;
+  /https?:\/\/[^\s"'<>]*receive\.link\/(?:confirm|revoke|qr|credit)#[^\s"'<>]+|https?:\/\/[^\s"'<>]*receive\.link\/d\/[^\s"'<>]+/gi;
 
 const isTestAddr = (to: string) => /^e2e(\+[^@]*)?@receive\.link$/.test(to);
 
