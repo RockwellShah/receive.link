@@ -1,5 +1,5 @@
-// Build the Drop web client. Run from the repo root: bun run web/build.ts
-// One flat bundle in web/dist/app.js. All crypto streams on the main thread
+// Build the receive.link web client. Run from the repo root: bun run web/build.ts
+// One bundle per page in web/dist/. All crypto streams on the main thread
 // (crypto.subtle runs AES off-thread internally), so there is no separate worker bundle.
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -10,7 +10,7 @@ rmSync("web/dist", { recursive: true, force: true });
 const { version } = (await Bun.file("package.json").json()) as { version: string };
 
 const result = await Bun.build({
-  entrypoints: ["web/src/app.ts", "web/src/home-create.ts", "web/src/home-result.ts", "web/src/home-send.ts", "web/src/home-receive.ts", "web/src/home-account.ts"],
+  entrypoints: ["web/src/home-create.ts", "web/src/home-result.ts", "web/src/home-send.ts", "web/src/home-receive.ts", "web/src/home-account.ts"],
   outdir: "web/dist",
   target: "browser",
   minify: true,
@@ -18,7 +18,7 @@ const result = await Bun.build({
 });
 if (!result.success) {
   for (const log of result.logs) console.error(log);
-  throw new Error("web build failed: web/src/app.ts");
+  throw new Error("web build failed");
 }
 console.log(`built ${result.outputs.map((o) => o.path).join(", ")}`);
 
@@ -27,7 +27,6 @@ console.log(`built ${result.outputs.map((o) => o.path).join(", ")}`);
 // src> and the homepage's dynamic import). The hash changes only when the bundle content changes, so a
 // deploy busts the cache exactly when needed and there's no spurious HTML churn otherwise.
 const PAGE_BUNDLES: { html: string; bundle: string }[] = [
-  { html: "web/app.html", bundle: "app.js" },
   { html: "web/home/index.html", bundle: "home-create.js" },
   { html: "web/send/index.html", bundle: "home-send.js" },
   { html: "web/result/index.html", bundle: "home-result.js" },

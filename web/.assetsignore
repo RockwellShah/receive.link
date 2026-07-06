@@ -4,9 +4,5 @@
 src/
 fk/
 core/
-og-card.html
 og-card-v2.html
 tsconfig.json
-# Legacy pre-redesign UI, retired at the go-live audit: do not publish (its /app URL 301s home).
-app.html
-dist/app.js
