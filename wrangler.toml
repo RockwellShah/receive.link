@@ -152,12 +152,17 @@ SERVER_SIGN_KEY_ID = "1"                                # see staging note on ke
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "receive-link-prod"
 MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (in-place delivery removed the copy wall; see the staging note above)
-# Monetization (same as staging; INERT until launch). Flip BILLING_ENABLED when going live on prod —
-# ONLY after the Stripe secrets are set (else the 402 wall shows packs whose checkout 503s). The launch
-# price IS the code default (1¢/GB), so PRICE_CENTS_PER_GB stays unset. Byte knobs are DECIMAL; if both
-# caps are set, keep PAID_ATREST >= RECEIVER_INBOUND (the code clamps a misconfig). Set HASH_SECRET +
-# RECEIVER_ID_SECRET + STRIPE_* as prod secrets (`wrangler secret put --env production`) BEFORE deploying.
-# BILLING_ENABLED = "1"
-# FREE_GRANT_BYTES = "1000000000"
-# RECEIVER_INBOUND_CAP_BYTES = "1000000000"
-# PAID_ATREST_CAP_BYTES = "100000000000"
+# Monetization: LIVE since 2026-07-05 (live Stripe key + webhook secret were set as prod secrets first;
+# the webhook is registered at the WORKER url /billing/webhook, event checkout.session.completed).
+# Knob values decided with the user 2026-07-05. All byte knobs are DECIMAL (1 GB = 1000000000):
+# - Price stays the code default 1¢/GB (PRICE_CENTS_PER_GB unset).
+# - Free tier is 1 GB in BOTH directions: a 1 GB starting download credit AND a 1 GB cumulative
+#   inbound cap. A top-up flips the account paid: the inbound cap stops applying and at-rest stays
+#   uncapped (PAID_ATREST_CAP_BYTES unset), so paid receivers are bounded by the daily budgets below.
+# - Daily upload byte budgets: 5 TB/link + 6 TB/IP (code default would be 25/50 TB = 5x/10x file cap).
+BILLING_ENABLED = "1"
+FREE_GRANT_BYTES = "1000000000"
+RECEIVER_INBOUND_CAP_BYTES = "1000000000"
+UPLOAD_BYTES_PER_LINK_DAY = "5000000000000"
+UPLOAD_BYTES_PER_IP_DAY = "6000000000000"
+# PAID_ATREST_CAP_BYTES = "100000000000"   # keep unset (= uncapped for paid) until the per-file-key DO migration lands

@@ -31,6 +31,7 @@ function humanError(e: unknown): string {
     if (/too large|maxBytes|413/i.test(m)) return "That's over the upload size limit for this link.";
     if (/rate limited|daily limit|over its daily|429/i.test(m)) return "This link has hit its limit for now. Please try again later.";
     if (/revoked|expired|not found|410|404/i.test(m)) return "This link is no longer active. Ask the recipient for a fresh one.";
+    if (/inbox is full|over capacity|507/i.test(m)) return "This inbox is full, so the file wasn't sent. The recipient can add credit to receive more.";
     return m;
   }
   const m = e instanceof Error ? e.message : String(e);
