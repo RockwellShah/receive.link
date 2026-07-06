@@ -1,68 +1,133 @@
-# receive.link
+# 📥 receive.link
 
-> **receive.link** is the name, brand, and domain. Some internal code identifiers
-> (e.g. `DropLink`, `DropApi`) and the vendored `web/core` still carry the older `FileKey` name.
+Receive files only you can open. Share one link, and everything sent through it arrives **end-to-end encrypted to your passkey**. No accounts, no passwords, no tracking.
 
-Give anyone a link. Whatever files they drop through it arrive **end-to-end encrypted to your passkey**, with a download link in your email. Think "email attachments, but the relay can't read them."
+> 🛡️ **receive.link is privacy-first and live at [receive.link](https://receive.link).** Files are encrypted in the sender's browser before they ever touch a server. We only ever hold the locked version, and we never have a key.
 
-Files are encrypted in the sender's browser and uploaded straight to object storage. A small Cloudflare Worker only coordinates: it verifies a signed link, hands out short-lived upload/download URLs, and sends the email. **It never sees your files and never holds a key.**
+---
 
-- **How it works** (architecture, what the server can and cannot see, the tradeoff): [HOW-IT-WORKS.md](HOW-IT-WORKS.md)
-- **Set it up, run it, tests, conventions:** [CONTRIBUTING.md](CONTRIBUTING.md)
+### 🚀 Features
 
-## Status
+- ✅ **One link, any sender.** People sending you files just open your link in a browser. No app, no sign-up, no passkey needed on their side.
+- ✅ **End-to-end encrypted.** Files are sealed to your passkey on the sender's device. The relay cannot read them, ever.
+- ✅ **Passkey-based.** Your encryption identity comes from the passkey you already have (Face ID, fingerprint, security key, password manager). Nothing new to remember.
+- ✅ **Huge files.** Up to **5 terabytes** per file, streamed straight to object storage.
+- ✅ **Self-cleaning.** Every file auto-deletes from the server after 7 days. You can also delete a file the moment you save it, or delete junk without saving it at all.
+- ✅ **You stay in control.** Turn a link off anytime and new files stop arriving. Your credit stays yours.
+- ✅ **Fair pricing.** Sending is always free. Your first 1 GB of downloads is free, then a penny per GB, prepaid. No subscription.
+- ✅ **Email notifications without a database.** Your address is sealed inside your own link and unsealed only in memory to send each notification. It is never stored.
 
-Working end-to-end on **staging** (`drop-staging.filekey.app`): register, confirm, upload (single PUT and S3 multipart, up to ~5 TB), email delivery, receive, decrypt. Hardened across three rounds of adversarial review. **Not in production yet** (the prod config is still placeholders). 47 tests; typecheck clean on both the worker and the browser client.
+---
 
-## Quick start (local, no secrets needed)
+### 👨‍💻 How it works
+
+1. **Create your link**<br>
+   Unlock with your passkey, confirm your email once, and you get a permanent link like `receive.link/u#...` to share anywhere: an email signature, a bio, a QR code.
+
+2. **Anyone sends**<br>
+   They open your link, drop in files, done. Their browser encrypts everything to your public key and uploads the sealed result directly to storage.
+
+3. **You get an email**<br>
+   One notification per delivery, with a download link. The email never contains the file or any key.
+
+4. **Only you can open it**<br>
+   The download page asks for your passkey, decrypts on your device, and saves the file. Re-downloads are free, and a Delete button removes the server copy whenever you're ready.
+
+---
+
+### 💰 Pricing
+
+Receiving a file costs nothing until you download it. Then it's pay-as-you-go:
+
+| | |
+|---|---|
+| **First 1 GB** | free for every account |
+| **After that** | $0.01 per GB you download, prepaid |
+| **Re-downloads** | free |
+| **Sending** | always free |
+
+Credit never expires, belongs to you rather than to any one link, and doubles as your inbox capacity: the un-downloaded files sitting in your inbox can never exceed what your balance could download, so nothing can pile up that you couldn't open. Ignored files expire in 7 days and give the capacity back.
+
+---
+
+### 💾 Supported systems
+
+Only the **receiver** needs a passkey, and it must come from a provider that supports the WebAuthn **PRF extension**: Apple Passwords, Google Password Manager, 1Password, a YubiKey 5, and similar. Senders just need a modern browser.
+
+| Platform | Passkey providers | Notes |
+|----------|-------------------|-------|
+| **macOS** | Apple Passwords, 1Password, YubiKey | Safari ≥ 17 or Chrome ≥ 112 |
+| **iOS / iPadOS** | Apple Passwords, 1Password | Safari ≥ 17 or Chrome ≥ 112 |
+| **Windows** | 1Password, YubiKey | Windows 11 with Edge or Chrome ≥ 112 |
+| **Android** | Google Password Manager, 1Password, YubiKey | Chrome ≥ 112 |
+| **Linux** | YubiKey (via browser) | Recent Chromium browsers |
+
+Synced passkeys (iCloud Keychain, Google Password Manager) follow you across devices, so the same identity works on your phone and your laptop.
+
+---
+
+### 🛠️ How the encryption works
+
+Your identity is derived, not stored. Authenticating runs your passkey's PRF extension over a fixed input, producing a secret that never leaves your device; HKDF-SHA-256 turns it into a long-term P-256 key pair bound to the `receive.link` namespace. The same passkey always reproduces the same identity, so there is no account record anywhere.
+
+Files are sealed with HPKE ([RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html): DHKEM-P256 + HKDF-SHA-256 + AES-256-GCM) in a streaming, chunked construction, so a 5 TB file encrypts and decrypts without ever being held in memory. The sender's browser uploads the ciphertext directly to object storage through short-lived presigned URLs; the coordination server never proxies file bytes.
+
+Three independent layers stand between your files and anyone else:
+
+1. **Downloads are proof-gated.** The server seals a one-time challenge to your public key; only your passkey-derived private key can answer it. No proof, no download URL.
+2. **Storage is private.** Objects live in a non-public bucket under unguessable ids, reachable only through 5-minute presigned URLs issued after a valid proof.
+3. **The content is ciphertext anyway.** Even a leaked object is sealed to your key. The most the server ever learns is a file's size and when it moved, the way a post office sees a sealed envelope without opening it.
+
+Your link itself is signed (ECDSA P-256), so a tampered or forged link fails closed. The deeper walkthrough lives at [receive.link/technical](https://receive.link/technical) and in [HOW-IT-WORKS.md](HOW-IT-WORKS.md).
+
+---
+
+### ⚡ Quick start (local, no secrets needed)
+
+The whole stack runs locally against in-memory fakes, no Cloudflare account required:
 
 ```sh
 bun install
-bun run dev:mock      # mock server at http://localhost:8080
-bun test              # codec + crypto + the full worker protocol + multipart + streaming
+bun run dev:mock      # real Worker handlers over mock R2/KV/email at http://localhost:8080
+bun test              # codec + crypto + the full worker protocol + billing + multipart
 bun run typecheck     # worker/shared AND the browser client
 ```
 
-`dev:mock` (`web/devserver.ts`) runs the **real** Worker handlers over in-memory R2/KV/email fakes and generates throwaway keys, so you can drive the whole flow with no Cloudflare account. Captured emails (the confirm + download links) show up at `http://localhost:8080/__mail`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev guide.
+Captured emails (confirm + download links) appear at `http://localhost:8080/__mail`, so you can drive the entire create → send → receive flow on your machine. The full dev guide, test map, and conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Layout
+> Some internal identifiers (`DropLink`, `DropApi`, the vendored `web/core`) predate the receive.link name and carry an older working title. The brand is receive.link; the code is catching up.
+
+---
+
+### 🧱 Under the hood
+
+- **Web:** a static client on Cloudflare Pages. All crypto runs in the browser.
+- **Worker:** Cloudflare Workers plus two Durable Objects: `CompletionGuard` (atomic exactly-once delivery) and `ReceiverAccount` (prepaid balance, per-file download charge, capacity).
+- **Storage:** R2, browser-direct via presigned URLs (single PUT for small files, S3 multipart delivered in place for large ones), 7-day object lifecycle. KV holds one-time nonces and rate-limit counters.
+- **Email:** Cloudflare Email Service via the `send_email` binding.
+- **Payments:** Stripe-hosted Checkout. The worker stores no cards and never sends your email to Stripe; payments tie to an account by an opaque id.
+- **Testing:** unit tests across the worker protocol and billing engine, plus a browser end-to-end suite that drives the real staging site with a virtual passkey authenticator (`e2e/run.mjs`).
 
 | Path | What |
 |------|------|
-| `web/src/` | the browser app: `app.ts` (flows + routing), `api.ts` (Worker client), `webauthn.ts` (passkey/PRF), `config.ts` |
-| `web/fk/` | DOM + crypto glue: `ui.ts` (chat UI + save-to-disk), `stream.ts` (streaming encrypt/decrypt), `pool.ts` (concurrent multipart upload), `bundle.ts` |
-| `web/core/` | **vendored, read-only** copy of FileKey's crypto core. Do not edit (see `web/fk/README.md`) |
-| `shared/` | `codec.ts` (Drop-link wire format, used by both sides), `crypto.ts` (link signatures + email sealing), `util.ts` |
-| `worker/src/` | the Cloudflare Worker: `handlers.ts` (endpoints), `completion.ts` (Durable Object), `r2.ts`, `kv.ts`, `email.ts`, `http.ts`, `worker.ts` (router), `testing.ts` (in-memory fakes) |
-| `scripts/` | `gen-keys.ts` plus live smoke tests (these need staging keys) |
-| `wrangler.toml` | Worker config + bindings. Secrets live in Wrangler, never here |
+| `web/src/` | the browser pages: create, send, receive, result, wallet |
+| `web/fk/` | crypto + transfer glue: streaming encrypt/decrypt, multipart upload pool, the receive gate |
+| `web/core/` | vendored, read-only crypto core (do not edit) |
+| `shared/` | the link wire format, signatures, email sealing (used by both sides) |
+| `worker/src/` | the Worker: endpoints, Durable Objects, R2/KV/email/Stripe adapters |
+| `e2e/` | the browser end-to-end suite + the mail-capture worker it uses |
+| `scripts/` | key generation + live smoke tests |
 
-## Stack
+---
 
-- **Web:** static client on Cloudflare Pages. All crypto runs in the browser.
-- **Worker:** Cloudflare Workers + one Durable Object (`CompletionGuard`, for atomic exactly-once delivery).
-- **Storage:** R2 (browser-direct via presigned URLs, ~7-day object lifecycle) + KV (one-time nonces, rate-limit counters).
-- **Email:** Cloudflare Email Service via the `send_email` binding.
-- **Crypto:** WebAuthn PRF derives a passkey-bound identity; HPKE (DHKEM-P256 / HKDF-SHA-256 / AES-256-GCM) seals files and the recipient's email; ECDSA-P256 signs links. Tooling: Bun + TypeScript + esbuild + Wrangler.
+### 🚢 Deploy (owner only)
 
-## Deploy (owner only)
+Deploys need Cloudflare and Stripe secrets that are not in the repo, so contributors develop against the mock server. The full runbook (secrets checklist, R2 lifecycle + CORS, the curated-directory Pages publish) is in [CONTRIBUTING.md](CONTRIBUTING.md). The one rule worth repeating: never `wrangler pages deploy web` directly, because Pages ignores `.assetsignore` and would publish TypeScript source; always deploy the curated directory.
 
-Deploys need the Cloudflare secrets, which are not in the repo, so contributors develop against the mock server instead. For the owner:
+---
 
-1. `bun run gen:keys` per environment, then `wrangler secret put` every secret in the `wrangler.toml` checklist: the two private keys (`SERVER_SIGN_PRIVATE_JWK`, `SERVER_KEM_PRIVATE_JWK`), the two R2 S3 credentials (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`), `HASH_SECRET`, and `RECEIVER_ID_SECRET` (plus the Stripe pair when billing goes live); paste the public values into `wrangler.toml` / the client config.
-2. Create the R2 bucket with lifecycle rules (7-day object expiry + abort-incomplete-multipart) and a CORS rule allowing browser-direct PUT/GET; create the KV namespace; DKIM-verify the `MAIL_FROM` sender domain.
-3. `bun run deploy` (Worker), then build + publish the client from a CURATED directory. Never `wrangler pages deploy web` directly: Cloudflare Pages ignores `.assetsignore`, so the raw form publishes all TypeScript source to the CDN (with a ~7-day edge cache).
+### 🔗 Links
 
-   ```sh
-   bun run build:web
-   rm -rf /tmp/web-publish && cp -R web /tmp/web-publish
-   rm -rf /tmp/web-publish/src /tmp/web-publish/fk /tmp/web-publish/core \
-          /tmp/web-publish/*.ts /tmp/web-publish/tsconfig.json \
-          /tmp/web-publish/og-card*.html /tmp/web-publish/.assetsignore \
-          /tmp/web-publish/app.html /tmp/web-publish/dist/app.js
-   wrangler pages deploy /tmp/web-publish --project-name <pages-project> --branch main
-   ```
-
-   Smoke-test staging, then the `--env production` Worker deploy.
-
-Secrets never go in git or `wrangler.toml`. `keys/`, `.dev.vars`, and `.env` are gitignored.
+> 📥 **[receive.link](https://receive.link)**: the app
+>
+> 🔬 **[receive.link/technical](https://receive.link/technical)**: the cryptography, in detail

@@ -63,4 +63,24 @@ Branch off `main`, push your branch, open a PR, and keep `main` deployable. The 
 
 ## Deploy (owner only, for reference)
 
-The owner deploys with `bun run deploy` (Worker) plus a CURATED-directory `wrangler pages deploy` for the client (never `wrangler pages deploy web` raw: Pages ignores `.assetsignore` and would publish the TypeScript source), after setting the Cloudflare secrets and resource ids. Contributors do not need this; the mock server covers local development. Full steps are in the [README](README.md#deploy-owner-only).
+Contributors do not need any of this; the mock server covers local development. Deploys need the Cloudflare and Stripe secrets, which are never in the repo.
+
+1. **Secrets.** `bun run gen:keys` per environment, then `wrangler secret put` every name in the `wrangler.toml` checklist: `SERVER_SIGN_PRIVATE_JWK`, `SERVER_KEM_PRIVATE_JWK`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `HASH_SECRET`, `RECEIVER_ID_SECRET`, and (billing) `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`. Paste the public keys into `wrangler.toml` and the client config. When pasting a secret, the NAME stays literal; only the value goes at wrangler's "Enter a secret value:" prompt. After setting a key secret, verify it semantically (mint a real session and check what comes back), not just by name.
+
+2. **Resources.** Create the R2 bucket with two lifecycle rules (7-day object expiry, and abort-incomplete-multipart at 8 days, which must stay at or above the worker's `MULTIPART_TTL_SEC`) and a CORS rule allowing browser-direct PUT/GET from the site origin. Create the KV namespace. DKIM-verify the `MAIL_FROM` sender domain. Register the Stripe webhook (event `checkout.session.completed`, payload style Snapshot) at the WORKER url `/billing/webhook`, never the Pages domain.
+
+3. **Worker.** `bun run deploy` (staging) or `bun run deploy --env production`. If the config declares any `routes`, keep `workers_dev = true` or the deploy silently drops the workers.dev trigger the web client calls.
+
+4. **Web.** Build, then publish a CURATED directory. Never `wrangler pages deploy web` directly: Pages ignores `.assetsignore`, so the raw form publishes all TypeScript source to the CDN with a ~7-day edge cache.
+
+   ```sh
+   bun run build:web
+   rm -rf /tmp/web-publish && cp -R web /tmp/web-publish
+   rm -rf /tmp/web-publish/src /tmp/web-publish/fk /tmp/web-publish/core \
+          /tmp/web-publish/*.ts /tmp/web-publish/tsconfig.json \
+          /tmp/web-publish/og-card*.html /tmp/web-publish/.assetsignore \
+          /tmp/web-publish/app.html /tmp/web-publish/dist/app.js
+   wrangler pages deploy /tmp/web-publish --project-name <pages-project> --branch main
+   ```
+
+5. **Verify.** Smoke-test staging (`scripts/` has live smoke tests; `e2e/run.mjs` drives the real site with a virtual passkey), then repeat for production.
