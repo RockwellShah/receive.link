@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { base64urlEncode } from "../../shared/codec";
 import { importKemPublicKey, sealEmail } from "../../shared/crypto";
 import { ACCT_LOGIN_EMAIL_PER_DAY, accountCheckout, accountLogin, accountSession, accountSummary } from "./account";
-import { freeGrantBytes, paidTierDowngrades, receiverId } from "./handlers";
+import { freeGrantBytes, receiverId } from "./handlers";
 import { mintMagicToken } from "./magic";
 import { makeTestEnv, type TestHarness } from "./testing";
 
@@ -172,11 +172,6 @@ test("checkout trips the per-account cap", async () => {
   }
 });
 
-test("paidTierDowngrades flags only a misconfig where a finite paid cap is below the free cap", async () => {
-  const noCaps = await makeTestEnv(BILLING); // both uncapped (0)
-  expect(paidTierDowngrades(noCaps.env)).toBe(false);
-  const ok = await makeTestEnv({ ...BILLING, RECEIVER_INBOUND_CAP_BYTES: "100", PAID_ATREST_CAP_BYTES: "200" });
-  expect(paidTierDowngrades(ok.env)).toBe(false); // paid >= free
-  const bad = await makeTestEnv({ ...BILLING, RECEIVER_INBOUND_CAP_BYTES: "200", PAID_ATREST_CAP_BYTES: "100" });
-  expect(paidTierDowngrades(bad.env)).toBe(true); // paid < free => a top-up would shrink the inbox cap
-});
+// (The old paidTierDowngrades misconfig test is gone with the tier caps themselves: capacity = credit
+// balance now, so a top-up raising the balance mathematically cannot shrink capacity — the no-downgrade
+// invariant is structural, not a config rule to police.)

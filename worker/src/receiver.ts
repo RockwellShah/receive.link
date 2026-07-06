@@ -23,9 +23,10 @@
 // State (schemaless DO storage; every field lazy-defaults, so old accounts cost no migration):
 //   total    — committed cumulative inbound bytes (the lifetime meter; always accrues, even uncapped)
 //   res      — in-flight upload reservations (token -> {bytes, expiresAt})
-//   pendingf — un-downloaded files at rest (finalId -> {bytes, expiresAt}); summed for the paid 100 GB
-//              cap. Self-correcting: an entry is removed on its first download and otherwise drops out at
-//              its expiry (object lifetime), so neither expired nor downloaded files inflate the cap.
+//   pendingf — un-downloaded files at rest (finalId -> {bytes, expiresAt}); summed as the CAPACITY basis
+//              (capacity = credit balance). Self-correcting: an entry is removed on its first download
+//              (charge) or discard (releasePending) and otherwise drops out at its expiry (object
+//              lifetime), so neither expired nor downloaded files inflate the basis.
 //   balance  — prepaid credit in bytes; lazy-seeded to the free grant on first touch (Phase 2)
 //   tier     — "free" | "paid"; flips to "paid" on the first credit() (a Stripe top-up)
 //   paid     — finalId -> expiresAt for files already charged (free re-downloads); pruned past expiry
@@ -35,10 +36,11 @@
 //   evt:<id> — one key per credited Stripe event (webhook idempotency; per-key, not a growing map; 2b)
 import { DurableObject } from "cloudflare:workers";
 
-// A reservation must outlive any LEGITIMATE completion (CompletionGuard RUNNING_TTL is 5 min, and a
-// real completion commits in seconds) but clean up a crashed one. 10 min frees a crashed hold well
-// after any live attempt would have committed.
-const RESERVATION_TTL_MS = 10 * 60_000;
+// A reservation must outlive any LEGITIMATE completion (CompletionGuard's RUNNING_TTL treats an attempt
+// as live for 15 min) but clean up a crashed one. 20 min > the guard window, so a stalled-but-live
+// completion can never have its hold pruned out from under it (another upload reserving that freed
+// space, then both committing, would put pending over the balance).
+const RESERVATION_TTL_MS = 20 * 60_000;
 const ALARM_GRACE_MS = 1000; // fire the alarm just after a reservation is provably expired
 
 // A paid-file flag and a pending-file entry must outlive the OBJECT they track (fetchbind TTL is 8 days,
@@ -46,6 +48,10 @@ const ALARM_GRACE_MS = 1000; // fire the alarm just after a reservation is prova
 // object is gone and the entry is dead weight, dropped lazily (on touch) and opportunistically (in alarm).
 const DAY_MS = 86_400_000;
 const FILE_TTL_MS = 10 * DAY_MS;
+// Pending (at-rest) entries are the CAPACITY basis, so they get a tighter TTL: the object is reaped at
+// 7 days, and every phantom day past that is capacity the receiver can't use. 8 days = the object's whole
+// life + a day of clock slack, and matches the fetchbind TTL (past it the file can't be fetched anyway).
+const PENDING_TTL_MS = 8 * DAY_MS;
 
 const clampBytes = (n: number): number => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
 
@@ -144,24 +150,28 @@ export class ReceiverAccount extends DurableObject {
   }
 
   /**
-   * Atomically HOLD `bytes` for an in-flight upload against the receiver's tier cap (cap <= 0 = uncapped).
-   * Free accounts are capped on lifetime `total`; paid accounts on at-rest pending. The check counts the
-   * committed basis PLUS other live reservations, so two concurrent uploads to one recipient can't both
-   * slip a tight cap. Returns a token for commit()/release(); rejects (holding nothing) when it would
-   * exceed a positive cap.
+   * Atomically HOLD `bytes` for an in-flight upload against the receiver's CAPACITY, which IS the credit
+   * balance: un-downloaded bytes at rest (pending) + other live holds + this upload may never exceed what
+   * the receiver could pay to download. So no delivery can strand a file its receiver can't afford, total
+   * at-rest storage per account is bounded by prepaid credit, and a fresh account's capacity is simply its
+   * seeded grant — free accounts need no special-casing, and capacity returns as files are downloaded
+   * (charge() spends balance but clears pending), discarded (releasePending) or expire (the pending TTL).
+   * `enforce=false` (billing off) holds without checking, preserving the free Phase-1 behavior. Returns a
+   * token for release(); rejects (holding nothing) when the capacity check fails.
    */
-  async reserve(bytes: number, freeCap: number, paidCap: number): Promise<{ ok: true; token: string } | { ok: false }> {
+  async reserve(bytes: number, grant: number, enforce: boolean): Promise<{ ok: true; token: string } | { ok: false }> {
     const add = clampBytes(bytes);
     const now = Date.now();
     const res = await this.holds();
     this.prune(res, now);
-    const paid = (await this.tier()) === "paid";
-    const cap = paid ? paidCap : freeCap;
-    const basis = paid ? this.livePending(await this.pendingFiles(), now) : await this.committed();
-    if (cap > 0 && basis + this.liveReserved(res, now) + add > cap) {
-      await this.ctx.storage.put("res", res); // persist the prune
-      await this.rescheduleAlarm(res);
-      return { ok: false };
+    if (enforce) {
+      const capacity = await this.balance(grant);
+      const atRest = this.livePending(await this.pendingFiles(), now);
+      if (atRest + this.liveReserved(res, now) + add > capacity) {
+        await this.ctx.storage.put("res", res); // persist the prune
+        await this.rescheduleAlarm(res);
+        return { ok: false };
+      }
     }
     const token = crypto.randomUUID();
     res[token] = { bytes: add, expiresAt: now + RESERVATION_TTL_MS };
@@ -175,10 +185,10 @@ export class ReceiverAccount extends DurableObject {
    *  exactly once — and lets the in-place path commit BEFORE the exactly-once finish() (a crash after
    *  finish can no longer under-count; see SPEC-large-files A1). Does NOT touch the reservation: the
    *  caller always release()s its hold separately (the finally). Always accrues lifetime `total`; records
-   *  the file in `pendingf` (at-rest) ONLY when `accruePending` is set — i.e. when the paid at-rest cap is
-   *  active — so the delivery hot path stays cheap while the cap is off. NOTE for 2b: before enabling the
-   *  paid cap at scale, move `pendingf`/`paid`/`cmt` from single JSON values to per-file DO keys (the
-   *  128 KB value limit). All mutated keys are written in one atomic put. */
+   *  the file in `pendingf` (at-rest) ONLY when `accruePending` is set — i.e. when billing is on, since
+   *  pending is the capacity (= balance) basis — so the delivery hot path stays cheap while billing is
+   *  off. NOTE for 2b: at scale, move `pendingf`/`paid`/`cmt` from single JSON values to per-file DO keys
+   *  (the 128 KB value limit). All mutated keys are written in one atomic put. */
   async commitDelivered(finalId: string, bytes: number, accruePending: boolean): Promise<void> {
     const now = Date.now();
     const cmt = await this.committedFiles();
@@ -190,12 +200,27 @@ export class ReceiverAccount extends DurableObject {
     cmt[finalId] = now + FILE_TTL_MS;
     const writes: Record<string, unknown> = { total: (await this.committed()) + clampBytes(bytes), cmt };
     if (accruePending) {
-      const pf = await this.pendingFiles();
-      this.prunePending(pf, now);
-      pf[finalId] = { bytes: clampBytes(bytes), expiresAt: now + FILE_TTL_MS };
-      writes.pendingf = pf;
+      // An already-downloaded file is NOT pending: a delayed commit (crash-then-retry racing a fast
+      // receiver) must not resurrect a paid file's capacity hold.
+      const paid = await this.paidFiles();
+      if (!(paid[finalId] && paid[finalId]! > now)) {
+        const pf = await this.pendingFiles();
+        this.prunePending(pf, now);
+        pf[finalId] = { bytes: clampBytes(bytes), expiresAt: now + PENDING_TTL_MS };
+        writes.pendingf = pf;
+      }
     }
     await this.ctx.storage.put(writes);
+  }
+
+  /** Free the at-rest hold for a DISCARDED (deleted-without-download) file, so its capacity returns
+   *  immediately instead of at the pending TTL. Downloaded files were already cleared by charge();
+   *  idempotent, and purely an accelerator — the entry self-expires either way. */
+  async releasePending(finalId: string): Promise<void> {
+    const pf = await this.pendingFiles();
+    if (!(finalId in pf)) return;
+    delete pf[finalId];
+    await this.ctx.storage.put("pendingf", pf);
   }
 
   /** Release a held reservation: an aborted attempt, or a duplicate delivery that LOST the exactly-once

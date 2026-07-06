@@ -207,12 +207,10 @@ export class MemoryReceiver {
       return s;
     };
     return {
-      async reserve(bytes: number, freeCap: number, paidCap: number): Promise<{ ok: true; token: string } | { ok: false }> {
+      async reserve(bytes: number, grant: number, enforce: boolean): Promise<{ ok: true; token: string } | { ok: false }> {
         const add = clamp(bytes);
-        const isPaid = tierOf() === "paid";
-        const cap = isPaid ? paidCap : freeCap;
-        const basis = isPaid ? sum(pend()) : (totals.get(name) ?? 0);
-        if (cap > 0 && basis + sum(held()) + add > cap) return { ok: false };
+        // Capacity = credit balance: at-rest pending + live holds + this upload must fit in the balance.
+        if (enforce && sum(pend()) + sum(held()) + add > bal(grant)) return { ok: false };
         const token = crypto.randomUUID();
         held().set(token, add);
         return { ok: true, token };
@@ -221,7 +219,12 @@ export class MemoryReceiver {
         if (cmtSet().has(finalId)) return; // already counted (idempotent per delivery id)
         cmtSet().add(finalId);
         totals.set(name, (totals.get(name) ?? 0) + clamp(bytes));
-        if (accruePending) pend().set(finalId, clamp(bytes)); // delivered, un-downloaded (only tracked when the cap is on)
+        // Delivered, un-downloaded = the capacity basis when billing is on; but never resurrect a hold
+        // for a file the receiver already paid for (a delayed commit racing a fast download).
+        if (accruePending && !paidSet().has(finalId)) pend().set(finalId, clamp(bytes));
+      },
+      async releasePending(finalId: string): Promise<void> {
+        pend().delete(finalId); // discarded -> no longer at rest (idempotent)
       },
       async release(token: string): Promise<void> {
         held().delete(token);

@@ -152,34 +152,12 @@ export function receiverId(env: Env, email: string): Promise<string> {
   return hmacSha256hex(env.RECEIVER_ID_SECRET, canonEmail(email));
 }
 
-/** Per-recipient cumulative inbound ceiling in bytes (the free-tier cap). Unset/<=0 => uncapped, so
- *  the Worker meters every recipient but rejects nothing until the cap is dialed in (see uploadComplete). */
-export function receiverInboundCap(env: Env): number {
-  return envInt(env.RECEIVER_INBOUND_CAP_BYTES, 0);
-}
-
 // ---- Phase 2 billing config (download charge). Ships INERT: billingEnabled() is false unless the env
-// var is set, so /fetch/download issues a free URL exactly like Phase 1 until Stripe (2b) is live. ----
+// var is set, so /fetch/download issues a free URL exactly like Phase 1 until Stripe (2b) is live.
+// CAPACITY = CREDIT BALANCE when billing is on: there are no separate inbound/at-rest cap knobs — a
+// receiver's un-downloaded bytes at rest can never exceed what they could pay to download (enforced in
+// ReceiverAccount.reserve), so a fresh account's capacity is its seeded grant and a top-up raises it. ----
 const DEFAULT_FREE_GRANT_BYTES = 1_000_000_000; // 1 GB (decimal) of free download credit per new account
-
-/** Paid-tier at-rest (un-downloaded) ceiling in bytes (the 100 GB safety cap). Unset/<=0 => uncapped.
- *  ENFORCES the no-downgrade invariant: a top-up flips an account free->paid, switching the cap basis, so a
- *  finite paid cap below the finite free cap would SHRINK a receiver's inbox. We floor the paid cap at the
- *  free cap, so a misconfig (or an attacker-funded flip) can never reduce capacity. (0 on either side =
- *  uncapped, so this is a no-op then.) paidTierDowngrades() reports the RAW misconfig for the test/log. */
-export function paidAtRestCap(env: Env): number {
-  const paid = envInt(env.PAID_ATREST_CAP_BYTES, 0);
-  const free = receiverInboundCap(env);
-  return free > 0 && paid > 0 && paid < free ? free : paid;
-}
-
-/** True if the RAW config would make the paid tier a capacity downgrade (both caps finite, paid < free).
- *  Detection only (paidAtRestCap clamps the actual value); asserted false by a test and surfaced at deploy. */
-export function paidTierDowngrades(env: Env): boolean {
-  const free = receiverInboundCap(env);
-  const paidRaw = envInt(env.PAID_ATREST_CAP_BYTES, 0);
-  return free > 0 && paidRaw > 0 && paidRaw < free;
-}
 /** Free credit seeded into a new account when billing is on (default 1 GB, decimal). Unlike envInt, an
  *  explicit "0" is honored (a deliberate no-free-grant config), not coerced to the default. */
 export function freeGrantBytes(env: Env): number {
@@ -430,20 +408,17 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   // Byte budgets + the AUTHORITATIVE recipient-capacity charge are applied at upload-COMPLETE on the
   // actual object size, not here — the declared `size` is client-controlled and no presigned PUT enforces
   // it (see uploadComplete). This is only a FAIL-FAST pre-check on the declared size: bounce an obviously
-  // over-cap upload before the transfer so the sender sees "inbox full" up front. Best-effort + advisory
-  // (complete re-checks on the real size), and skipped entirely while both caps are unset (the default),
-  // so it costs nothing — not even the email unseal — until monetization is switched on.
-  const freeCap = receiverInboundCap(env);
-  const paidCap = paidAtRestCap(env);
-  if (freeCap > 0 || paidCap > 0) {
+  // over-capacity upload before the transfer so the sender sees "inbox full" up front. Best-effort +
+  // advisory (complete re-checks on the real size), and skipped entirely while billing is off, so it
+  // costs nothing — not even the email unseal — until monetization is switched on.
+  if (billingEnabled(env)) {
     try {
       const kemPriv = await importKemPrivateKey(JSON.parse(env.SERVER_KEM_PRIVATE_JWK) as JsonWebKey);
       const email = await unsealEmail(kemPriv, link.sealedEmail);
       const acct = env.RECEIVER.get(env.RECEIVER.idFromName(await receiverId(env, email)));
       const s = await acct.summary(freeGrantBytes(env));
-      const cap = s.tier === "paid" ? paidCap : freeCap;
-      const basis = s.tier === "paid" ? s.pending : s.total;
-      if (cap > 0 && basis + s.reserved + body.size > cap) {
+      // Capacity = credit balance: nothing may sit un-downloaded that the receiver couldn't afford.
+      if (s.pending + s.reserved + body.size > s.balance) {
         return json({ error: "recipient inbox is full", overCapacity: true }, 507, origin);
       }
     } catch {
@@ -685,15 +660,16 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
 
     // Recipient capacity FIRST among the post-fence gates, on the ACTUAL final-object size: RESERVE the
-    // bytes against the cap (atomic in the DO, so two concurrent uploads to one recipient can't both
-    // slip a tight cap). The hold is a pure cap-check: the meters accrue via the finalId-idempotent
-    // commitDelivered (below), and the hold is ALWAYS released in the finally; a crash frees it via the
-    // DO's reservation TTL. An over-cap upload rejects here WITHOUT burning the byte budget. We reserve
-    // the actual final-object size on every (re)try, so overwriting mutable staging to deliver more is
-    // caught here. Uncapped deployments still meter (commitDelivered accrues `total`) for history.
+    // bytes against the receiver's capacity (= credit balance when billing is on; atomic in the DO, so
+    // two concurrent uploads to one recipient can't both slip a tight balance). The hold is a pure
+    // capacity check: the meters accrue via the finalId-idempotent commitDelivered (below), and the hold
+    // is ALWAYS released in the finally; a crash frees it via the DO's reservation TTL. An over-capacity
+    // upload rejects here WITHOUT burning the byte budget. We reserve the actual final-object size on
+    // every (re)try, so overwriting mutable staging to deliver more is caught here. Billing-off
+    // deployments still meter (commitDelivered accrues `total`) for history.
     const rid = await receiverId(env, email);
     const acct = env.RECEIVER.get(env.RECEIVER.idFromName(rid));
-    const hold = await acct.reserve(finalInfo.size, receiverInboundCap(env), paidAtRestCap(env));
+    const hold = await acct.reserve(finalInfo.size, freeGrantBytes(env), billingEnabled(env));
     if (!hold.ok) {
       logEvent("recipient_over_capacity", { link: linkIdHex, size: finalInfo.size });
       await deleteObject(env, finalId);
@@ -792,9 +768,10 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     }
     // The email is OUT — from here we must never release the completion lock (that would let a retry
     // send a duplicate). Inbound accounting via the finalId-IDEMPOTENT commitDelivered (SPEC-large-files
-    // A1). Accrue total always; track per-file pending only when the at-rest cap is BOTH configured AND
-    // billing is on (a cap without billing would let pending drift up with no downloads to clear it).
-    const accruePending = billingEnabled(env) && paidAtRestCap(env) > 0;
+    // A1). Accrue total always; track per-file pending whenever billing is on — pending IS the capacity
+    // (= balance) basis, and downloads/discards/expiry clear it. (Billing off: no capacity enforcement,
+    // so pending would only drift; skip it.)
+    const accruePending = billingEnabled(env);
     // IN-PLACE: commit BEFORE finish. The id is shared by every retry/sibling of this upload, so the
     // marker makes the count exactly-once no matter where a crash lands (after finish, a retry's early
     // "already" return can no longer under-count — the meter was settled first).
@@ -1111,8 +1088,18 @@ export async function discardObject(req: Request, env: Env): Promise<Response> {
   }
   const v = await verifyFetchProof(req, env, origin, await readJson(req));
   if (!v.ok) return v.resp;
+  const bind = await loadFetchbind(env, v.objectId); // read BEFORE the deletes: the rid frees capacity below
   await deleteObject(env, v.objectId); // R2 delete is idempotent: an already-gone/expired object is a no-op
   // Drop the gate binding too: with the object gone it only mints unanswerable challenges until its TTL.
   await env.DROP_KV.delete(`fetchbind:${v.objectId}`).catch(() => {});
+  // A discarded file no longer sits at rest, so return its capacity (= balance) hold right away instead
+  // of at the pending TTL — for a discard-without-download this is the receiver's only way to free up a
+  // small inbox. Best-effort: downloaded files were already cleared by charge(), and the entry
+  // self-expires regardless.
+  if (bind?.rid) {
+    await env.RECEIVER.get(env.RECEIVER.idFromName(bind.rid))
+      .releasePending(v.objectId)
+      .catch(() => {});
+  }
   return json({ ok: true }, 200, origin);
 }

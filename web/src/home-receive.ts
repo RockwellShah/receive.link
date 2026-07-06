@@ -296,20 +296,23 @@ async function showTopUp(): Promise<void> {
   }
 }
 
-// Remove the delivered ciphertext from the server after a successful save: frees our storage and lets
-// the recipient clear the only remaining server copy for peace of mind. Proof-gated via the delivery's
-// in-memory identity (no passkey prompt): under in-place delivery the SENDER knows the object id, so
-// only a possession proof may delete. Offered only from the "saved" state, so the file is already
-// safely on disk before its server copy goes.
-async function doDelete(): Promise<void> {
+// Remove the delivered ciphertext from the server: frees our storage (and the receiver's inbox
+// capacity, immediately) and clears the only server copy for peace of mind. Proof-gated via the
+// delivery's in-memory identity (no passkey prompt): under in-place delivery the SENDER knows the
+// object id, so only a possession proof may delete. Offered from the "saved" state (file already on
+// disk) AND from "ready" as "Delete without saving" — the receiver's lever against junk, which is
+// never charged (discarding is not a download).
+async function doDelete(btnId: "delfile" | "rdiscard"): Promise<void> {
   if (deleting || !delivery) return;
   deleting = true;
-  const btn = el("delfile") as HTMLButtonElement;
+  const btn = el(btnId) as HTMLButtonElement;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Removing…";
   try {
     await delivery.discard();
+    // The deleted screen's default sub assumes a saved copy exists; the unsaved path has none.
+    if (btnId === "rdiscard") el("delsub").textContent = "This file is gone from our servers. Nothing was saved and nothing was charged.";
     show("deleted");
   } catch (e) {
     showError(humanError(e));
@@ -318,6 +321,28 @@ async function doDelete(): Promise<void> {
     btn.disabled = false;
     btn.textContent = label;
   }
+}
+
+// "Delete without saving" is destructive for a file that exists nowhere else yet, so it takes two taps:
+// the first arms the control (label turns explicit + red), the second within 5s deletes. The timer
+// disarms it again so a stray tap can't linger as a loaded gun.
+let discardArm = 0;
+function confirmDiscard(): void {
+  const b = el("rdiscard") as HTMLButtonElement;
+  if (b.classList.contains("armed")) {
+    clearTimeout(discardArm);
+    b.classList.remove("armed");
+    b.textContent = "Delete without saving";
+    void doDelete("rdiscard");
+    return;
+  }
+  b.classList.add("armed");
+  b.textContent = "This destroys the file. Tap again to delete.";
+  clearTimeout(discardArm);
+  discardArm = window.setTimeout(() => {
+    b.classList.remove("armed");
+    b.textContent = "Delete without saving";
+  }, 5000);
 }
 
 // Unlock runs the passkey + metadata decrypt ON THE CLICK (a user gesture). Safari rejects a WebAuthn
@@ -374,7 +399,8 @@ el("open").onclick = () => doOpen();
 el("reopen").onclick = () => doOpen(true); // explicit "try a different passkey" (open prompt, ignores the pin)
 el("save").onclick = () => void doSave();
 el("saveagain").onclick = () => void doSave();
-el("delfile").onclick = () => void doDelete();
+el("delfile").onclick = () => void doDelete("delfile");
+el("rdiscard").onclick = confirmDiscard;
 el("raddcredit").onclick = () => void showTopUp(); // proactive add-credit (billing on; the element is hidden otherwise)
 el("topupback").onclick = () => showReady();
 void main();

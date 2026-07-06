@@ -44,11 +44,11 @@ export interface Env {
   R2_ACCOUNT_ID: string; // <id>.r2.cloudflarestorage.com
   R2_BUCKET: string; // bucket name for S3 presigning
   MAX_UPLOAD_BYTES?: string; // optional per-file cap override (default 2 GiB)
-  RECEIVER_INBOUND_CAP_BYTES?: string; // optional FREE-tier cumulative inbound ceiling (unset/<=0 = uncapped; dialed in at monetization launch)
-  PAID_ATREST_CAP_BYTES?: string; // optional PAID-tier at-rest (un-downloaded) ceiling (unset/<=0 = uncapped; the 100 GB safety cap)
+  // (No inbound/at-rest cap vars: when billing is on, a receiver's CAPACITY IS their credit balance —
+  // un-downloaded bytes at rest can never exceed what they could pay to download. See ReceiverAccount.)
   // Phase 2 billing (download charge). Ships INERT: with BILLING_ENABLED unset, /fetch/download issues a
   // free URL exactly like Phase 1 ("prove then download"), so deploying 2a changes nothing until Stripe
-  // (2b) is live and this is flipped on together with the caps above.
+  // (2b) is live and this is flipped on.
   BILLING_ENABLED?: string; // "1"/"true" turns on the per-file download charge; unset/false = downloads free
   FREE_GRANT_BYTES?: string; // free credit seeded into a new account when billing is on (default 1 GB)
   PRICE_CENTS_PER_GB?: string; // price knob: cents per GB of download (default 1 = 1¢/GB, $10 = 1 TB). Tune in the dashboard to walk the price with no code change; fixed $10/$25/$50/$100 tiers derive their GB from it

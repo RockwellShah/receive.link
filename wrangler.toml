@@ -85,12 +85,10 @@ REG_IP_PER_DAY = "1000"
 # launch, then flip it to "1". PRICE_CENTS_PER_GB: the LAUNCH price IS the code default (1 = 1¢/GB ->
 # $10 = 1,000 GB), so LEAVE IT UNSET unless the price ever changes. All byte knobs are DECIMAL
 # (1 GB = 1000000000), matching the product copy + credit labels — do not use binary (GiB) values.
-# If both caps are set, PAID_ATREST_CAP_BYTES must be >= RECEIVER_INBOUND_CAP_BYTES (a top-up must never
-# shrink an inbox; the code clamps paid up to free if misconfigured). All env-tunable, no code change.
+# There are NO inbound/at-rest cap vars: when billing is on, a receiver's capacity IS their credit
+# balance (un-downloaded bytes at rest can never exceed what they could pay to download).
 # BILLING_ENABLED = "1"
-# FREE_GRANT_BYTES = "1000000000"             # 1 GB (decimal) free download credit/account (unset = code default, same value)
-# RECEIVER_INBOUND_CAP_BYTES = "1000000000"   # free-tier lifetime inbound cap, decimal (unset = uncapped)
-# PAID_ATREST_CAP_BYTES = "100000000000"      # paid-tier at-rest cap = 100 GB decimal (unset = uncapped); keep >= the free cap
+# FREE_GRANT_BYTES = "1000000000"             # 1 GB (decimal) free download credit/account (unset = code default, same value); doubles as a fresh account's capacity
 
 # Secrets (DO NOT put here) — set with:
 #   wrangler secret put SERVER_KEM_PRIVATE_JWK    # from gen-keys
@@ -156,13 +154,12 @@ MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (in-place delivery rem
 # the webhook is registered at the WORKER url /billing/webhook, event checkout.session.completed).
 # Knob values decided with the user 2026-07-05. All byte knobs are DECIMAL (1 GB = 1000000000):
 # - Price stays the code default 1¢/GB (PRICE_CENTS_PER_GB unset).
-# - Free tier is 1 GB in BOTH directions: a 1 GB starting download credit AND a 1 GB cumulative
-#   inbound cap. A top-up flips the account paid: the inbound cap stops applying and at-rest stays
-#   uncapped (PAID_ATREST_CAP_BYTES unset), so paid receivers are bounded by the daily budgets below.
+# - CAPACITY = CREDIT BALANCE (code, not a knob): a receiver's un-downloaded bytes at rest can never
+#   exceed what they could pay to download. A fresh account's capacity is the FREE_GRANT_BYTES seed
+#   (1 GB); topping up raises capacity with the balance; downloads, discards, and 7-day expiry all
+#   return capacity. No separate inbound/at-rest cap vars exist.
 # - Daily upload byte budgets: 5 TB/link + 6 TB/IP (code default would be 25/50 TB = 5x/10x file cap).
 BILLING_ENABLED = "1"
 FREE_GRANT_BYTES = "1000000000"
-RECEIVER_INBOUND_CAP_BYTES = "1000000000"
 UPLOAD_BYTES_PER_LINK_DAY = "5000000000000"
 UPLOAD_BYTES_PER_IP_DAY = "6000000000000"
-# PAID_ATREST_CAP_BYTES = "100000000000"   # keep unset (= uncapped for paid) until the per-file-key DO migration lands

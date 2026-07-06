@@ -74,6 +74,7 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
 .textlink{background:none;border:0;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--mut);cursor:pointer;margin-top:22px;padding:2px;text-decoration:underline;text-decoration-color:#C1CCBD;text-underline-offset:3px}
 .textlink:hover{color:var(--ink);text-decoration-color:#ACB7A8}
 .textlink:disabled{color:var(--mut);cursor:default;text-decoration:none}
+.textlink.armed{color:#D2502E;text-decoration-color:#D2502E}
 /* Saved-state actions: real outline buttons (not text links). Neither is a primary CTA — the file is
    already saved — so both are ghost weight; delete turns red on intent. */
 .savedacts{display:flex;flex-direction:column;gap:12px;align-items:center;margin-top:24px}
@@ -108,7 +109,7 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
     <div class="st" data-state="locked">
       <div class="icon ok"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg></div>
       <h1 id="lockh1">You've got a file</h1>
-      <p class="sub" id="locksub">It's encrypted to you. Unlock it with your passkey to see and save it.</p>
+      <p class="sub" id="locksub">It's encrypted to you. Unlock it with your passkey.</p>
       <button class="btn full" id="open" type="button">Unlock with passkey</button>
     </div>
     <div class="st" data-state="loading" hidden>
@@ -134,6 +135,9 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
       <!-- Soft low-balance nudge (affordable case): shown when this file would use most of the remaining credit. -->
       <p class="note" id="rlownote" hidden>Running low on credit. Add credit to keep downloading.</p>
       <button class="btn full" id="save" type="button">Save file</button>
+      <!-- The receiver's lever against junk: discard without saving (or paying). Frees their inbox
+           capacity immediately. Two-tap confirm in home-receive.ts since nothing is on disk yet. -->
+      <button class="textlink" id="rdiscard" type="button">Delete without saving</button>
     </div>
 
     <div class="st" data-state="saving" hidden>
@@ -164,7 +168,7 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
     <div class="st" data-state="deleted" hidden>
       <div class="icon off"><svg viewBox="0 0 24 24" width="29" height="29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg></div>
       <h1>Removed</h1>
-      <p class="sub">This file is gone from our servers. The copy you saved is the only one left.</p>
+      <p class="sub" id="delsub">This file is gone from our servers. The copy you saved is the only one left.</p>
       <a class="btn full" href="/">Back to receive.link</a>
     </div>
 
@@ -186,6 +190,6 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
   </main>
 </div>
 </div>
-<script type="module" src="/dist/home-receive.js?v=3794db21c7"></script>
+<script type="module" src="/dist/home-receive.js?v=87f6867985"></script>
 </body>
 </html>

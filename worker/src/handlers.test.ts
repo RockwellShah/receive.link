@@ -238,9 +238,9 @@ test("multipart: delivery failure after assembly is retry-safe (retry skips the 
 });
 
 test("recipient capacity is per-recipient (shared across a receiver's links) and charged on the actual size", async () => {
-  // 300-byte ceiling. Two SEPARATE links confirmed to the SAME email resolve to one account (rid is a
-  // keyed hash of the confirmed email), so they draw down ONE shared budget — per-recipient, not per-link.
-  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
+  // Capacity = the 300-byte balance. Two SEPARATE links confirmed to the SAME email resolve to one
+  // account (rid is a keyed hash of the confirmed email), so they draw down ONE shared capacity.
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "300" });
   const linkA = await setupLink(h, "shared@example.com", "A");
   const linkB = await setupLink(h, "shared@example.com", "B");
   const before = h.email.sent.length;
@@ -257,8 +257,8 @@ test("recipient capacity is per-recipient (shared across a receiver's links) and
 });
 
 test("recipient links keyed to DIFFERENT confirmed emails have independent capacity", async () => {
-  // Same 300-byte ceiling, but two different recipients each get their own budget.
-  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
+  // Same 300-byte balance, but two different recipients each get their own.
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "300" });
   const send = async (link: string) => {
     const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
     h.r2.putRaw(objectId, fkeyCiphertext(200));
@@ -270,10 +270,10 @@ test("recipient links keyed to DIFFERENT confirmed emails have independent capac
 });
 
 test("recipient capacity: a retried completion after a delivery failure counts the bytes once", async () => {
-  // 450-byte ceiling. One 200-byte upload whose first delivery email throws, then succeeds when the
+  // 450-byte capacity. One 200-byte upload whose first delivery email throws, then succeeds when the
   // SAME completion retries. The failed attempt's reservation is released in the finally, so the retry
-  // re-reserves to a clean total (counted once), not double-counted.
-  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "450" });
+  // re-reserves to a clean basis (counted once), not double-counted.
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "450" });
   const link = await setupLink(h);
   const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
   h.r2.putRaw(objectId, fkeyCiphertext(200));
@@ -290,11 +290,11 @@ test("recipient capacity: a retried completion after a delivery failure counts t
 });
 
 test("recipient capacity: a retry can't overwrite mutable staging to deliver more than was charged", async () => {
-  // 300-byte ceiling. First completion reserves the real 200 bytes, then the delivery email fails (502)
+  // 300-byte capacity. First completion reserves the real 200 bytes, then the delivery email fails (502)
   // and the hold is released. The sender overwrites the still-mutable staging object to 400 bytes (the
   // presigned PUT stays valid) and retries: the retry must re-reserve the CURRENT 400 bytes (400 > 300)
   // and reject, not deliver 400 while having counted only 200.
-  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "300" });
   const link = await setupLink(h);
   const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
   h.r2.putRaw(objectId, fkeyCiphertext(200));
@@ -323,7 +323,7 @@ test("an over-capacity rejection does not burn the daily byte budget", async () 
   // The recipient charge at COMPLETE runs BEFORE the byte budgets and on the ACTUAL object size, so a
   // spoofed-low declared size slips the init pre-check yet the 507 at complete still leaves no byte-budget
   // counters — a rejected upload can't eat the link/IP transfer quota that real deliveries need.
-  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "100" });
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "100" });
   const link = await setupLink(h);
   const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 1 }), h.env)).json()) as { objectId: string }; // declared 1 slips the pre-check
   h.r2.putRaw(objectId, fkeyCiphertext(200)); // actual 200 > 100 cap -> charged + rejected at complete
@@ -335,7 +335,7 @@ test("reclaim race: a duplicate delivery that lost the exactly-once race release
   // Simulate a stalled+reclaimed sibling finishing during our email send: the completion flips to "done"
   // mid-send, so our finish() returns "already" and we must RELEASE the capacity reservation, not commit
   // it. Without commit-on-won this is the double-charge Codex flagged.
-  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "1000" });
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000" });
   const link = await setupLink(h);
   const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
   h.r2.putRaw(objectId, fkeyCiphertext(200));
@@ -405,7 +405,7 @@ test("cutover: a LEGACY multipart binding (no inplace flag) still promotes via t
 });
 
 test("reclaim race (in-place): the duplicate keeps the SHARED object and inbound counts once", async () => {
-  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "50", RECEIVER_INBOUND_CAP_BYTES: "1000" });
+  const h = await makeTestEnv({ MULTIPART_THRESHOLD: "10", MULTIPART_MIN_PART: "50", BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000" });
   const link = await setupLink(h);
   const { objectId, parts } = await multipartUpload(h, link, 200);
   const completion = h.env.COMPLETION as unknown as MemoryCompletion;
@@ -446,16 +446,16 @@ test("byte budgets burn once per object across a 502 email-failure retry", async
   expect(Number(linkBudget![1])).toBe(200); // once, not 400
 });
 
-test("recipient capacity: a live reservation holds against the cap so concurrent uploads can't both slip", async () => {
+test("recipient capacity: a live reservation holds against the balance so concurrent uploads can't both slip", async () => {
   // The handler path is linear per request, so exercise the hold directly on the account: a still-open
-  // reservation must count against the cap, and releasing it must free the space again.
+  // reservation must count against the capacity (= balance), and releasing it must free the space again.
   const recv = new MemoryReceiver();
   const acct = recv.get(recv.idFromName("rid-concurrency"));
-  const first = await acct.reserve(200, 300, 0); // free tier (default) -> the freeCap (300) applies
+  const first = await acct.reserve(200, 300, true); // fresh account: capacity = the 300 grant
   expect(first.ok).toBe(true);
-  expect((await acct.reserve(200, 300, 0)).ok).toBe(false); // 0 + 200(held) + 200 = 400 > 300
+  expect((await acct.reserve(200, 300, true)).ok).toBe(false); // 0 at rest + 200(held) + 200 = 400 > 300
   if (first.ok) await acct.release(first.token);
-  expect((await acct.reserve(200, 300, 0)).ok).toBe(true); // hold freed -> fits again
+  expect((await acct.reserve(200, 300, true)).ok).toBe(true); // hold freed -> fits again
 });
 
 test("multipart: a wrong part count is rejected (no partial assembly, no email)", async () => {
@@ -672,6 +672,22 @@ test("discard is proof-gated: bare object ids are rejected; a valid proof delete
   expect(await h.env.DROP_KV.get(`fetchbind:${finalId}`)).toBeNull();
 });
 
+test("discard returns the at-rest capacity hold immediately, spending nothing", async () => {
+  // Capacity = balance: a delivered-but-unwanted file occupies the inbox until its TTL — UNLESS the
+  // receiver discards it, which must free the capacity right away (for a 1 GB free inbox this is the
+  // receiver's only lever against junk). Discarding is not a download, so the balance is untouched.
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "300" });
+  const link = await setupLink(h);
+  const finalId = await deliver(h, link, 200); // 200 of the 300 balance at rest
+  expect((await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).status).toBe(507); // full
+  const c = await challengeAndProof(h, finalId, RECEIVER);
+  expect((await discardObject(post("/discard", { challengeId: c.challengeId, proof: c.proof }), h.env)).status).toBe(200);
+  const acct = await defaultAccount(h);
+  expect((await acct.summary(300)).pending).toBe(0); // hold released
+  expect((await acct.summary(300)).balance).toBe(300); // discard is free
+  expect((await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).status).toBe(200); // fits again
+});
+
 // ---- Phase 2: billing (download charge + free preview + caps) ----
 
 /** The account DO for the default setupLink receiver (to assert balances/pending directly). */
@@ -685,7 +701,7 @@ async function download(h: TestHarness, finalId: string): Promise<Response> {
 }
 
 test("billing: a download charges the file size once; a re-download does not double-charge", async () => {
-  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000", PAID_ATREST_CAP_BYTES: "1000000" }); // cap on -> pending tracked
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "1000" }); // billing on -> pending tracked
   const finalId = await deliver(h, await setupLink(h), 200);
   const acct = await defaultAccount(h);
   expect((await acct.summary(1000)).pending).toBe(200); // delivered, not yet downloaded
@@ -697,10 +713,14 @@ test("billing: a download charges the file size once; a re-download does not dou
 });
 
 test("billing: a download beyond remaining credit returns 402 and isn't charged", async () => {
-  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "300" });
+  // Capacity = balance makes an unaffordable delivery impossible going FORWARD (reserve rejects it), so
+  // the 402 guards the TRANSITION cohort: files delivered while billing was off, whose receiver's grant
+  // can't cover them once it flips on. Deliver two 200s billing-off, flip, then download both.
+  const h = await makeTestEnv({ FREE_GRANT_BYTES: "300" }); // billing OFF at delivery time
   const link = await setupLink(h);
   const a = await deliver(h, link, 200);
   const b = await deliver(h, link, 200);
+  h.env.BILLING_ENABLED = "1"; // pre-enforcement files are now charged at download
   const acct = await defaultAccount(h);
   expect((await download(h, a)).status).toBe(200); // 300 -> 100
   expect((await download(h, b)).status).toBe(402); // needs 200, only 100 left
@@ -722,8 +742,11 @@ test("billing OFF (default): a download is free with no balance (Phase-1 behavio
 });
 
 test("download gate: preview serves only the head+metadata, never the payload (free, even at zero balance)", async () => {
-  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "0" }); // broke account: preview still free
+  // A zero-balance account can't RECEIVE anymore (capacity = balance), so make the broke-account state
+  // the transition way: deliver billing-off, then flip billing on with a zero grant. Preview stays free.
+  const h = await makeTestEnv({ FREE_GRANT_BYTES: "0" });
   const finalId = await deliver(h, await setupLink(h), 5000); // 5000-byte object, 17-byte metadata
+  h.env.BILLING_ENABLED = "1"; // broke account: preview still free
   const { challengeId, proof } = await challengeAndProof(h, finalId, RECEIVER);
   const res = await fetchPreview(post("/fetch/preview", { challengeId, proof }), h.env);
   expect(res.status).toBe(200);
@@ -799,39 +822,38 @@ test("credit UX: the /confirm response carries billingEnabled (gates the result 
   expect(((await conf2.json()) as { billingEnabled: boolean }).billingEnabled).toBe(false);
 });
 
-test("upload-init pre-check: a free account at its inbound cap bounces (507) before the transfer", async () => {
-  const h = await makeTestEnv({ RECEIVER_INBOUND_CAP_BYTES: "300" });
+test("upload-init pre-check: an account at capacity bounces (507) before the transfer", async () => {
+  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "300" });
   const link = await setupLink(h);
-  await deliver(h, link, 200); // committed total -> 200
-  // A further 200 would push total to 400 > 300, so the pre-check bounces at init (no upload URL issued).
+  await deliver(h, link, 200); // at rest (pending) -> 200 of the 300 balance
+  // A further 200 would put 400 at rest against a 300 balance, so the pre-check bounces at init.
   expect((await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).status).toBe(507);
 });
 
-test("upload-init pre-check: stays inert (no bounce) while caps are unset", async () => {
-  const h = await makeTestEnv(); // both caps unset
+test("upload-init pre-check: stays inert (no bounce) while billing is off", async () => {
+  const h = await makeTestEnv(); // billing off -> no capacity enforcement
   const link = await setupLink(h);
   await deliver(h, link, 200);
-  // A 1 GB upload (well past the 1 GB+ a free cap would impose) is still admitted, because no cap is set.
+  // A 1 GB upload (well past any grant) is still admitted, because capacity only binds with billing on.
   expect((await uploadInit(post("/upload-init", { payload: link, size: 1_000_000_000 }), h.env)).status).toBe(200);
 });
 
-test("receiver DO: caps are tier-aware (free gates on total, paid gates on at-rest pending)", async () => {
+test("receiver DO: capacity = balance (at-rest + holds vs credit), and a top-up raises it", async () => {
   const recv = new MemoryReceiver();
   const acct = recv.get(recv.idFromName("rid-tier"));
-  const h1 = await acct.reserve(200, 300, 1000); // free tier: freeCap=300, paidCap=1000
+  const h1 = await acct.reserve(200, 300, true); // fresh account: capacity = the 300 grant
   expect(h1.ok).toBe(true);
-  if (h1.ok) await acct.release(h1.token); // the hold is a cap check; the meters accrue via commitDelivered
-  await acct.commitDelivered("file-tier", 200, true); // total=200, pending=200
-  expect((await acct.reserve(200, 300, 1000)).ok).toBe(false); // free: total 200 + 200 > 300
-  await acct.credit(500, 0); // flip to paid (and add credit)
-  const h2 = await acct.reserve(200, 300, 1000); // paid now gates on pending (200) vs 1000, not total vs 300
-  expect(h2.ok).toBe(true);
+  if (h1.ok) await acct.release(h1.token); // the hold is a capacity check; the meters accrue via commitDelivered
+  await acct.commitDelivered("file-tier", 200, true); // at rest: pending=200
+  expect((await acct.reserve(200, 300, true)).ok).toBe(false); // 200 at rest + 200 = 400 > 300
+  await acct.credit(500, 300); // top-up: balance 300 + 500 = 800 -> capacity rises with it
+  expect((await acct.reserve(200, 300, true)).ok).toBe(true); // 200 at rest + 200 = 400 <= 800
 });
 
 test("receiver DO: pending rises on delivery and falls once on the first paid download", async () => {
   const recv = new MemoryReceiver();
   const acct = recv.get(recv.idFromName("rid-pending"));
-  const h1 = await acct.reserve(500, 0, 0); // uncapped
+  const h1 = await acct.reserve(500, 0, false); // billing off: unenforced hold
   expect(h1.ok).toBe(true);
   if (h1.ok) await acct.release(h1.token);
   await acct.commitDelivered("file-1", 500, true); // deliver file-1 (pending 500)
@@ -844,6 +866,19 @@ test("receiver DO: pending rises on delivery and falls once on the first paid do
   expect(r2.ok && r2.alreadyPaid).toBe(true);
   expect((await acct.summary(1000)).balance).toBe(500); // not charged again
   expect((await acct.summary(1000)).pending).toBe(0); // not decremented again
+});
+
+test("receiver DO: a delayed commit does not resurrect a paid file's pending hold", async () => {
+  // Crash-then-retry racing a fast receiver: the file is downloaded (charged, pending cleared — here it
+  // was never tracked at all) BEFORE the retried completion's commitDelivered lands. The late commit
+  // must not re-add the paid file to pending, or the receiver loses that capacity until the TTL.
+  const recv = new MemoryReceiver();
+  const acct = recv.get(recv.idFromName("rid-late-commit"));
+  const r = await acct.charge("file-raced", 200, 1000); // downloaded first (balance 1000 -> 800)
+  expect(r.ok).toBe(true);
+  await acct.commitDelivered("file-raced", 200, true); // the delayed commit arrives after
+  expect((await acct.summary(1000)).pending).toBe(0); // not resurrected
+  expect((await acct.summary(1000)).total).toBe(200); // the lifetime meter still counts it
 });
 
 test("receiver DO: commitDelivered counts a delivery id exactly once (crash-retry / duplicate safe)", async () => {
@@ -866,14 +901,19 @@ test("receiver DO: credit is idempotent on the Stripe event id", async () => {
 });
 
 test("billing: FREE_GRANT_BYTES=0 is honored (no free credit) -> the first download is 402", async () => {
-  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "0" });
+  // With capacity = balance a zero-grant account can't receive at all, so the explicit-0 semantics are
+  // only observable on transition files (delivered billing-off): the download must 402, not draw on a
+  // wrongly-defaulted 1 GB.
+  const h = await makeTestEnv({ FREE_GRANT_BYTES: "0" });
   const finalId = await deliver(h, await setupLink(h), 200);
+  h.env.BILLING_ENABLED = "1";
   expect((await download(h, finalId)).status).toBe(402); // balance seeded to 0, can't cover 200
 });
 
 test("billing: a legacy binding with no rid downloads free (backward compat)", async () => {
-  const h = await makeTestEnv({ BILLING_ENABLED: "1", FREE_GRANT_BYTES: "0" });
+  const h = await makeTestEnv({ FREE_GRANT_BYTES: "0" });
   const finalId = await deliver(h, await setupLink(h), 200);
+  h.env.BILLING_ENABLED = "1"; // flipped on after delivery (a legacy binding predates billing by definition)
   // Rewrite the binding to the pre-Phase-2 shape (pk + size, no rid): can't resolve an account to charge.
   const b = JSON.parse((await h.kv.get(`fetchbind:${finalId}`))!) as { pk: string; size: number };
   await h.kv.put(`fetchbind:${finalId}`, JSON.stringify({ pk: b.pk, size: b.size }));
