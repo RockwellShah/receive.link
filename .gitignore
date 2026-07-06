@@ -18,3 +18,8 @@ keys/
 
 # E2E inbox worker read token (local only, never committed)
 e2e/inbox/.token
+
+# Monetization test-env Worker config: untracked by design (env wiring for the
+# mon worker, not part of the public app). Belt-and-suspenders so it can't be
+# added by accident. Its secrets live in Wrangler, never in the file.
+wrangler.mon.toml
