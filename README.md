@@ -16,6 +16,7 @@ Receive files only you can open. Share one link, and everything sent through it 
 - ✅ **You stay in control.** Turn a link off anytime and new files stop arriving. Your credit stays yours.
 - ✅ **Fair pricing.** Sending is always free. Your first 1 GB of downloads is free, then a penny per GB, prepaid. No subscription.
 - ✅ **Email notifications without a database.** Your address is sealed inside your own link and unsealed only in memory to send each notification. It is never stored.
+- ✅ **Open source.** GPL-3.0-or-later, client and server both, so every claim above is verifiable.
 
 ---
 
@@ -131,3 +132,9 @@ Deploys need Cloudflare and Stripe secrets that are not in the repo, so contribu
 > 📥 **[receive.link](https://receive.link)**: the app
 >
 > 🔬 **[receive.link/technical](https://receive.link/technical)**: the cryptography, in detail
+
+---
+
+### 📜 License
+
+[GPL-3.0-or-later](LICENSE). The GPL covers the software; the receive.link name and branding are not licensed for reuse.
