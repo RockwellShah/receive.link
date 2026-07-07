@@ -60,6 +60,10 @@ new_sqlite_classes = ["ReceiverAccount"]
 # would make staging links point at prod, and prod wouldn't find the confirm nonce.
 ALLOWED_ORIGIN = "https://staging.receive.link"
 MAIL_FROM = "files@receive.link"
+# Outbound rides Postmark (POSTMARK_SERVER_TOKEN set on BOTH workers 2026-07-06): even fully-authed mail
+# via the Email Service beta's shared IPs gets silently swallowed by strict M365 tenants (delivered, then
+# zero-hour-purged to admin quarantine). Unset this var to fall back to the Cloudflare send binding.
+EMAIL_PROVIDER = "postmark"
 SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"wQspI1R3MyBRr0hPRba5LEbKH643Gbl0-EdqKbAVH1E","y":"3twD-Dp7LZXQkJQQ_M8X9dN_LtaC2kUZ-Il6CR5gEcE"}'
 # Id stamped into newly minted links. To rotate the signing key: bump this, set the new key as
 # SERVER_SIGN_PUBLIC_JWK, and keep the old one as SERVER_SIGN_PUBLIC_JWK_PREV + SERVER_SIGN_KEY_ID_PREV
@@ -145,6 +149,7 @@ new_sqlite_classes = ["ReceiverAccount"]
 [env.production.vars]
 ALLOWED_ORIGIN = "https://receive.link"
 MAIL_FROM = "files@receive.link"  # receive.link onboarded (Email Routing + DKIM live) 2026-06-21
+EMAIL_PROVIDER = "postmark"  # corporate deliverability (see the staging note above); token set on the prod worker 2026-07-06
 SERVER_SIGN_PUBLIC_JWK = '{"crv":"P-256","ext":true,"key_ops":["verify"],"kty":"EC","x":"zjIvdGLoKfO8J88X9FivuNSl6WsV6Xuw8UDKyveBikA","y":"vn2TLgJBXKI8kuo2qYIFAl7zmC3tKUGZhDHB0Z987Lo"}'  # prod keys (keys/prod-*.jwk)
 SERVER_SIGN_KEY_ID = "1"                                # see staging note on key rotation
 R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
