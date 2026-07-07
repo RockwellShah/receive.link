@@ -34,9 +34,14 @@ export async function hmacSha256hex(keyUtf8: string, msg: string): Promise<strin
   return hex(new Uint8Array(sig));
 }
 
-// Deliberately permissive: we only guard against obviously-malformed input before
-// handing an address to the mail provider. Real validity is proven by delivery.
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// Strict single addr-spec: a dot-atom local part @ dotted domain labels. This is a SECURITY gate, not
+// just UX — canonEmail derives the account IDENTITY (rid) from this exact string, so a permissive match
+// let a display-name / angle-addr form like "x<victim@gmail.com>" (which a lenient mail provider may
+// still deliver to victim@gmail.com) mint a DISTINCT rid = a farmable fresh 1 GB grant. We therefore
+// reject the RFC "specials" (<>()[]:;@\," and whitespace) and trailing/duplicate domain dots, so the
+// address that seeds the identity is the same one the provider will deliver to. Real deliverability is
+// still proven by the confirm email; this only bounds the shape.
+const EMAIL_RE = /^[a-z0-9!#$%&'*+\/=?^_`{|}~.-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
 export function isEmail(s: string): boolean {
   return s.length <= 254 && EMAIL_RE.test(s);
 }

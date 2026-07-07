@@ -220,7 +220,7 @@ export const canonEmail = (s: string): string => {
   let local = e.slice(0, at);
   let domain = e.slice(at + 1);
   const plus = local.indexOf("+");
-  if (plus >= 0) local = local.slice(0, plus);
+  if (plus > 0) local = local.slice(0, plus); // strip +tag, but a leading '+' has no base -> keep it (no empty local)
   if (domain === "gmail.com" || domain === "googlemail.com") {
     domain = "gmail.com"; // googlemail.com is a Google alias for the same inbox
     local = local.replace(/\./g, ""); // Gmail ignores dots in the local part

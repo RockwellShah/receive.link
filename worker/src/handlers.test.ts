@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { DROP_PAYLOAD_VERSION, LINK_ID_LEN, base64urlDecode, base64urlEncode, signableBytes } from "../../shared/codec";
 import { FETCH_CHALLENGE_INFO, fetchProofHex, generateKemKeyPair, hpkeUnseal, importKemPublicKey, importSignPrivateKey, sealEmail, serializeKemPublicKey, signRegion } from "../../shared/crypto";
 import { RECEIVE_LINK_NS_TAG } from "../../shared/sharekey";
-import { hex, hmacSha256hex, randomBytes } from "../../shared/util";
+import { hex, hmacSha256hex, isEmail, randomBytes } from "../../shared/util";
 import { p256 } from "@noble/curves/nist.js";
 import { bech32m } from "@scure/base";
 import {
@@ -78,6 +78,24 @@ test("canonEmail collapses +tag and Gmail-dot sub-addressing (one mailbox = one 
   expect(canonEmail("first.last@outlook.com")).toBe("first.last@outlook.com"); // dots kept for non-Gmail
   // Plain addresses are untouched — so this change is a no-op for every normal account.
   expect(canonEmail("receiver@example.com")).toBe("receiver@example.com");
+  // A leading '+' has no base local part, so it is NOT stripped (avoids an empty-local "@domain" key).
+  expect(canonEmail("+x@example.com")).toBe("+x@example.com");
+});
+
+test("isEmail rejects display-name/angle-addr and trailing-dot forms that would poison the identity", () => {
+  // The farming bypass Codex caught: a lenient provider may deliver "x<victim@gmail.com>" to
+  // victim@gmail.com while canonEmail would hash the whole string as a distinct rid. Reject it up front.
+  expect(isEmail("x<victim@gmail.com>")).toBe(false);
+  expect(isEmail("victim <victim@gmail.com>")).toBe(false); // classic display-name form (space + angle)
+  expect(isEmail("vic.tim+1@gmail.com.")).toBe(false); // trailing-dot domain
+  expect(isEmail("a@b@gmail.com")).toBe(false); // two addr-specs / injection
+  expect(isEmail("a,b@gmail.com")).toBe(false); // comma (header injection shape)
+  expect(isEmail("a@gmail..com")).toBe(false); // duplicate domain dots
+  expect(isEmail("a b@gmail.com")).toBe(false); // whitespace
+  // Legit addresses still pass (no regression for real users).
+  for (const ok of ["victim@gmail.com", "me+tag@gmail.com", "first.last@sub.example.co.uk", "o'brien@corp.com", "a@b.co"]) {
+    expect(isEmail(ok)).toBe(true);
+  }
 });
 
 test("canonEmail: +tag and dot variants of one Gmail resolve to the SAME receiver account (no free-grant farming)", async () => {
