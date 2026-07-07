@@ -13,6 +13,7 @@ import {
   billingCheckout,
   billingPacks,
   billingWebhook,
+  canonEmail,
   confirm,
   discardObject,
   fetchChallenge,
@@ -65,6 +66,29 @@ async function setupLink(h: TestHarness, email = "receiver@example.com", label =
   const conf = await confirm(post("/confirm", { nonce }), h.env);
   return ((await conf.json()) as { link: string }).link;
 }
+
+test("canonEmail collapses +tag and Gmail-dot sub-addressing (one mailbox = one identity/quota)", () => {
+  // +tag stripped for any domain (universal sub-addressing convention).
+  expect(canonEmail("me+filekey@gmail.com")).toBe("me@gmail.com");
+  expect(canonEmail("me+1@outlook.com")).toBe("me@outlook.com");
+  expect(canonEmail(" Me+Tag@Fastmail.com ")).toBe("me@fastmail.com"); // trim + lowercase too
+  // Gmail (and its googlemail alias) ignore dots in the local part; other providers do NOT.
+  expect(canonEmail("rock.well.shah@gmail.com")).toBe("rockwellshah@gmail.com");
+  expect(canonEmail("rock.well+x@googlemail.com")).toBe("rockwell@gmail.com"); // alias folds to gmail.com
+  expect(canonEmail("first.last@outlook.com")).toBe("first.last@outlook.com"); // dots kept for non-Gmail
+  // Plain addresses are untouched — so this change is a no-op for every normal account.
+  expect(canonEmail("receiver@example.com")).toBe("receiver@example.com");
+});
+
+test("canonEmail: +tag and dot variants of one Gmail resolve to the SAME receiver account (no free-grant farming)", async () => {
+  const h = await makeTestEnv();
+  const base = await receiverId(h.env, "victim@gmail.com");
+  expect(await receiverId(h.env, "victim+1@gmail.com")).toBe(base); // +tag can't mint a fresh account
+  expect(await receiverId(h.env, "vic.tim@gmail.com")).toBe(base); // Gmail dots can't either
+  expect(await receiverId(h.env, "victim+anything@googlemail.com")).toBe(base);
+  // A genuinely different mailbox is still a different account.
+  expect(await receiverId(h.env, "someone-else@gmail.com")).not.toBe(base);
+});
 
 // A minimally-valid FileKey container: magic + format version + suite + a sane metadata-length field
 // (u32be at offset 142), zero-padded. Padded up to 146 (a full header) so the worker's header check

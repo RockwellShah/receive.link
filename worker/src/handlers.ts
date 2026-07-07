@@ -204,10 +204,29 @@ function signingKeys(env: Env): Map<number, JsonWebKey> {
 // is already clean everywhere it's later shown.
 const stripControl = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, "");
 
-// Canonicalize for abuse-limit keys only (we still deliver to the exact unsealed
-// address): trim + lowercase so "User@x.com " and "user@x.com" share a quota.
-// Exported so the account-login rate-limit key matches register's exactly.
-export const canonEmail = (s: string) => s.trim().toLowerCase();
+// Canonicalize the account IDENTITY + abuse-limit keys (we still DELIVER to the exact unsealed address,
+// so a receiver keeps using "me+filekey@gmail.com" for their own filtering — only the rid/quota is
+// canonical). Beyond trim+lowercase we collapse sub-addressing so one real mailbox is one account/quota,
+// closing the "+tag / Gmail-dot" trick that would otherwise mint unlimited fresh 1 GB free grants and
+// bypass the per-address caps (all of me+1@, me+2@, me.name@ land in the same Gmail inbox):
+//   - strip a "+tag" (sub-addressing, honored by Gmail, Outlook, iCloud, Fastmail, Proton, Yahoo, ...)
+//   - strip dots in the local part for Gmail specifically (Gmail ignores them; other providers don't)
+// Changing this changes the rid ONLY for addresses that contain a +tag or Gmail dots (plain addresses
+// are unaffected), so it's a no-op for every normal account. Exported so every keyed surface agrees.
+export const canonEmail = (s: string): string => {
+  const e = s.trim().toLowerCase();
+  const at = e.lastIndexOf("@");
+  if (at <= 0) return e; // not an address shape (no local part); isEmail gates real use
+  let local = e.slice(0, at);
+  let domain = e.slice(at + 1);
+  const plus = local.indexOf("+");
+  if (plus >= 0) local = local.slice(0, plus);
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    domain = "gmail.com"; // googlemail.com is a Google alias for the same inbox
+    local = local.replace(/\./g, ""); // Gmail ignores dots in the local part
+  }
+  return `${local}@${domain}`;
+};
 
 /**
  * Decode a Drop link and verify the server signature against the signing PUBLIC
