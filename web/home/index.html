@@ -183,6 +183,10 @@ body{margin:0;background:#ECF1E9;font-family:'Nunito',system-ui,sans-serif}
 @media (max-width:620px){
   .rk .navinner{padding:14px 18px}
   .rk .nav .logo{font-size:20px}
+  /* Phones: the hero's "Create your free link" is already on the first screen, so the sticky nav pill
+     is a louder duplicate two inches above it; drop it and give the logo room. Desktop keeps it (the
+     nav is the persistent action once the hero scrolls away). */
+  .rk .nav .pill{display:none}
   .rk .pill{padding:10px 16px;font-size:13px}
   .rk h1{font-size:40px}
   .rk .hero{padding:48px 20px 0}
@@ -278,7 +282,7 @@ body.cmlock{overflow:hidden}
     <div class="kicks"><span class="kick"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg>End-to-end Encrypted</span></div>
     <h1>Receive files<br>only you can open.</h1>
     <div class="sub">Share your link. Everything arrives encrypted to your passkey. No accounts. No tracking.</div>
-    <div class="hcta"><a class="pill" href="/" data-create>Create your link</a></div>
+    <div class="hcta"><a class="pill" href="/" data-create>Create your free link</a></div>
   </div>
   <div class="stage">
     <div class="wash"></div>
@@ -349,7 +353,7 @@ body.cmlock{overflow:hidden}
         <div class="pfeat"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg>Redownloads are free.</div>
         <div class="pfeat"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg>No subscription.</div>
       </div>
-      <a class="pill" href="/" data-create>Create your link</a>
+      <a class="pill" href="/" data-create>Create your free link</a>
     </div>
     <div class="pnote"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10" /></svg>Top up with credits only when you need them.</div>
   </div>
@@ -372,7 +376,7 @@ body.cmlock{overflow:hidden}
   <div class="closing">
     <div class="cwash"></div>
     <h2>Get started with just a link.</h2>
-    <a class="pill" href="/" data-create>Create your link</a>
+    <a class="pill" href="/" data-create>Create your free link</a>
   </div>
 
   <hr class="rule">
