@@ -81,6 +81,14 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
 .btn:active{background:#1C8957}
 .btn.full,.btn.solo{display:block;width:100%;max-width:300px;margin:30px auto 0;text-align:center}
 .btn:focus-visible,.cancel:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+/* Post-send "get your own" nudge: the sender just experienced the product from the outside, so this is
+   the one moment they can want their own inbox. Quiet by design (hairline + muted line + ghost pill);
+   the sent confirmation stays the page's primary story. */
+.ownlink{margin-top:46px;padding-top:26px;border-top:1px solid var(--ln)}
+.ownlink p{font-size:13.5px;color:var(--mut);font-weight:600;margin:0 0 14px}
+.getlink{display:inline-block;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:22px;padding:11px 22px;font-size:14px;font-weight:700;transition:border-color .15s,background .15s}
+.getlink:hover{border-color:var(--g);background:#FBFDFC}
+.getlink:focus-visible{outline:2px solid var(--g);outline-offset:2px}
 .err{color:#C0452A}
 @media(max-width:480px){h1{font-size:27px}.logo{margin-bottom:40px}.frame{padding:40px 20px 64px}.drop{padding:36px 18px}}
 </style>
@@ -128,6 +136,10 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
       <h1>Sent!</h1>
       <p class="sub" id="sentsub">We emailed them a secure download link.</p>
       <button class="btn solo" id="sendmore" type="button">Send more files</button>
+      <div class="ownlink">
+        <p>Want to receive files securely?</p>
+        <a class="getlink" href="/">Get your free receive.link</a>
+      </div>
     </div>
 
     <div class="st" data-state="error" hidden>
