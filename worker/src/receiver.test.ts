@@ -80,10 +80,10 @@ test("releasePending: frees a discarded file's capacity immediately", async () =
 
 test("credit: adds balance, flips to paid, idempotent on the Stripe event id", async () => {
   const { a } = acct();
-  const r1 = await a.credit(1000, 0, "evt_1");
+  const r1 = await a.credit(1000, 0, ["s:cs_1", "evt_1"]);
   expect(r1.balance).toBe(1000);
   expect((await a.summary(0)).tier).toBe("paid");
-  const r2 = await a.credit(1000, 0, "evt_1"); // webhook retry
+  const r2 = await a.credit(1000, 0, ["s:cs_1", "evt_9"]); // different event, same session
   expect(r2.balance).toBe(1000); // not double-credited
 });
 

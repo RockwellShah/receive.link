@@ -117,7 +117,7 @@ test("a reusable (email-embedded) magic token survives repeated redemption", asy
 test("summary returns the live balance/tier for a valid Bearer session, 401 otherwise", async () => {
   const h = await makeTestEnv(BILLING);
   const { rid, token } = await sessionFor(h, "rcv@example.com");
-  await h.env.RECEIVER.get(h.env.RECEIVER.idFromName(rid)).credit(2_000_000_000, freeGrantBytes(h.env), "evt_1");
+  await h.env.RECEIVER.get(h.env.RECEIVER.idFromName(rid)).credit(2_000_000_000, freeGrantBytes(h.env), ["evt_1"]);
   const r = await accountSummary(post("/account/summary", {}, "1.2.3.4", `Bearer ${token}`), h.env);
   expect(r.status).toBe(200);
   const s = (await r.json()) as { tier: string; balanceBytes: number };

@@ -1120,7 +1120,7 @@ export async function billingWebhook(req: Request, env: Env): Promise<Response> 
     // credit() is idempotent on the Checkout Session id, so neither a webhook retry nor a second Event
     // object for the same session can double-credit one payment.
     const acct = env.RECEIVER.get(env.RECEIVER.idFromName(credit.rid));
-    await acct.credit(credit.bytes, freeGrantBytes(env), credit.dedupeKey);
+    await acct.credit(credit.bytes, freeGrantBytes(env), credit.dedupeKeys);
     logEvent("billing_credited", { bytes: credit.bytes }); // bytes only — never the rid/email
   }
   return new Response("ok", { status: 200 }); // 200 even for ignored event types, so Stripe stops retrying

@@ -932,14 +932,19 @@ test("receiver DO: commitDelivered counts a delivery id exactly once (crash-retr
   expect((await acct.summary(0)).total).toBe(400); // f1 once + f2 once
 });
 
-test("receiver DO: credit is idempotent on the Stripe event id", async () => {
+test("receiver DO: credit is idempotent across a key SET (any seen key = duplicate)", async () => {
   const recv = new MemoryReceiver();
   const acct = recv.get(recv.idFromName("rid-credit"));
-  await acct.credit(1000, 0, "evt_1");
-  await acct.credit(1000, 0, "evt_1"); // webhook retry: must not double-credit
+  await acct.credit(1000, 0, ["s:cs_1", "evt_1"]);
+  await acct.credit(1000, 0, ["s:cs_1", "evt_1"]); // same session retry: no double-credit
   expect((await acct.summary(0)).balance).toBe(1000);
-  await acct.credit(1000, 0, "evt_2"); // a new event does credit
-  expect((await acct.summary(0)).balance).toBe(2000);
+  await acct.credit(1000, 0, ["s:cs_1", "evt_9"]); // DIFFERENT event, SAME session -> still deduped
+  expect((await acct.summary(0)).balance).toBe(1000);
+  // Legacy-marker transition: a pre-migration credit recorded only evt:<eventId>; a later duplicate that
+  // carries that event id in its key set still dedupes even though the session key was never written.
+  await acct.credit(1000, 0, ["evt_legacy"]);
+  await acct.credit(1000, 0, ["s:cs_new", "evt_legacy"]);
+  expect((await acct.summary(0)).balance).toBe(2000); // credited once for the legacy session
 });
 
 test("billing: FREE_GRANT_BYTES=0 is honored (no free credit) -> the first download is 402", async () => {
@@ -991,9 +996,9 @@ test("stripe: signature verify accepts any v1 during a secret rotation", async (
 test("stripe: parseCreditFromEvent credits only a PAID session with a known pack, bytes from the LOCKED price", async () => {
   const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { id: "cs_1", payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid: "rid_x", pack: "p10", price: "1" }, ...obj } } });
   // Idempotency key is the SESSION id (s:cs_1), not the event id — Stripe can emit >1 event per session.
-  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, dedupeKey: "s:cs_1" }); // $10 @ 1c/GB = 1 TB
+  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, dedupeKeys: ["s:cs_1", "evt_1"] }); // $10 @ 1c/GB = 1 TB
   // The bytes follow the price LOCKED in the session, not the live knob: same $10 pack stamped at 10c/GB -> 100 GB.
-  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, dedupeKey: "s:cs_1" });
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, dedupeKeys: ["s:cs_1", "evt_1"] });
   expect(parseCreditFromEvent(ev({ id: undefined }))).toBeNull(); // no session id -> refuse (can't dedupe)
   expect(parseCreditFromEvent(ev({ payment_status: "unpaid" }))).toBeNull(); // not paid
   expect(parseCreditFromEvent(ev({ amount_total: 100 }))).toBeNull(); // underpaid for p10 ($1 < $10)
@@ -1055,11 +1060,11 @@ test("stripe: createCheckoutSession for 'custom' is the two-call flow (price, th
 test("stripe: parseCreditFromEvent credits an 'Other amount' from the VERIFIED amount_total, bounded", async () => {
   const ev = (obj: object) => ({ id: "evt_c", type: "checkout.session.completed", data: { object: { id: "cs_c", payment_status: "paid", currency: "usd", metadata: { rid: "rid_x", pack: "custom", price: "1" }, ...obj } } });
   // $30 custom @ 1c/GB = 3,000 GB, derived from the actual amount paid (no fixed tier to re-derive from).
-  expect(parseCreditFromEvent(ev({ amount_total: 3000 }))).toEqual({ rid: "rid_x", bytes: 3_000_000_000_000, dedupeKey: "s:cs_c" });
+  expect(parseCreditFromEvent(ev({ amount_total: 3000 }))).toEqual({ rid: "rid_x", bytes: 3_000_000_000_000, dedupeKeys: ["s:cs_c", "evt_c"] });
   expect(parseCreditFromEvent(ev({ amount_total: 999 }))).toBeNull(); // below the $10 floor
   expect(parseCreditFromEvent(ev({ amount_total: 1_000_001 }))).toBeNull(); // above the $10,000 ceiling
   // The locked price still sets the rate: $30 @ 10c/GB = 300 GB.
-  expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, dedupeKey: "s:cs_c" });
+  expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, dedupeKeys: ["s:cs_c", "evt_c"] });
 });
 
 test("billing: the price is one env knob; packs + labels derive from it", async () => {

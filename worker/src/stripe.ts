@@ -201,7 +201,7 @@ export async function verifyStripeSignature(rawBody: string, sigHeader: string, 
  *  a known tier at a sane price. Idempotency keys on the CHECKOUT SESSION id (`data.object.id`), NOT the
  *  Event id: Stripe can emit more than one Event object for the same session (Stripe's documented duplicate
  *  class), so keying on the event id alone would credit one payment twice — the session id is stable. */
-export function parseCreditFromEvent(event: unknown): { rid: string; bytes: number; dedupeKey: string } | null {
+export function parseCreditFromEvent(event: unknown): { rid: string; bytes: number; dedupeKeys: string[] } | null {
   const e = event as {
     id?: unknown;
     type?: unknown;
@@ -232,5 +232,7 @@ export function parseCreditFromEvent(event: unknown): { rid: string; bytes: numb
     if (o.amount_total < PACK_CENTS[pack]) return null;
     chargedCents = PACK_CENTS[pack];
   }
-  return { rid, bytes: bytesForCents(chargedCents, price), dedupeKey: `s:${sessionId}` };
+  // Primary key = the session id (dedupes distinct Event objects for one session); the Event id is
+  // included so a pre-migration credit (recorded only under evt:<eventId>) still dedupes a retry.
+  return { rid, bytes: bytesForCents(chargedCents, price), dedupeKeys: [`s:${sessionId}`, e.id] };
 }

@@ -254,16 +254,21 @@ export class ReceiverAccount extends DurableObject {
     return { ok: true, alreadyPaid: false, balance: balance - need };
   }
 
-  /** Add prepaid credit (a Stripe top-up) and mark the account paid. Idempotent on `dedupeKey` — the
-   *  Checkout SESSION id, NOT the Event id, since Stripe can emit multiple Event objects for one session:
-   *  each credited key is its OWN `evt:<dedupeKey>` storage key, and the marker + balance + tier are
-   *  written in one atomic put so a crash can't mark it credited while losing the credit. (Phase 2b.) */
-  async credit(packBytes: number, grant: number, dedupeKey?: string): Promise<{ balance: number }> {
+  /** Add prepaid credit (a Stripe top-up) and mark the account paid. Idempotent across a SET of dedupe
+   *  keys: if ANY is already recorded, this is a duplicate and does nothing; otherwise ALL are recorded so
+   *  a later duplicate keyed on any of them dedupes. The webhook passes both the Checkout SESSION id (the
+   *  primary key — Stripe can emit multiple Event objects for one session) AND the Event id (so a
+   *  pre-migration credit, recorded only under the old evt-id key, still dedupes a same-event retry after
+   *  deploy). Each key is its own `evt:<key>` marker; markers + balance + tier are one atomic put, so a
+   *  crash can't mark it credited while losing the credit. (Phase 2b.) */
+  async credit(packBytes: number, grant: number, dedupeKeys: string[] = []): Promise<{ balance: number }> {
     await this.migrate();
-    if (dedupeKey && (await this.ctx.storage.get(`evt:${dedupeKey}`))) return { balance: await this.balance(grant) }; // already applied
+    for (const key of dedupeKeys) {
+      if (await this.ctx.storage.get(`evt:${key}`)) return { balance: await this.balance(grant) }; // already applied
+    }
     const newBalance = (await this.balance(grant)) + clampBytes(packBytes);
     const writes: Record<string, unknown> = { balance: newBalance, tier: "paid" satisfies Tier };
-    if (dedupeKey) writes[`evt:${dedupeKey}`] = true;
+    for (const key of dedupeKeys) writes[`evt:${key}`] = true;
     await this.ctx.storage.put(writes);
     return { balance: newBalance };
   }

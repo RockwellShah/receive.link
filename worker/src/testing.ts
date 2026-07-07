@@ -240,12 +240,10 @@ export class MemoryReceiver {
         pend().delete(finalId); // downloaded -> no longer pending
         return { ok: true, alreadyPaid: false, balance: newBalance };
       },
-      async credit(packBytes: number, grant: number, eventId?: string): Promise<{ balance: number }> {
-        if (eventId) {
-          const ev = events.get(name) ?? events.set(name, new Set<string>()).get(name)!;
-          if (ev.has(eventId)) return { balance: bal(grant) };
-          ev.add(eventId);
-        }
+      async credit(packBytes: number, grant: number, dedupeKeys: string[] = []): Promise<{ balance: number }> {
+        const ev = events.get(name) ?? events.set(name, new Set<string>()).get(name)!;
+        if (dedupeKeys.some((k) => ev.has(k))) return { balance: bal(grant) }; // any key already seen -> duplicate
+        for (const k of dedupeKeys) ev.add(k);
         const newBalance = bal(grant) + clamp(packBytes);
         balances.set(name, newBalance);
         tiers.set(name, "paid");
