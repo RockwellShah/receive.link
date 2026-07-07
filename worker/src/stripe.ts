@@ -198,16 +198,20 @@ export async function verifyStripeSignature(rawBody: string, sigHeader: string, 
  *  event type / an unpaid or malformed session. The granted bytes are RE-DERIVED from the pack id (a known
  *  fixed dollar tier) and the price LOCKED into metadata at checkout — never a raw client/event byte amount,
  *  and bounded by the price clamp — so even an unexpected session in our Stripe account can only ever credit
- *  a known tier at a sane price. The event id makes the credit idempotent on a webhook retry. */
-export function parseCreditFromEvent(event: unknown): { rid: string; bytes: number; eventId: string } | null {
+ *  a known tier at a sane price. Idempotency keys on the CHECKOUT SESSION id (`data.object.id`), NOT the
+ *  Event id: Stripe can emit more than one Event object for the same session (Stripe's documented duplicate
+ *  class), so keying on the event id alone would credit one payment twice — the session id is stable. */
+export function parseCreditFromEvent(event: unknown): { rid: string; bytes: number; dedupeKey: string } | null {
   const e = event as {
     id?: unknown;
     type?: unknown;
-    data?: { object?: { payment_status?: unknown; amount_total?: unknown; currency?: unknown; metadata?: { rid?: unknown; pack?: unknown; price?: unknown } } };
+    data?: { object?: { id?: unknown; payment_status?: unknown; amount_total?: unknown; currency?: unknown; metadata?: { rid?: unknown; pack?: unknown; price?: unknown } } };
   };
   if (typeof e?.id !== "string" || e.type !== "checkout.session.completed") return null;
   const o = e.data?.object;
   if (!o || o.payment_status !== "paid") return null; // only credit a fully-paid session
+  const sessionId = typeof o.id === "string" ? o.id : "";
+  if (!sessionId) return null; // a real Checkout Session always has an id; refuse an anomalous one
   const rid = typeof o.metadata?.rid === "string" ? o.metadata.rid : "";
   const pack = typeof o.metadata?.pack === "string" ? o.metadata.pack : "";
   if (!rid || !isCheckoutPack(pack)) return null;
@@ -228,5 +232,5 @@ export function parseCreditFromEvent(event: unknown): { rid: string; bytes: numb
     if (o.amount_total < PACK_CENTS[pack]) return null;
     chargedCents = PACK_CENTS[pack];
   }
-  return { rid, bytes: bytesForCents(chargedCents, price), eventId: e.id };
+  return { rid, bytes: bytesForCents(chargedCents, price), dedupeKey: `s:${sessionId}` };
 }

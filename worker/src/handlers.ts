@@ -24,7 +24,7 @@ import { FETCH_CHALLENGE_INFO, fetchProofHex, hpkeSealTo, importKemPrivateKey, i
 import { recipientPkFromShareKeyBytes } from "../../shared/sharekey";
 import { sendConfirmEmail, sendDownloadEmail, sendDropLinkEmail } from "./email";
 import { cors, clientIp, corsOrigin, json, linkOrigin, logEvent, readJson } from "./http";
-import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes } from "./kv";
+import { DAY, HOUR, MINUTE, rateLimit, rateLimitBytes, rateLimitOnce } from "./kv";
 import { mintMagicToken } from "./magic";
 import { abortMultipart, completeMultipart, copyObject, createMultipart, deleteObject, fileKeyMetadataPrefixLen, objectInfo, presignGet, presignPut, presignUploadPart, validateFileKeyHeader } from "./r2";
 import { CUSTOM_PACK, createCheckoutSession, isCheckoutPack, packList, parseCreditFromEvent, priceCentsPerGb, stripeConfigured, verifyStripeSignature } from "./stripe";
@@ -676,11 +676,6 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       return json({ error: "file too large" }, 413, origin);
     }
 
-    // Per-link flood cap on the delivery link (gates the promotion/validation work below).
-    if (!(await rateLimit(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
-      return json({ error: "link is over its daily limit" }, 429, origin);
-    }
-
     // WHERE the delivered bytes live (SPEC-large-files):
     // IN-PLACE (new multipart bindings, `inplace: true`): the assembled object is already immutable —
     //   CompleteMultipartUpload consumed the uploadId (every sender part-URL is dead; no single-PUT URL
@@ -698,6 +693,16 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
       logEvent("invalid_ciphertext", { link: linkIdHex, size: finalInfo?.size ?? null });
       await deleteObject(env, finalId);
       return json({ error: "not a FileKey file" }, 422, origin);
+    }
+
+    // Per-link delivery cap, counted AFTER validation and ONCE per object (keyed on the stable staging
+    // objectId, so it survives the copy path's fresh finalId). This gates real deliveries, not attempts:
+    // an invalid completion 422s above without ever counting, and a 502-retry of the same object is a
+    // free re-count. (Before, this cap incremented on every completion attempt, so a public link could be
+    // locked for the day with a handful of tiny invalid objects.)
+    if (!(await rateLimitOnce(env.DROP_KV, `deliver:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY, body.objectId))) {
+      await deleteObject(env, finalId);
+      return json({ error: "link is over its daily limit" }, 429, origin);
     }
 
     let email: string;
@@ -1112,9 +1117,10 @@ export async function billingWebhook(req: Request, env: Env): Promise<Response> 
   }
   const credit = parseCreditFromEvent(event);
   if (credit) {
-    // credit() is idempotent on the Stripe event id, so a webhook retry can't double-credit.
+    // credit() is idempotent on the Checkout Session id, so neither a webhook retry nor a second Event
+    // object for the same session can double-credit one payment.
     const acct = env.RECEIVER.get(env.RECEIVER.idFromName(credit.rid));
-    await acct.credit(credit.bytes, freeGrantBytes(env), credit.eventId);
+    await acct.credit(credit.bytes, freeGrantBytes(env), credit.dedupeKey);
     logEvent("billing_credited", { bytes: credit.bytes }); // bytes only — never the rid/email
   }
   return new Response("ok", { status: 200 }); // 200 even for ignored event types, so Stripe stops retrying

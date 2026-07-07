@@ -254,16 +254,16 @@ export class ReceiverAccount extends DurableObject {
     return { ok: true, alreadyPaid: false, balance: balance - need };
   }
 
-  /** Add prepaid credit (a Stripe top-up) and mark the account paid. Idempotent on the Stripe event id so a
-   *  webhook retry can't double-credit: each credited event is its OWN `evt:<id>` storage key, and the
-   *  seen-marker + balance + tier are written in one atomic put so a crash can't mark the event credited
-   *  while losing the credit. (Phase 2b.) */
-  async credit(packBytes: number, grant: number, eventId?: string): Promise<{ balance: number }> {
+  /** Add prepaid credit (a Stripe top-up) and mark the account paid. Idempotent on `dedupeKey` — the
+   *  Checkout SESSION id, NOT the Event id, since Stripe can emit multiple Event objects for one session:
+   *  each credited key is its OWN `evt:<dedupeKey>` storage key, and the marker + balance + tier are
+   *  written in one atomic put so a crash can't mark it credited while losing the credit. (Phase 2b.) */
+  async credit(packBytes: number, grant: number, dedupeKey?: string): Promise<{ balance: number }> {
     await this.migrate();
-    if (eventId && (await this.ctx.storage.get(`evt:${eventId}`))) return { balance: await this.balance(grant) }; // already applied
+    if (dedupeKey && (await this.ctx.storage.get(`evt:${dedupeKey}`))) return { balance: await this.balance(grant) }; // already applied
     const newBalance = (await this.balance(grant)) + clampBytes(packBytes);
     const writes: Record<string, unknown> = { balance: newBalance, tier: "paid" satisfies Tier };
-    if (eventId) writes[`evt:${eventId}`] = true;
+    if (dedupeKey) writes[`evt:${dedupeKey}`] = true;
     await this.ctx.storage.put(writes);
     return { balance: newBalance };
   }

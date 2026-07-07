@@ -989,10 +989,12 @@ test("stripe: signature verify accepts any v1 during a secret rotation", async (
 });
 
 test("stripe: parseCreditFromEvent credits only a PAID session with a known pack, bytes from the LOCKED price", async () => {
-  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid: "rid_x", pack: "p10", price: "1" }, ...obj } } });
-  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, eventId: "evt_1" }); // $10 @ 1c/GB = 1 TB
+  const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { id: "cs_1", payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid: "rid_x", pack: "p10", price: "1" }, ...obj } } });
+  // Idempotency key is the SESSION id (s:cs_1), not the event id — Stripe can emit >1 event per session.
+  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, dedupeKey: "s:cs_1" }); // $10 @ 1c/GB = 1 TB
   // The bytes follow the price LOCKED in the session, not the live knob: same $10 pack stamped at 10c/GB -> 100 GB.
-  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, eventId: "evt_1" });
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, dedupeKey: "s:cs_1" });
+  expect(parseCreditFromEvent(ev({ id: undefined }))).toBeNull(); // no session id -> refuse (can't dedupe)
   expect(parseCreditFromEvent(ev({ payment_status: "unpaid" }))).toBeNull(); // not paid
   expect(parseCreditFromEvent(ev({ amount_total: 100 }))).toBeNull(); // underpaid for p10 ($1 < $10)
   expect(parseCreditFromEvent(ev({ currency: "eur" }))).toBeNull(); // wrong currency
@@ -1051,13 +1053,13 @@ test("stripe: createCheckoutSession for 'custom' is the two-call flow (price, th
 });
 
 test("stripe: parseCreditFromEvent credits an 'Other amount' from the VERIFIED amount_total, bounded", async () => {
-  const ev = (obj: object) => ({ id: "evt_c", type: "checkout.session.completed", data: { object: { payment_status: "paid", currency: "usd", metadata: { rid: "rid_x", pack: "custom", price: "1" }, ...obj } } });
+  const ev = (obj: object) => ({ id: "evt_c", type: "checkout.session.completed", data: { object: { id: "cs_c", payment_status: "paid", currency: "usd", metadata: { rid: "rid_x", pack: "custom", price: "1" }, ...obj } } });
   // $30 custom @ 1c/GB = 3,000 GB, derived from the actual amount paid (no fixed tier to re-derive from).
-  expect(parseCreditFromEvent(ev({ amount_total: 3000 }))).toEqual({ rid: "rid_x", bytes: 3_000_000_000_000, eventId: "evt_c" });
+  expect(parseCreditFromEvent(ev({ amount_total: 3000 }))).toEqual({ rid: "rid_x", bytes: 3_000_000_000_000, dedupeKey: "s:cs_c" });
   expect(parseCreditFromEvent(ev({ amount_total: 999 }))).toBeNull(); // below the $10 floor
   expect(parseCreditFromEvent(ev({ amount_total: 1_000_001 }))).toBeNull(); // above the $10,000 ceiling
   // The locked price still sets the rate: $30 @ 10c/GB = 300 GB.
-  expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, eventId: "evt_c" });
+  expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, dedupeKey: "s:cs_c" });
 });
 
 test("billing: the price is one env knob; packs + labels derive from it", async () => {
@@ -1189,18 +1191,21 @@ test("billing checkout: a proven request returns a Stripe Checkout URL", async (
   }
 });
 
-test("billing webhook: a signed paid session credits the account, idempotent on the event id", async () => {
+test("billing webhook: a paid session credits once, idempotent even across DISTINCT event ids for one session", async () => {
   const secret = "whsec_test";
   const h = await makeTestEnv({ STRIPE_WEBHOOK_SECRET: secret, FREE_GRANT_BYTES: "0" });
   const rid = await receiverId(h.env, "receiver@example.com");
-  const body = JSON.stringify({ id: "evt_42", type: "checkout.session.completed", data: { object: { payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid, pack: "p10", price: "1" } } } });
   const now = Math.floor(Date.now() / 1000);
-  const hook = async () => billingWebhook(new Request("http://x/billing/webhook", { method: "POST", headers: { "stripe-signature": await stripeSig(secret, body, now) }, body }), h.env);
+  // Two DIFFERENT event ids (evt_42 / evt_99) for the SAME Checkout Session (cs_777): Stripe's documented
+  // duplicate class. Keying idempotency on the session id must credit exactly once.
+  const evt = (id: string) => JSON.stringify({ id, type: "checkout.session.completed", data: { object: { id: "cs_777", payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid, pack: "p10", price: "1" } } } });
+  const hook = async (id: string) => { const body = evt(id); return billingWebhook(new Request("http://x/billing/webhook", { method: "POST", headers: { "stripe-signature": await stripeSig(secret, body, now) }, body }), h.env); };
   const acct = h.env.RECEIVER.get(h.env.RECEIVER.idFromName(rid));
-  expect((await hook()).status).toBe(200);
+  expect((await hook("evt_42")).status).toBe(200);
   expect((await acct.summary(0)).balance).toBe(1_000_000_000_000); // p10 @ 1c/GB = 1 TB (grant 0)
-  expect((await hook()).status).toBe(200); // webhook retry, same event id
-  expect((await acct.summary(0)).balance).toBe(1_000_000_000_000); // not double-credited
+  expect((await hook("evt_42")).status).toBe(200); // same-event retry
+  expect((await hook("evt_99")).status).toBe(200); // DIFFERENT event, SAME session
+  expect((await acct.summary(0)).balance).toBe(1_000_000_000_000); // still credited ONCE, not 2-3x
 });
 
 test("billing webhook: a bad signature is rejected (400) and credits nothing", async () => {
@@ -1246,4 +1251,23 @@ test("upload-init: no per-link cap, so a public link can't be locked by no-op in
     const status = (await uploadInit(post("/upload-init", { payload: link, size: 100 }, `9.9.${i}.1`), h.env)).status;
     expect(status).toBe(200); // never 429 on a per-link basis
   }
+});
+
+test("deliver:link cap counts real deliveries, not invalid completions (no public-link DoS at complete)", async () => {
+  // Codex's finding: the per-link cap was burned at complete BEFORE FileKey validation, so 25 tiny invalid
+  // objects could lock a public link for the day without delivering anything. Now it counts once per
+  // VALIDATED object. Fire 30 invalid completions (each 422) from different IPs; the link must stay usable.
+  const h = await makeTestEnv();
+  const link = await setupLink(h);
+  for (let i = 0; i < 30; i++) {
+    const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 6 }, `7.7.${i}.1`), h.env)).json()) as { objectId: string };
+    h.r2.putRaw(objectId, new Uint8Array([1, 2, 3, 4, 5, 6])); // not a FileKey container -> 422 at validation
+    expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }, `7.7.${i}.1`), h.env)).status).toBe(422);
+  }
+  // The link is NOT locked: a real delivery still goes through.
+  const before = h.email.sent.length;
+  const { objectId } = (await (await uploadInit(post("/upload-init", { payload: link, size: 200 }), h.env)).json()) as { objectId: string };
+  h.r2.putRaw(objectId, fkeyCiphertext(200));
+  expect((await uploadComplete(post("/upload-complete", { payload: link, objectId }), h.env)).status).toBe(200);
+  expect(h.email.sent.length).toBe(before + 1); // delivered
 });
