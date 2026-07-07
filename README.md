@@ -2,21 +2,19 @@
 
 Receive files only you can open. Share one link, and everything sent through it arrives **end-to-end encrypted to your passkey**. No accounts, no passwords, no tracking.
 
-> 🛡️ **receive.link is privacy-first and live at [receive.link](https://receive.link).** Files are encrypted in the sender's browser before they ever touch a server. We only ever hold the locked version, and we never have a key.
+> 🛡️ **receive.link is free to try, open-source, and privacy-first.** Live at [receive.link](https://receive.link).
 
 ---
 
 ### 🚀 Features
 
-- ✅ **One link, any sender.** People sending you files just open your link in a browser. No app, no sign-up, no passkey needed on their side.
-- ✅ **End-to-end encrypted.** Files are sealed to your passkey on the sender's device. The relay cannot read them, ever.
-- ✅ **Passkey-based.** Your encryption identity comes from the passkey you already have (Face ID, fingerprint, security key, password manager). Nothing new to remember.
-- ✅ **Huge files.** Up to **5 terabytes** per file, streamed straight to object storage.
-- ✅ **Self-cleaning.** Every file auto-deletes from the server after 7 days. You can also delete a file the moment you save it, or delete junk without saving it at all.
-- ✅ **You stay in control.** Turn a link off anytime and new files stop arriving. Your credit stays yours.
-- ✅ **Fair pricing.** Sending is always free. Your first 1 GB of downloads is free, then a penny per GB, prepaid. No subscription.
-- ✅ **Email notifications without a database.** Your address is sealed inside your own link and unsealed only in memory to send each notification. It is never stored.
-- ✅ **Open source.** GPL-3.0-or-later, client and server both, so every claim above is verifiable.
+- ✅ **Free to try, no subscriptions.** Sending is always free. First 1GB of downloads is free, then a penny per GB after that.
+- ✅ **One link, any sender.** People just open your share link in their browser and upload. No app, no sign-ups.
+- ✅ **End-to-end encrypted.** Files are sealed to your passkey on the sender's device. No one else can ever read them.
+- ✅ **Passkey-based.** No accounts. Your encryption identity comes from your passkey (Face ID, fingerprint, etc)
+- ✅ **Supports huge files.** Supports up to 5 terabytes per file.
+- ✅ **We never store your email address.** It's sealed inside your share link and we never store it.
+- ✅ **Open source.** Licensed under GPLv3.
 
 ---
 
@@ -26,13 +24,13 @@ Receive files only you can open. Share one link, and everything sent through it 
    Unlock with your passkey, confirm your email once, and you get a permanent link like `receive.link/u#...` to share anywhere: an email signature, a bio, a QR code.
 
 2. **Anyone sends**<br>
-   They open your link, drop in files, done. Their browser encrypts everything to your public key and uploads the sealed result directly to storage.
+   They open your link, drop in files, done. Their browser encrypts everything to your passkey and uploads it for you automatically.
 
 3. **You get an email**<br>
-   One notification per delivery, with a download link. The email never contains the file or any key.
+   One notification per delivery, with a secure download link. The email never contains the file itself.
 
 4. **Only you can open it**<br>
-   The download page asks for your passkey, decrypts on your device, and saves the file. Re-downloads are free, and a Delete button removes the server copy whenever you're ready.
+   The download page asks for your passkey, decrypts on your device, and saves the file. Re-downloads are free, and a delete button removes the server copy whenever you're ready.
 
 ---
 
@@ -40,7 +38,7 @@ Receive files only you can open. Share one link, and everything sent through it 
 
 Receiving a file costs nothing until you download it. Then it's pay-as-you-go:
 
-| | |
+| Step | Cost |
 |---|---|
 | **First 1 GB** | free for every account |
 | **After that** | $0.01 per GB you download, prepaid |
@@ -71,13 +69,13 @@ Synced passkeys (iCloud Keychain, Google Password Manager) follow you across dev
 
 Your identity is derived, not stored. Authenticating runs your passkey's PRF extension over a fixed input, producing a secret that never leaves your device; HKDF-SHA-256 turns it into a long-term P-256 key pair bound to the `receive.link` namespace. The same passkey always reproduces the same identity, so there is no account record anywhere.
 
-Files are sealed with HPKE ([RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html): DHKEM-P256 + HKDF-SHA-256 + AES-256-GCM) in a streaming, chunked construction, so a 5 TB file encrypts and decrypts without ever being held in memory. The sender's browser uploads the ciphertext directly to object storage through short-lived presigned URLs; the coordination server never proxies file bytes.
+Files are sealed with HPKE ([RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html): DHKEM-P256 + HKDF-SHA-256 + AES-256-GCM) in a streaming, chunked construction, so a 5TB file encrypts and decrypts without ever being held in memory. The sender's browser uploads the ciphertext directly to object storage through short-lived presigned URLs; the coordination server never proxies file bytes.
 
 Three independent layers stand between your files and anyone else:
 
 1. **Downloads are proof-gated.** The server seals a one-time challenge to your public key; only your passkey-derived private key can answer it. No proof, no download URL.
 2. **Storage is private.** Objects live in a non-public bucket under unguessable ids, reachable only through 5-minute presigned URLs issued after a valid proof.
-3. **The content is ciphertext anyway.** Even a leaked object is sealed to your key. The most the server ever learns is a file's size and when it moved, the way a post office sees a sealed envelope without opening it.
+3. **The content is ciphertext anyway.** Even a leaked object is sealed to your key. The most the server ever learns is a file's size and when it moved.
 
 Your link itself is signed (ECDSA P-256), so a tampered or forged link fails closed. The deeper walkthrough lives at [receive.link/technical](https://receive.link/technical) and in [HOW-IT-WORKS.md](HOW-IT-WORKS.md).
 
