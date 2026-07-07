@@ -1193,3 +1193,15 @@ test("upload-init: a per-IP request flood is capped (429) before the ECDSA verif
   expect((await uploadInit(post("/upload-init", { payload: link, size: 100 }), h.env)).status).toBe(200);
   expect((await uploadInit(post("/upload-init", { payload: link, size: 100 }), h.env)).status).toBe(429);
 });
+
+test("upload-init: no per-link cap, so a public link can't be locked by no-op init calls", async () => {
+  // The per-link daily limit lives at COMPLETE (deliver:link), not init. Many inits to one link from
+  // DIFFERENT IPs (to dodge the per-IP cap) must all pass — previously the 26th 429'd on up:link, which
+  // let anyone disable a public link for a day with 25 no-upload init calls.
+  const h = await makeTestEnv();
+  const link = await setupLink(h);
+  for (let i = 0; i < 30; i++) {
+    const status = (await uploadInit(post("/upload-init", { payload: link, size: 100 }, `9.9.${i}.1`), h.env)).status;
+    expect(status).toBe(200); // never 429 on a per-link basis
+  }
+});

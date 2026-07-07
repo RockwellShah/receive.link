@@ -426,9 +426,10 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   } catch {
     return json({ error: "invalid link" }, 400, origin);
   }
-  if (!(await rateLimit(env.DROP_KV, `up:link:${linkIdHex}`, UPLOAD_LINK_PER_DAY, DAY))) {
-    return json({ error: "link is over its daily limit" }, 429, origin);
-  }
+  // NO per-link cap at INIT: the per-link daily limit is enforced at upload-COMPLETE (deliver:link),
+  // where it counts real DELIVERIES. Capping init calls per-link let anyone with a public link disable
+  // it for a day with UPLOAD_LINK_PER_DAY no-op inits (no upload, no self-heal). Init stays bounded
+  // per-IP (the pre-verify flood gate + up:ip below); the inbox is protected at delivery.
   const ipHash = gate.ipHash;
   if (!(await rateLimit(env.DROP_KV, `up:ip:${ipHash}`, UPLOAD_IP_PER_DAY, DAY))) {
     return json({ error: "rate limited" }, 429, origin);

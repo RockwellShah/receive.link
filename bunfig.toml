@@ -1,0 +1,4 @@
+[test]
+# Resolve `cloudflare:workers` to a no-op DurableObject base so the real DOs can be unit-tested
+# against a fake storage (worker/src/receiver.test.ts). Harmless to all other tests.
+preload = ["./worker/src/do-stub.preload.ts"]
