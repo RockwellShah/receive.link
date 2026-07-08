@@ -1,6 +1,6 @@
 # 📥 receive.link
 
-Receive files only you can open. Share one link, and everything sent through it arrives **end-to-end encrypted to your passkey**. No accounts, no passwords, no tracking.
+**Receive files only you can open**. Share one link, and everything sent through it arrives end-to-end encrypted to your passkey. No accounts, no subscriptions, no tracking.
 
 > 🛡️ **receive.link is free to try, open-source, and privacy-first.** Live at [receive.link](https://receive.link).
 
@@ -8,12 +8,11 @@ Receive files only you can open. Share one link, and everything sent through it 
 
 ### 🚀 Features
 
-- ✅ **Free to try, no subscriptions.** Sending is always free. First 1GB of downloads is free, then a penny per GB after that.
-- ✅ **One link, any sender.** People just open your share link in their browser and upload. No app, no sign-ups.
-- ✅ **End-to-end encrypted.** Files are sealed to your passkey on the sender's device. No one else can ever read them.
-- ✅ **Passkey-based.** No accounts. Your encryption identity comes from your passkey (Face ID, fingerprint, etc)
+- ✅ **One link sharing.** Receive files easily with one link. No app, no accounts.
+- ✅ **Only you can open.** Each file is end-to-end encrypted, locked to your passkey in the sender's browser before it uploads.
 - ✅ **Supports huge files.** Supports up to 5 terabytes per file.
-- ✅ **We never store your email address.** It's sealed inside your share link and we never store it.
+- ✅ **No Subscriptions.** First 1GB of downloads is free, then a penny per GB after that.
+- ✅ **Privacy focused.** We never store your email, IP address, or track you.
 - ✅ **Open source.** Licensed under GPLv3.
 
 ---
@@ -24,13 +23,10 @@ Receive files only you can open. Share one link, and everything sent through it 
    Unlock with your passkey, confirm your email once, and you get a permanent link like `receive.link/u#...` to share anywhere: an email signature, a bio, a QR code.
 
 2. **Anyone sends**<br>
-   They open your link, drop in files, done. Their browser encrypts everything to your passkey and uploads it for you automatically.
+   They drop a file through your link. It locks in their browser to your passkey before it uploads. No account, no app.
 
-3. **You get an email**<br>
-   One notification per delivery, with a secure download link. The email never contains the file itself.
-
-4. **Only you can open it**<br>
-   The download page asks for your passkey, decrypts on your device, and saves the file. Re-downloads are free, and a delete button removes the server copy whenever you're ready.
+3. **Only you can open it**<br>
+   We email you a secure download link to the file which only your passkey can unlock. No one in between can read it.
 
 ---
 
@@ -45,7 +41,7 @@ Receiving a file costs nothing until you download it. Then it's pay-as-you-go:
 | **Re-downloads** | free |
 | **Sending** | always free |
 
-Credit never expires, belongs to you rather than to any one link, and doubles as your inbox capacity: the un-downloaded files sitting in your inbox can never exceed what your balance could download, so nothing can pile up that you couldn't open. Ignored files expire in 7 days and give the capacity back.
+Credit never expires, and belongs to you rather than to any one link. Ignored files you don't download expire in 7 days and you're never charged for them.
 
 ---
 
