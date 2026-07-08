@@ -93,14 +93,12 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
   const creditText = accountUrl
     ? `YOUR DOWNLOAD CREDIT\n` +
       `You start with ${grant} of free download credit, spent only when you download a file. Add more anytime, it never expires.\n\n` +
-      `Add credit: ${accountUrl}\n\n` +
-      `- - - - - -\n\n`
+      `Add credit: ${accountUrl}\n`
     : "";
   const creditHtml = accountUrl
     ? head("Your download credit") +
       para(`You start with ${grant} of free download credit, spent only when you download a file. Add more anytime, it never expires.`) +
-      button(accountUrl, "Add credit") +
-      rule
+      button(accountUrl, "Add credit")
     : "";
   const text =
     `Your share link${lbl} is ready.\n\n` +
@@ -113,10 +111,8 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
     `DISABLE THIS LINK\n` +
     `Keep this link private. If you ever want to stop receiving files through this ` +
     `receiver, use the link below:\n\n` +
-    `${manageUrl}\n\n` +
-    `- - - - - -\n\n` +
-    creditText +
-    `Only you can open the files. We can't see them, and we don't store your email address.\n`;
+    `${manageUrl}\n` +
+    (creditText ? `\n- - - - - -\n\n` + creditText : "");
   const html = wrap(
     intro(`Your share link${label ? ` <strong>"${esc(label)}"</strong>` : ""} is ready.`) +
       head("Share this link") +
@@ -129,9 +125,7 @@ export async function sendDropLinkEmail(env: Env, to: string, dropUrl: string, m
       para("Keep this link private.") +
       para("If you ever want to stop receiving files through this receiver, use the link below.") +
       urlBox(manageUrl) +
-      rule +
-      creditHtml +
-      para("Only you can open the files. We can't see them, and we don't store your email address."),
+      (creditHtml ? rule + creditHtml : ""),
   );
   await sendMail(env, { to, subject, text, html });
 }
