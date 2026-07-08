@@ -200,7 +200,6 @@ export async function sendDownloadEmail(
     `Link expires in 7 days.\n\n` +
     `- - - - - -\n\n` +
     creditText +
-    `Only you can open this file.\n` +
     (manageUrl ? `\nNeed to stop receiving files through ${label ? `"${label}"` : "this link"}?\n${manageUrl}\n` : "");
   const html = wrap(
     intro(`A file was sent to your link${label ? ` <strong>"${esc(label)}"</strong>` : ""}.`) +
@@ -211,7 +210,6 @@ export async function sendDownloadEmail(
       rule +
       creditHtml +
       (credit ? rule : "") +
-      para("Only you can open this file.") +
       (manageUrl
         ? para(`Need to stop receiving files through ${label ? `<strong>${esc(label)}</strong>` : "this link"}?`) +
           quietLink(manageUrl, "Disable this link")
