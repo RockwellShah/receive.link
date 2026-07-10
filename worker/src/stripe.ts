@@ -44,9 +44,13 @@ export function priceCentsPerGb(env: Env): number {
   return clampPrice(env.PRICE_CENTS_PER_GB ? parseInt(env.PRICE_CENTS_PER_GB, 10) : NaN);
 }
 
-/** Bytes a dollar tier grants at a given price: tier_cents / price_cents_per_gb GB. */
+/** Bytes a dollar tier grants at a given price: tier_cents / price_cents_per_gb GB. Multiply BEFORE
+ *  dividing so a valid amount credits EXACT bytes: amountCents (<= CUSTOM_MAX_CENTS = 1e6) times GB (1e9)
+ *  stays under Number.MAX_SAFE_INTEGER, whereas the float form (amountCents/price)*GB loses a byte on
+ *  amounts like 1001c @ 125c/GB (8,008,000,000 exact vs 8,007,999,999 in binary float), and the webhook's
+ *  dedupe markers would make that under-credit permanent. */
 function bytesForCents(amountCents: number, priceCentsPerGb: number): number {
-  return Math.floor((amountCents / priceCentsPerGb) * GB);
+  return Math.floor((amountCents * GB) / priceCentsPerGb);
 }
 
 /** Human pack/credit size for labels. ALWAYS GB (never rolls up to TB), with thousands separators, so a
@@ -207,7 +211,14 @@ export function parseCreditFromEvent(event: unknown): { rid: string; bytes: numb
     type?: unknown;
     data?: { object?: { id?: unknown; payment_status?: unknown; amount_total?: unknown; currency?: unknown; metadata?: { rid?: unknown; pack?: unknown; price?: unknown } } };
   };
-  if (typeof e?.id !== "string" || e.type !== "checkout.session.completed") return null;
+  // Credit on EITHER the synchronous completion OR a delayed method settling later. A delayed payment
+  // (ACH/Klarna/etc.) fires checkout.session.completed with payment_status:"unpaid" (correctly skipped by
+  // the paid-check below), then settles via checkout.session.async_payment_succeeded with payment_status:
+  // "paid". Handling only the former would take the money and never credit it. Both events carry the same
+  // Checkout Session id and credit() dedupes on it, so a single payment can't be credited twice. (The
+  // webhook endpoint must SUBSCRIBE to async_payment_succeeded in the Stripe dashboard for it to arrive.)
+  const okType = e.type === "checkout.session.completed" || e.type === "checkout.session.async_payment_succeeded";
+  if (typeof e?.id !== "string" || !okType) return null;
   const o = e.data?.object;
   if (!o || o.payment_status !== "paid") return null; // only credit a fully-paid session
   const sessionId = typeof o.id === "string" ? o.id : "";

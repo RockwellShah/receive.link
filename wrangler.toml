@@ -102,7 +102,7 @@ REG_IP_PER_DAY = "1000"
 #   wrangler secret put HASH_SECRET               # long random (openssl rand -hex 32); keys ALL rate-limit hashing (IPs, emails, tokens). REQUIRED: without it every endpoint 503s (config_error)
 #   wrangler secret put RECEIVER_ID_SECRET        # long random; derives the per-recipient account id from the confirmed email. REQUIRED for every delivery even with billing off
 #   wrangler secret put STRIPE_SECRET_KEY         # sk_*; checkout 503s until BOTH this + the webhook secret are set
-#   wrangler secret put STRIPE_WEBHOOK_SECRET     # whsec_*; from the Stripe webhook (event checkout.session.completed) — register it at the WORKER url (/billing/webhook), never the Pages domain
+#   wrangler secret put STRIPE_WEBHOOK_SECRET     # whsec_*; from the Stripe webhook (events checkout.session.completed + checkout.session.async_payment_succeeded, the latter for delayed methods like ACH/Klarna) — register it at the WORKER url (/billing/webhook), never the Pages domain
 
 [env.production]
 name = "receive-link"
@@ -156,7 +156,9 @@ R2_ACCOUNT_ID = "30d5a45850ef3f60dcd4b75a5b5dd39b"
 R2_BUCKET = "receive-link-prod"
 MAX_UPLOAD_BYTES = "5000000000000"                 # 5 TB (in-place delivery removed the copy wall; see the staging note above)
 # Monetization: LIVE since 2026-07-05 (live Stripe key + webhook secret were set as prod secrets first;
-# the webhook is registered at the WORKER url /billing/webhook, event checkout.session.completed).
+# the webhook is registered at the WORKER url /billing/webhook, events checkout.session.completed +
+# checkout.session.async_payment_succeeded — the latter credits delayed methods (ACH/Klarna) that settle
+# after the session completes; without it a delayed payment would take the money and never credit).
 # Knob values decided with the user 2026-07-05. All byte knobs are DECIMAL (1 GB = 1000000000):
 # - Price stays the code default 1¢/GB (PRICE_CENTS_PER_GB unset).
 # - CAPACITY = CREDIT BALANCE (code, not a knob): a receiver's un-downloaded bytes at rest can never

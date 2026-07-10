@@ -1067,6 +1067,24 @@ test("stripe: parseCreditFromEvent credits an 'Other amount' from the VERIFIED a
   expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, dedupeKeys: ["s:cs_c", "evt_c"] });
 });
 
+test("stripe: a delayed method credits on async_payment_succeeded, NOT on the unpaid completion", async () => {
+  // A delayed method (ACH/Klarna) fires checkout.session.completed as UNPAID, then settles later via
+  // checkout.session.async_payment_succeeded. Crediting only the former would take the money and never
+  // credit; crediting the unpaid completion would credit before the money arrives. Handle exactly the
+  // settlement, deduped on the shared session id so it can't double with a same-session completed event.
+  const obj = { id: "cs_d", currency: "usd", amount_total: 1000, metadata: { rid: "rid_x", pack: "p10", price: "1" } };
+  expect(parseCreditFromEvent({ id: "evt_a", type: "checkout.session.completed", data: { object: { ...obj, payment_status: "unpaid" } } })).toBeNull();
+  expect(parseCreditFromEvent({ id: "evt_b", type: "checkout.session.async_payment_succeeded", data: { object: { ...obj, payment_status: "paid" } } }))
+    .toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, dedupeKeys: ["s:cs_d", "evt_b"] });
+});
+
+test("stripe: bytesForCents credits EXACT bytes (integer math, no binary-float under-credit)", async () => {
+  // 1001c @ 125c/GB = 8,008,000,000 bytes EXACTLY. The old (amount/price)*GB float form floored to
+  // 8,007,999,999, and the webhook's dedupe markers would make that lost byte permanent.
+  const ev = { id: "evt_x", type: "checkout.session.completed", data: { object: { id: "cs_x", payment_status: "paid", currency: "usd", amount_total: 1001, metadata: { rid: "rid_x", pack: "custom", price: "125" } } } };
+  expect(parseCreditFromEvent(ev)).toEqual({ rid: "rid_x", bytes: 8_008_000_000, dedupeKeys: ["s:cs_x", "evt_x"] });
+});
+
 test("billing: the price is one env knob; packs + labels derive from it", async () => {
   const cheap = await makeTestEnv({ BILLING_ENABLED: "1" }); // default 1¢/GB; billing on so /billing/packs serves
   expect(priceCentsPerGb(cheap.env)).toBe(1);

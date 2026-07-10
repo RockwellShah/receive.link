@@ -55,6 +55,7 @@ const PENDING_TTL_MS = 8 * DAY_MS;
 const PF = "pf:"; // per-file key prefixes
 const PD = "pd:";
 const CM = "cm:";
+const DISC = "disc:"; // a discarded delivery (tombstone), so a delayed/racing commitDelivered won't re-create pf:
 const PUT_BATCH = 128; // DO storage.put({...}) accepts at most 128 key-value pairs
 const LIST_PAGE = 1000; // paginate list() so a sum/prune is correct at any key count
 
@@ -75,8 +76,10 @@ export class ReceiverAccount extends DurableObject {
   private async committed(): Promise<number> {
     return (await this.ctx.storage.get<number>("total")) ?? 0;
   }
-  /** Credit balance in bytes; lazy-seeded to the free grant the first time it's read for an account that
-   *  has never been credited or charged (so a brand-new receiver starts with the free 1 GB). */
+  /** Credit balance in bytes; lazy-seeded to the free grant when absent (a brand-new receiver starts with
+   *  the free 1 GB). The seed is MATERIALIZED into storage on the first enforced reserve (and by any
+   *  charge/credit), so a later FREE_GRANT_BYTES change can't retroactively re-balance an account that has
+   *  already admitted or downloaded files against the grant it was created under. */
   private async balance(grant: number): Promise<number> {
     return (await this.ctx.storage.get<number>("balance")) ?? clampBytes(grant);
   }
@@ -173,18 +176,25 @@ export class ReceiverAccount extends DurableObject {
     const now = Date.now();
     const res = await this.holds();
     this.prune(res, now);
+    let seed: Record<string, unknown> = {};
     if (enforce) {
-      const capacity = await this.balance(grant);
+      const stored = await this.ctx.storage.get<number>("balance");
+      const capacity = stored ?? clampBytes(grant);
+      // Materialize the free grant into a real balance on first enforced use, so a later FREE_GRANT_BYTES
+      // change can't retroactively re-balance an account that already admitted files against the old grant
+      // (a lowered grant could otherwise strand an at-rest file it can no longer cover). The seed is a fact
+      // about this account regardless of whether THIS upload fits, so it's persisted even on rejection.
+      if (stored === undefined) seed = { balance: capacity };
       const atRest = await this.sumPending(now);
       if (atRest + this.liveReserved(res, now) + add > capacity) {
-        await this.ctx.storage.put("res", res); // persist the prune
+        await this.ctx.storage.put({ res, ...seed }); // persist the prune (+ seed the grant on first touch)
         await this.rescheduleAlarm(res);
         return { ok: false };
       }
     }
     const token = crypto.randomUUID();
     res[token] = { bytes: add, expiresAt: now + RESERVATION_TTL_MS };
-    await this.ctx.storage.put("res", res);
+    await this.ctx.storage.put({ res, ...seed });
     await this.rescheduleAlarm(res);
     return { ok: true, token };
   }
@@ -203,9 +213,12 @@ export class ReceiverAccount extends DurableObject {
     if (await this.liveMarker(CM + finalId, now)) return; // already counted (idempotent per delivery id)
     const writes: Record<string, unknown> = { total: (await this.committed()) + clampBytes(bytes), [CM + finalId]: now + FILE_TTL_MS };
     if (accruePending) {
-      // An already-downloaded file is NOT pending: a delayed commit (crash-then-retry racing a fast
-      // receiver) must not resurrect a paid file's capacity hold.
-      if (!(await this.liveMarker(PD + finalId, now))) {
+      // A file already DOWNLOADED (pd:) or DISCARDED (disc:) is NOT sitting at rest, so a delayed commit —
+      // a stalled/crash-retried completion racing a fast receiver who downloads or discards in the window
+      // between the delivery email and this accounting commit — must not resurrect its capacity hold. Both
+      // markers are delivery-scoped and outlive the object, so the check is race-safe.
+      const settled = (await this.liveMarker(PD + finalId, now)) || (await this.liveMarker(DISC + finalId, now));
+      if (!settled) {
         writes[PF + finalId] = { bytes: clampBytes(bytes), expiresAt: now + PENDING_TTL_MS } satisfies PendingFile;
       }
     }
@@ -217,6 +230,14 @@ export class ReceiverAccount extends DurableObject {
    *  idempotent, and purely an accelerator — the entry self-expires either way. */
   async releasePending(finalId: string): Promise<void> {
     await this.migrate();
+    const now = Date.now();
+    // Tombstone the discard BEFORE deleting pf:, so if this discard is racing a still-in-flight
+    // commitDelivered (a completion stalled between its delivery email and its accounting commit) that later
+    // commit sees disc: and skips re-creating pf: — otherwise a discarded file would hold capacity until the
+    // 8-day pending TTL. In the normal case (discard after the commit) pf: exists and is deleted; the
+    // tombstone is harmless (that finalId already committed and commitDelivered is cm:-idempotent).
+    // Delivery-scoped (FILE_TTL), pruned by the alarm like pd:/cm:.
+    await this.ctx.storage.put(DISC + finalId, now + FILE_TTL_MS);
     await this.ctx.storage.delete(PF + finalId);
   }
 
@@ -304,7 +325,7 @@ export class ReceiverAccount extends DurableObject {
   /** Delete expired per-file marker keys across all three prefixes (paginated + batch-deleted). Hygiene
    *  only: reads filter on expiresAt, so a not-yet-pruned dead key never affects a sum or an existence check. */
   private async pruneExpiredMarkers(now: number): Promise<void> {
-    for (const prefix of [PF, PD, CM]) {
+    for (const prefix of [PF, PD, CM, DISC]) {
       const expired: string[] = [];
       let startAfter: string | undefined;
       for (;;) {

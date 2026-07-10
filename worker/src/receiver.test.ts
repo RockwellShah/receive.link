@@ -78,6 +78,31 @@ test("releasePending: frees a discarded file's capacity immediately", async () =
   expect((await a.summary(300)).pending).toBe(0);
 });
 
+test("releasePending tombstones the discard so a DELAYED commit can't resurrect the pending hold", async () => {
+  const { a } = acct();
+  // The race: a completion stalls between its delivery email and its accounting commit; the receiver
+  // proves possession and discards FIRST. releasePending runs before commitDelivered has written pf:.
+  await a.releasePending("early");
+  await a.commitDelivered("early", 200, true); // the stalled completion finally commits
+  expect((await a.summary(1000)).pending).toBe(0); // disc: tombstone -> no phantom hold to the 8-day TTL
+  expect((await a.summary(1000)).total).toBe(200); // the delivery is still metered
+});
+
+test("reserve materializes the free grant, so a later FREE_GRANT_BYTES change can't re-balance the account", async () => {
+  const { a, s } = acct();
+  const ok = await a.reserve(800, 1000, true); // admit 800 against a 1000-byte grant
+  expect(ok.ok).toBe(true);
+  expect(s.map.get("balance")).toBe(1000); // the grant is now a PERSISTED balance, not a config echo
+  expect((await a.summary(500)).balance).toBe(1000); // lowering the grant does NOT retroactively shrink it
+});
+
+test("reserve materializes the grant even when the reservation is REJECTED", async () => {
+  const { a, s } = acct();
+  const rej = await a.reserve(2000, 1000, true); // 2000 > 1000 grant -> reject
+  expect(rej.ok).toBe(false);
+  expect(s.map.get("balance")).toBe(1000); // seed persisted regardless of whether this upload fit
+});
+
 test("credit: adds balance, flips to paid, idempotent on the Stripe event id", async () => {
   const { a } = acct();
   const r1 = await a.credit(1000, 0, ["s:cs_1", "evt_1"]);
