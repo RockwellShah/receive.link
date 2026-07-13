@@ -47,7 +47,7 @@ Credit never expires, and belongs to you rather than to any one link. Ignored fi
 
 ### 💾 Supported systems
 
-Only the **receiver** needs a passkey, and it must come from a provider that supports the WebAuthn **PRF extension**: Apple Passwords, Google Password Manager, 1Password, a YubiKey 5, and similar. Senders just need a modern browser.
+Only the receiver needs a passkey, and it must come from a provider that supports the WebAuthn PRF extension: Apple Passwords, Google Password Manager, 1Password, a YubiKey 5, and similar. Senders just need a modern browser.
 
 | Platform | Passkey providers | Notes |
 |----------|-------------------|-------|
@@ -89,8 +89,6 @@ bun run typecheck     # worker/shared AND the browser client
 ```
 
 Captured emails (confirm + download links) appear at `http://localhost:8080/__mail`, so you can drive the entire create → send → receive flow on your machine. The full dev guide, test map, and conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
-
-> Some internal identifiers (`DropLink`, `DropApi`, the vendored `web/core`) predate the receive.link name and carry an older working title. The brand is receive.link; the code is catching up.
 
 ---
 
