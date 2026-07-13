@@ -9,7 +9,7 @@
 ### 🚀 Features
 
 - ✅ **One link sharing.** Receive files easily with one link. No app, no accounts.
-- ✅ **Only you can open.** Each file is end-to-end encrypted, locked to your passkey in the sender's browser before it uploads.
+- ✅ **Only you can open.** Each file is end-to-end encrypted, locked to your passkey.
 - ✅ **Supports huge files.** Supports up to 5 terabytes per file.
 - ✅ **No Subscriptions.** First 1GB of downloads is free, then a penny per GB after that.
 - ✅ **Privacy focused.** We never store your email, IP address, or track you.
