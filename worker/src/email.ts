@@ -30,9 +30,11 @@ async function sendMail(env: Env, mail: Mail): Promise<void> {
       logEvent("email_send_failed", { provider: "postmark", status: res.status }); // status only — never the recipient
       throw new Error(`postmark send failed (${res.status})`);
     }
+    logEvent("email_sent", { provider: "postmark" });
     return;
   }
   await env.EMAIL.send({ to: mail.to, from, subject: mail.subject, text: mail.text, html: mail.html });
+  logEvent("email_sent", { provider: "cloudflare" });
 }
 
 const BRAND = "#0F7A45"; // deep receive.link green for the CTA button — white text clears contrast and survives Gmail dark-mode inversion

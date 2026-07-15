@@ -312,6 +312,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
   const nonce = base64urlEncode(randomBytes(16));
   await env.DROP_KV.put(`pending:${nonce}`, base64urlEncode(region), { expirationTtl: CONFIRM_TTL_SEC });
   await sendConfirmEmail(env, email, `${linkOrigin(env)}/confirm#${nonce}`, label);
+  logEvent("register_email_sent");
   return json({ ok: true }, 202, origin);
 }
 
@@ -378,6 +379,7 @@ export async function confirm(req: Request, env: Env): Promise<Response> {
 
   // billingEnabled lets the result/confirm page gate its "you start with free download credit" messaging
   // (the gating rule: the worker is the source of truth, the client only shows credit copy when this is on).
+  logEvent("link_created");
   return json({ link: linkB64, revokeToken, billingEnabled: billingEnabled(env) }, 200, origin);
 }
 
@@ -398,6 +400,7 @@ export async function revoke(req: Request, env: Env): Promise<Response> {
   if (!linkIdHex) return json({ error: "invalid token" }, 404, origin);
   // Permanent flag (links are permanent); enforced at upload-init + upload-complete.
   await env.DROP_KV.put(`revoked:${linkIdHex}`, "1");
+  logEvent("link_revoked");
   return json({ ok: true }, 200, origin);
 }
 
@@ -425,6 +428,7 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   }
   const cap = maxUploadBytes(env);
   if (!Number.isInteger(body.size) || body.size <= 0 || body.size > cap) {
+    logEvent("upload_too_large", { kind: "declared", size: body.size });
     return json({ error: "file too large", maxBytes: cap }, 413, origin);
   }
 
@@ -432,17 +436,22 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   try {
     link = await parseAndVerify(body.payload, env);
   } catch {
+    logEvent("invalid_link");
     return json({ error: "invalid link" }, 400, origin);
   }
 
   const linkIdHex = hex(link.linkId);
-  if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) return json({ error: "link revoked" }, 410, origin);
+  if (await env.DROP_KV.get(`revoked:${linkIdHex}`)) {
+    logEvent("revoked_link_attempt");
+    return json({ error: "link revoked" }, 410, origin);
+  }
   // Fail FAST on an undeliverable share key (undecodable, or minted under the pre-2026-07-06
   // "filekey.app" namespace whose identities no longer derive): reject BEFORE the transfer, not after
   // a multi-GB upload dies at completion. Completion still re-validates (defense in depth).
   try {
     recipientPkFromShareKeyBytes(link.shareKey);
   } catch {
+    logEvent("invalid_link");
     return json({ error: "invalid link" }, 400, origin);
   }
   // NO per-link cap at INIT: the per-link daily limit is enforced at upload-COMPLETE (deliver:link),
@@ -495,6 +504,7 @@ export async function uploadInit(req: Request, env: Env): Promise<Response> {
   // and `partCount` (stored in the binding) caps how many part URLs we will ever sign.
   const partSize = computePartSize(body.size, env);
   const partCount = Math.ceil(body.size / partSize);
+  if (partCount > MAX_PARTS) logEvent("upload_too_large", { kind: "parts", size: body.size });
   if (partCount > MAX_PARTS) return json({ error: "file too large", maxBytes: cap }, 413, origin);
 
   const uploadId = await createMultipart(env, objectId);
@@ -673,6 +683,7 @@ export async function uploadComplete(req: Request, env: Env): Promise<Response> 
     if (!staged) return json({ error: "object not found" }, 404, origin);
     if (staged.size > maxUploadBytes(env)) {
       await deleteObject(env, body.objectId);
+      logEvent("upload_too_large", { kind: "actual" });
       return json({ error: "file too large" }, 413, origin);
     }
 
@@ -932,7 +943,10 @@ async function verifyFetchProof(req: Request, env: Env, origin: string, body: { 
     return { ok: false, resp: json({ error: "rate limited" }, 429, origin) };
   }
   const stored = await env.DROP_KV.get(`challenge:${challengeId}`);
-  if (!stored) return { ok: false, resp: json({ error: "challenge expired" }, 404, origin) };
+  if (!stored) {
+    logEvent("proof_failed", { reason: "expired" });
+    return { ok: false, resp: json({ error: "challenge expired" }, 404, origin) };
+  }
   await env.DROP_KV.delete(`challenge:${challengeId}`); // best-effort single-use (KV get+delete isn't atomic)
   let ch: { objectId: string; proof: string };
   try {
@@ -940,7 +954,10 @@ async function verifyFetchProof(req: Request, env: Env, origin: string, body: { 
   } catch {
     return { ok: false, resp: json({ error: "challenge expired" }, 404, origin) };
   }
-  if (!constantTimeEqualHex(proof, ch.proof)) return { ok: false, resp: json({ error: "proof failed" }, 403, origin) };
+  if (!constantTimeEqualHex(proof, ch.proof)) {
+    logEvent("proof_failed", { reason: "bad_proof" });
+    return { ok: false, resp: json({ error: "proof failed" }, 403, origin) };
+  }
   return { ok: true, objectId: ch.objectId };
 }
 
@@ -1016,6 +1033,7 @@ export async function fetchPreview(req: Request, env: Env): Promise<Response> {
       }
     }
   }
+  logEvent("preview_served");
   return new Response(buf.subarray(0, metaLen), { status: 200, headers });
 }
 
@@ -1027,7 +1045,8 @@ export async function fetchDownload(req: Request, env: Env): Promise<Response> {
   const v = await verifyFetchProof(req, env, origin, await readJson(req));
   if (!v.ok) return v.resp;
   // Confirm the object still exists BEFORE charging, so we never debit for a file that's already gone.
-  if (!(await objectInfo(env, v.objectId))) return json({ error: "expired or not found" }, 404, origin);
+  const info = await objectInfo(env, v.objectId);
+  if (!info) return json({ error: "expired or not found" }, 404, origin);
   if (billingEnabled(env)) {
     const bind = await loadFetchbind(env, v.objectId);
     // A challenge only mints for a bound object, so a missing bind here is anomalous (not a free pass) -> 404.
@@ -1038,12 +1057,16 @@ export async function fetchDownload(req: Request, env: Env): Promise<Response> {
       // file already paid and returns free, so a crash between charge and URL issue can't double-charge —
       // the retry re-proves, charge() says alreadyPaid, and the URL is re-issued.
       const result = await acct.charge(v.objectId, bind.size, freeGrantBytes(env));
-      if (!result.ok) return json({ error: "needs funds", needBytes: result.need, balanceBytes: result.balance }, 402, origin);
+      if (!result.ok) {
+        logEvent("download_402", { size: bind.size });
+        return json({ error: "needs funds", needBytes: result.need, balanceBytes: result.balance }, 402, origin);
+      }
     } else {
       logEvent("billing_skipped_no_rid"); // ONLY a legacy pre-Phase-2 binding (has pk+size, no rid) -> free
     }
   }
   const url = await presignGet(env, v.objectId, FETCH_URL_TTL_SEC);
+  logEvent("download_served", { size: info.size });
   return json({ url, expiresInSec: FETCH_URL_TTL_SEC }, 200, origin);
 }
 
@@ -1084,6 +1107,7 @@ export async function billingCheckout(req: Request, env: Env): Promise<Response>
       successUrl: `${base}/d/${v.objectId}?paid=1`, // back to the file; the client retries the download
       cancelUrl: `${base}/d/${v.objectId}`,
     });
+    logEvent("checkout_minted", { kind: body.pack });
     return json({ url }, 200, origin);
   } catch {
     logEvent("stripe_checkout_failed");
@@ -1107,6 +1131,7 @@ export async function billingWebhook(req: Request, env: Env): Promise<Response> 
   const raw = await req.text(); // RAW body: re-serialized JSON would break the signature
   if (raw.length > WEBHOOK_MAX_BYTES) return new Response("too large", { status: 413 });
   if (!(await verifyStripeSignature(raw, sig, env.STRIPE_WEBHOOK_SECRET, Math.floor(Date.now() / 1000)))) {
+    logEvent("webhook_bad_signature");
     return new Response("bad signature", { status: 400 });
   }
   let event: unknown;

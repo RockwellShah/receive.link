@@ -19,6 +19,9 @@ export interface Env {
   EMAIL: SendEmailBinding; // [[send_email]] name = "EMAIL"
   DROP_BUCKET: R2Bucket; // ciphertext relay (lifecycle TTL ~7 days)
   DROP_KV: KVNamespace; // confirm-nonce store + rate-limit counters
+  // Analytics Engine dataset: aggregate, PII-free metrics (one datapoint per logEvent; see http.ts).
+  // Optional so tests and the mock server run without it — metrics silently no-op when unbound.
+  METRICS?: AnalyticsEngineDataset;
   COMPLETION: DurableObjectNamespace<CompletionGuard>; // atomic per-object completion guard (exactly-once delivery)
   RECEIVER: DurableObjectNamespace<ReceiverAccount>; // persistent per-recipient account (inbound metering + capacity cap)
 

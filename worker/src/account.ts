@@ -64,6 +64,7 @@ export async function accountLogin(req: Request, env: Env): Promise<Response> {
   const mt = await mintMagicToken(env, rid, false); // self-service: single-use, 15 min
   try {
     await sendAccountLoginEmail(env, email, `${linkOrigin(env)}/credit#${mt}`);
+    logEvent("account_login_sent");
   } catch {
     logEvent("account_login_email_failed"); // still 202 (uniform); the user can retry
   }
@@ -89,6 +90,7 @@ export async function accountSession(req: Request, env: Env): Promise<Response> 
   const st = await mintSession(env, rid);
   const acct = env.RECEIVER.get(env.RECEIVER.idFromName(rid));
   const s = await acct.summary(freeGrantBytes(env));
+  logEvent("account_session_ok");
   return json({ token: st, tier: s.tier, balanceBytes: s.balance }, 200, origin);
 }
 
@@ -129,6 +131,7 @@ export async function accountCheckout(req: Request, env: Env): Promise<Response>
       successUrl: `${base}/credit?paid=1`, // back to the credit page; it polls summary until the balance rises
       cancelUrl: `${base}/credit`,
     });
+    logEvent("checkout_minted", { kind: body.pack });
     return json({ url }, 200, origin);
   } catch {
     logEvent("stripe_checkout_failed");

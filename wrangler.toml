@@ -22,6 +22,12 @@ bucket_name = "filekey-drop-staging"
 binding = "DROP_KV"
 id = "c277258851044785971403e8d458b76d"
 
+# Aggregate, PII-free metrics: one Analytics Engine datapoint per logEvent (worker/src/http.ts).
+# Per-env datasets keep prod numbers clean. Query with the AE SQL API or the dashboard explorer.
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "receive_link_metrics_staging"
+
 # Atomic per-object completion guard (exactly-once delivery). SQLite-backed Durable Object.
 [[durable_objects.bindings]]
 name = "COMPLETION"
@@ -128,6 +134,10 @@ bucket_name = "receive-link-prod"
 [[env.production.kv_namespaces]]
 binding = "DROP_KV"
 id = "c639ae5f915d4dc1bbc11ef8ba26e4e6"
+
+[[env.production.analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "receive_link_metrics"
 
 [[env.production.durable_objects.bindings]]
 name = "COMPLETION"

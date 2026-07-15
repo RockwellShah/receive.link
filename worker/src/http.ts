@@ -53,15 +53,45 @@ export function cors(origin: string): Record<string, string> {
   };
 }
 
+// Analytics Engine dataset for aggregate, PII-free metrics. Bound per-request by worker.ts (module
+// state is fine: every request of this worker binds the identical dataset). Unset in tests and the
+// mock server, where the metrics write silently no-ops.
+let metricsDataset: AnalyticsEngineDataset | undefined;
+export function bindMetrics(ds: AnalyticsEngineDataset | undefined): void {
+  metricsDataset = ds;
+}
+
+// The one low-cardinality dimension a datapoint carries beside the event name. Whitelisted fields
+// ONLY: ids, hashes, and free-text details must never become blobs (cardinality + hygiene).
+const METRIC_DIM_FIELDS = ["kind", "what", "provider", "reason", "status"] as const;
+
 /**
  * Structured log line for Cloudflare Workers logs (`wrangler tail` / Logpush). PRIVACY: object ids,
  * link-id hashes, sizes, and error tags only — NEVER emails, plaintext, ciphertext, or tokens.
+ * Every event ALSO writes one Analytics Engine datapoint (count 1, optional bytes, one whitelisted
+ * dimension), so the log call sites are the entire metrics instrumentation.
  */
 export function logEvent(event: string, fields: Record<string, unknown> = {}): void {
   try {
     console.log(JSON.stringify({ event, ...fields }));
   } catch {
     /* logging must never throw into a handler */
+  }
+  try {
+    let dim = "";
+    for (const f of METRIC_DIM_FIELDS) {
+      const v = fields[f];
+      if (typeof v === "string" && v) { dim = v; break; }
+      if (typeof v === "number" && Number.isFinite(v)) { dim = String(v); break; }
+    }
+    const size = fields.size ?? fields.bytes;
+    metricsDataset?.writeDataPoint({
+      indexes: [event],
+      blobs: [event, dim],
+      doubles: [1, typeof size === "number" && Number.isFinite(size) ? size : 0],
+    });
+  } catch {
+    /* metrics must never throw into a handler */
   }
 }
 

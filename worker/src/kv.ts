@@ -2,6 +2,8 @@
 // idempotency flags). All state here is short-lived and self-expiring — there is
 // no persistent email↔key store anywhere in FileKey Drop.
 
+import { logEvent } from "./http";
+
 export const MINUTE = 60;
 export const HOUR = 3600;
 export const DAY = 86400;
@@ -25,7 +27,12 @@ export async function rateLimit(
   const window = Math.floor(nowMs / 1000 / windowSec);
   const k = `rl:${key}:${window}`;
   const current = parseInt((await kv.get(k)) || "0", 10);
-  if (current >= limit) return false;
+  if (current >= limit) {
+    // The limiter KIND only (key minus its trailing hash/id segment): "reg:ip", "up:bytes:link",
+    // "billing:checkout:rid"... — the abuse dashboard's main dimension, never the subject.
+    logEvent("rate_limited", { kind: key.split(":").slice(0, -1).join(":") });
+    return false;
+  }
   await kv.put(k, String(current + 1), { expirationTtl: windowSec * 2 });
   return true;
 }
@@ -51,7 +58,10 @@ export async function rateLimitOnce(
   const window = Math.floor(nowMs / 1000 / windowSec);
   const k = `rl:${key}:${window}`;
   const current = parseInt((await kv.get(k)) || "0", 10);
-  if (current >= limit) return false; // over the cap; do NOT mark (this item was not counted/delivered)
+  if (current >= limit) {
+    logEvent("rate_limited", { kind: key.split(":").slice(0, -1).join(":") }); // see rateLimit
+    return false; // over the cap; do NOT mark (this item was not counted/delivered)
+  }
   await kv.put(k, String(current + 1), { expirationTtl: windowSec * 2 });
   await kv.put(marker, "1", { expirationTtl: windowSec * 2 });
   return true;

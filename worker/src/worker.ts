@@ -26,7 +26,7 @@
 
 import { accountCheckout, accountLogin, accountSession, accountSummary } from "./account";
 import { billingCheckout, billingPacks, billingWebhook, confirm, discardObject, fetchChallenge, fetchDownload, fetchPreview, register, revoke, uploadAbort, uploadComplete, uploadInit, uploadParts } from "./handlers";
-import { corsOrigin, cors, isForbiddenCrossOrigin, json, logEvent } from "./http";
+import { bindMetrics, corsOrigin, cors, isForbiddenCrossOrigin, json, logEvent } from "./http";
 import type { Env } from "./types";
 
 // Durable Object classes must be exported from the entry module so the runtime can construct them.
@@ -35,6 +35,7 @@ export { ReceiverAccount } from "./receiver";
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    bindMetrics(env.METRICS); // every logEvent from here on doubles as an Analytics Engine datapoint
     const url = new URL(req.url);
 
     // www.receive.link exists only as a custom domain on the prod Worker (that's what
@@ -60,7 +61,10 @@ export default {
 
     // CORS only hides the response, so reject a cross-site POST (present-but-disallowed Origin)
     // before any handler side effect runs. No-Origin callers and allow-listed origins pass.
-    if (isForbiddenCrossOrigin(env, req)) return json({ error: "forbidden origin" }, 403, "");
+    if (isForbiddenCrossOrigin(env, req)) {
+      logEvent("forbidden_origin");
+      return json({ error: "forbidden origin" }, 403, "");
+    }
 
     const route = `${req.method} ${url.pathname}`;
     switch (route) {
