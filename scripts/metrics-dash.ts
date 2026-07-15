@@ -142,7 +142,7 @@ const PAGE = `<!doctype html>
 <script>
 const ABUSE = ["rate_limited","proof_failed","invalid_link","revoked_link_attempt","upload_too_large","webhook_bad_signature","forbidden_origin","byte_budget_exceeded","recipient_over_capacity","invalid_ciphertext"];
 let env = localStorage.getItem("dash-env") || "prod";
-const gb = b => b >= 1e12 ? (b/1e12).toFixed(2)+" TB" : b >= 1e9 ? (b/1e9).toFixed(2)+" GB" : b >= 1e6 ? (b/1e6).toFixed(1)+" MB" : Math.round(b)+" B";
+const gb = b => b >= 1e12 ? (b/1e12).toFixed(2)+" TB" : b >= 1e9 ? (b/1e9).toFixed(2)+" GB" : b >= 1e6 ? (b/1e6).toFixed(1)+" MB" : b >= 1e3 ? (b/1e3).toFixed(1)+" KB" : Math.round(b)+" B";
 const num = n => Math.round(n).toLocaleString();
 const el = id => document.getElementById(id);
 
