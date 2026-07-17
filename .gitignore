@@ -3,6 +3,8 @@ dist/
 .wrangler/
 .DS_Store
 *.log
+xcuserdata/
+*.xcuserstate
 
 # Secrets — NEVER commit. Server private keys + email creds live in Wrangler
 # secrets (`wrangler secret put`), and local dev vars in .dev.vars.
