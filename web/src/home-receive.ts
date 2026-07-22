@@ -27,6 +27,13 @@ function humanError(e: unknown): string {
     if (/rate limited|429/i.test(m)) return "Too many requests right now. Please try again in a bit.";
     return m;
   }
+  // WebCrypto reports a failed unseal/decrypt as a DOMException NAMED OperationError whose message is
+  // the useless "The operation failed for an operation-specific reason" — classify by name, or the raw
+  // DOMException text leaks to the screen (seen live: a receiver whose phone answered with a different
+  // passkey than the link was made with).
+  if (e instanceof DOMException && (e.name === "OperationError" || e.name === "InvalidAccessError")) {
+    return "This file was encrypted for a different passkey. If you have more than one, try another.";
+  }
   const m = e instanceof Error ? e.message : String(e);
   if (/expired|removed/i.test(m)) return "This file has expired or was already removed. Ask the sender for a fresh one.";
   if (/not allowed|timed out|NotAllowed|AbortError|cancel/i.test(m)) return "The passkey prompt was dismissed or timed out.";
@@ -76,6 +83,9 @@ function renderSaved(): void {
 // dismissed / not on this device, or a wrong-identity decrypt) — not for expired/network errors.
 function canRetryWithDifferentPasskey(e: unknown): boolean {
   if (e instanceof DropApiError) return false; // expired / not-found / rate-limited: a passkey won't help
+  // A wrong-identity unseal/decrypt is a DOMException NAMED OperationError (see humanError) — the
+  // clearest "a different passkey can fix this" signal there is.
+  if (e instanceof DOMException && (e.name === "OperationError" || e.name === "InvalidAccessError")) return true;
   const m = e instanceof Error ? e.message : String(e);
   if (/expired|removed/i.test(m)) return false;
   return /not allowed|timed out|NotAllowed|AbortError|cancel|no PRF|passkey|assertion|auth_failed|wrong_namespace|AEAD|decrypt/i.test(m);
