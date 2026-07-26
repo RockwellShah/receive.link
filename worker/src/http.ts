@@ -85,10 +85,15 @@ export function logEvent(event: string, fields: Record<string, unknown> = {}): v
       if (typeof v === "number" && Number.isFinite(v)) { dim = String(v); break; }
     }
     const size = fields.size ?? fields.bytes;
+    const cents = fields.cents;
     metricsDataset?.writeDataPoint({
       indexes: [event],
       blobs: [event, dim],
-      doubles: [1, typeof size === "number" && Number.isFinite(size) ? size : 0],
+      doubles: [
+        1,
+        typeof size === "number" && Number.isFinite(size) ? size : 0,
+        typeof cents === "number" && Number.isFinite(cents) ? cents : 0,
+      ],
     });
   } catch {
     /* metrics must never throw into a handler */

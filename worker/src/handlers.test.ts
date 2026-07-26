@@ -996,9 +996,9 @@ test("stripe: signature verify accepts any v1 during a secret rotation", async (
 test("stripe: parseCreditFromEvent credits only a PAID session with a known pack, bytes from the LOCKED price", async () => {
   const ev = (obj: object) => ({ id: "evt_1", type: "checkout.session.completed", data: { object: { id: "cs_1", payment_status: "paid", amount_total: 1000, currency: "usd", metadata: { rid: "rid_x", pack: "p10", price: "1" }, ...obj } } });
   // Idempotency key is the SESSION id (s:cs_1), not the event id — Stripe can emit >1 event per session.
-  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, dedupeKeys: ["s:cs_1", "evt_1"] }); // $10 @ 1c/GB = 1 TB
+  expect(parseCreditFromEvent(ev({}))).toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, cents: 1000, pack: "p10", dedupeKeys: ["s:cs_1", "evt_1"] }); // $10 @ 1c/GB = 1 TB
   // The bytes follow the price LOCKED in the session, not the live knob: same $10 pack stamped at 10c/GB -> 100 GB.
-  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, dedupeKeys: ["s:cs_1", "evt_1"] });
+  expect(parseCreditFromEvent(ev({ metadata: { rid: "rid_x", pack: "p10", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 100_000_000_000, cents: 1000, pack: "p10", dedupeKeys: ["s:cs_1", "evt_1"] });
   expect(parseCreditFromEvent(ev({ id: undefined }))).toBeNull(); // no session id -> refuse (can't dedupe)
   expect(parseCreditFromEvent(ev({ payment_status: "unpaid" }))).toBeNull(); // not paid
   expect(parseCreditFromEvent(ev({ amount_total: 100 }))).toBeNull(); // underpaid for p10 ($1 < $10)
@@ -1060,11 +1060,11 @@ test("stripe: createCheckoutSession for 'custom' is the two-call flow (price, th
 test("stripe: parseCreditFromEvent credits an 'Other amount' from the VERIFIED amount_total, bounded", async () => {
   const ev = (obj: object) => ({ id: "evt_c", type: "checkout.session.completed", data: { object: { id: "cs_c", payment_status: "paid", currency: "usd", metadata: { rid: "rid_x", pack: "custom", price: "1" }, ...obj } } });
   // $30 custom @ 1c/GB = 3,000 GB, derived from the actual amount paid (no fixed tier to re-derive from).
-  expect(parseCreditFromEvent(ev({ amount_total: 3000 }))).toEqual({ rid: "rid_x", bytes: 3_000_000_000_000, dedupeKeys: ["s:cs_c", "evt_c"] });
+  expect(parseCreditFromEvent(ev({ amount_total: 3000 }))).toEqual({ rid: "rid_x", bytes: 3_000_000_000_000, cents: 3000, pack: "custom", dedupeKeys: ["s:cs_c", "evt_c"] });
   expect(parseCreditFromEvent(ev({ amount_total: 999 }))).toBeNull(); // below the $10 floor
   expect(parseCreditFromEvent(ev({ amount_total: 1_000_001 }))).toBeNull(); // above the $10,000 ceiling
   // The locked price still sets the rate: $30 @ 10c/GB = 300 GB.
-  expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, dedupeKeys: ["s:cs_c", "evt_c"] });
+  expect(parseCreditFromEvent(ev({ amount_total: 3000, metadata: { rid: "rid_x", pack: "custom", price: "10" } }))).toEqual({ rid: "rid_x", bytes: 300_000_000_000, cents: 3000, pack: "custom", dedupeKeys: ["s:cs_c", "evt_c"] });
 });
 
 test("stripe: a delayed method credits on async_payment_succeeded, NOT on the unpaid completion", async () => {
@@ -1075,14 +1075,14 @@ test("stripe: a delayed method credits on async_payment_succeeded, NOT on the un
   const obj = { id: "cs_d", currency: "usd", amount_total: 1000, metadata: { rid: "rid_x", pack: "p10", price: "1" } };
   expect(parseCreditFromEvent({ id: "evt_a", type: "checkout.session.completed", data: { object: { ...obj, payment_status: "unpaid" } } })).toBeNull();
   expect(parseCreditFromEvent({ id: "evt_b", type: "checkout.session.async_payment_succeeded", data: { object: { ...obj, payment_status: "paid" } } }))
-    .toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, dedupeKeys: ["s:cs_d", "evt_b"] });
+    .toEqual({ rid: "rid_x", bytes: 1_000_000_000_000, cents: 1000, pack: "p10", dedupeKeys: ["s:cs_d", "evt_b"] });
 });
 
 test("stripe: bytesForCents credits EXACT bytes (integer math, no binary-float under-credit)", async () => {
   // 1001c @ 125c/GB = 8,008,000,000 bytes EXACTLY. The old (amount/price)*GB float form floored to
   // 8,007,999,999, and the webhook's dedupe markers would make that lost byte permanent.
   const ev = { id: "evt_x", type: "checkout.session.completed", data: { object: { id: "cs_x", payment_status: "paid", currency: "usd", amount_total: 1001, metadata: { rid: "rid_x", pack: "custom", price: "125" } } } };
-  expect(parseCreditFromEvent(ev)).toEqual({ rid: "rid_x", bytes: 8_008_000_000, dedupeKeys: ["s:cs_x", "evt_x"] });
+  expect(parseCreditFromEvent(ev)).toEqual({ rid: "rid_x", bytes: 8_008_000_000, cents: 1001, pack: "custom", dedupeKeys: ["s:cs_x", "evt_x"] });
 });
 
 test("billing: the price is one env knob; packs + labels derive from it", async () => {

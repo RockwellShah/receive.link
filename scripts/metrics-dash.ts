@@ -52,7 +52,8 @@ const q = {
   totals: (ds: string, days: number) =>
     `SELECT blob1 AS event, blob2 AS dim,
             SUM(_sample_interval * double1) AS n,
-            SUM(_sample_interval * double2) AS bytes
+            SUM(_sample_interval * double2) AS bytes,
+            SUM(_sample_interval * double3) AS cents
      FROM ${ds}
      WHERE timestamp > NOW() - INTERVAL '${days}' DAY
      GROUP BY event, dim
@@ -179,11 +180,13 @@ async function load() {
   const delivered7 = sum(t7, "delivered", "n"), deliveredB = sum(t7, "delivered", "bytes");
   const dl7 = sum(t7, "download_served", "n"), dlB = sum(t7, "download_served", "bytes");
   const walls = sum(t7, "download_402", "n"), minted = sum(t7, "checkout_minted", "n"), credited = sum(t7, "billing_credited", "n"), creditedB = sum(t7, "billing_credited", "bytes");
+  const revenueCents = sum(t7, "billing_credited", "cents");
   const abuse24 = t1.filter(r => ABUSE.includes(r.event)).reduce((a, r) => a + Number(r.n), 0);
   el("tiles").innerHTML = [
     { k: "Deliveries · 7d", v: num(delivered7), s: gb(deliveredB) + " received" },
     { k: "Downloads · 7d", v: num(dl7), s: gb(dlB) + " served" },
     { k: "402 → paid · 7d", v: num(walls) + " → " + num(credited), s: num(minted) + " checkouts · " + gb(creditedB) + " credited" },
+    { k: "Revenue · 7d", v: "$" + (revenueCents / 100).toFixed(2), s: num(credited) + " purchase" + (credited === 1 ? "" : "s") + " (verified at the webhook)" },
     { k: "Abuse events · 24h", v: num(abuse24), s: "all walls combined" },
   ].map(t => \`<div class="tile"><div class="k">\${t.k}</div><div class="v">\${t.v}</div><div class="s">\${t.s}</div></div>\`).join("");
 
