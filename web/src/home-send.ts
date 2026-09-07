@@ -44,13 +44,18 @@ let payload = "";
 let recipientLabel = "";
 let sending = false; // serialize sends: ignore new drops/picks while one is in flight
 
-function quoted(): string {
-  return recipientLabel ? `“${recipientLabel}”` : "the recipient";
-}
-
 function showReady(): void {
-  el("sendh").textContent = recipientLabel ? `Send files to ${quoted()}` : "Send files";
-  el("sendsub").textContent = `They're encrypted in your browser, so only ${quoted()} can open them.`;
+  // The label names a place, not a person: it may only ever render as a labeled destination
+  // (the "to the link" chip), never as the subject of a verb like "can open".
+  if (recipientLabel) {
+    el("lname").textContent = recipientLabel;
+    el("lchip").title = recipientLabel;
+    el("tolink").hidden = false;
+    el("sendsub").textContent = "Only its creator can open them.";
+  } else {
+    el("tolink").hidden = true;
+    el("sendsub").textContent = "Only the link's creator can open them.";
+  }
   show("ready");
 }
 
@@ -100,9 +105,7 @@ async function startSend(items: BundleItem[]): Promise<void> {
   try {
     const result = await sendBundle(api, payload, items, makeUI());
     if (result === "cancelled") { showReady(); return; }
-    el("sentsub").textContent = recipientLabel
-      ? `We emailed ${quoted()} a secure download link.`
-      : "We emailed them a secure download link.";
+    el("sentsub").textContent = "We emailed the link's creator a secure download link.";
     show("sent");
   } catch (e) {
     showError(humanError(e));

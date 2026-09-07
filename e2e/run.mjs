@@ -43,7 +43,7 @@ async function sendAs(browser, shareUrl, file, expectSent) {
   try {
     await tx.page.goto(shareUrl, { waitUntil: "domcontentloaded", timeout: 60_000 }); // /#code bounces to /u → /send/
     await tx.page.locator('.st[data-state="ready"]').waitFor({ state: "visible", timeout: 30_000 });
-    await tx.page.getByText(/Send files to/i).waitFor({ timeout: 30_000 }); // share link verified + label loaded
+    await tx.page.locator("#tolink").waitFor({ state: "visible", timeout: 30_000 }); // share link verified + label loaded into the chip
     await tx.page.setInputFiles("#fileinput", file.path);
     if (expectSent) {
       await tx.page.locator('.st[data-state="sent"]').waitFor({ state: "visible", timeout: 120_000 });

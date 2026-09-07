@@ -264,6 +264,9 @@ export async function register(req: Request, env: Env): Promise<Response> {
   // email it commits to. A server-chosen random link_id guarantees uniqueness.
   // Sanitize the label BEFORE signing so the signed bytes are clean everywhere.
   const label = stripControl(body.label);
+  // Enforce the create form's 60-char cap server-side so a hand-rolled client can't mint
+  // giant labels into signed links, emails, and the send page chip.
+  if (label.length > 60) return json({ error: "label too long" }, 400, origin);
   let region: Uint8Array;
   let sealedEmailBytes: Uint8Array;
   try {

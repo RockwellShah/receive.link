@@ -46,6 +46,13 @@ body{margin:0;background:#ECF1E9;font-family:'Nunito',system-ui,sans-serif;line-
 @keyframes sp{to{transform:rotate(360deg)}}
 h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;letter-spacing:-.015em;line-height:1.12;margin:0 0 12px}
 .sub{font-size:15px;color:var(--mut);font-weight:500;line-height:1.55;margin:0 auto;max-width:360px}
+/* "to the link <chip>" row: the label renders as a destination chip, never inside a sentence. */
+.tolink{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:7px;margin:0 0 12px}
+.tolink .lead{font-weight:600;font-size:15px;color:var(--mut)}
+.lchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;background:var(--card);border:1px solid var(--ln);border-radius:999px;padding:5px 14px}
+.lchip svg{flex:none;color:var(--mut)}
+.lchip .lname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:14.5px;color:var(--ink)}
+.dropsub{font-weight:600;font-size:12.5px;color:var(--mut);margin-top:4px}
 
 /* Drop zone */
 .drop{border:2px dashed #C1CCBD;border-radius:18px;background:#F9FBF7;padding:42px 24px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-top:30px}
@@ -106,10 +113,12 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
 
     <div class="st" data-state="ready" hidden>
       <h1 id="sendh">Send files</h1>
-      <p class="sub" id="sendsub">They're encrypted in your browser, so only the recipient can open them.</p>
+      <div class="tolink" id="tolink" hidden><span class="lead">to the link</span><span class="lchip" id="lchip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg><span class="lname" id="lname"></span></span></div>
+      <p class="sub" id="sendsub">Only the link's creator can open them.</p>
       <div class="drop" id="drop">
         <svg class="dropicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>
         <div class="dropmain">Drop files or folders here</div>
+        <div class="dropsub">Encrypted in your browser.</div>
         <div class="dropbtns">
           <button class="dc_btn" id="browse" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/></svg>Choose files</button>
           <button class="dc_btn" id="folderbtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/></svg>Choose folder</button>
@@ -151,6 +160,6 @@ h1{font-family:'Nunito',system-ui,sans-serif;font-weight:800;font-size:31px;lett
   </main>
 </div>
 </div>
-<script type="module" src="/dist/home-send.js?v=80cd355018"></script>
+<script type="module" src="/dist/home-send.js?v=3f80ee249a"></script>
 </body>
 </html>
