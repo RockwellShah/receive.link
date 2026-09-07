@@ -1,0 +1,104 @@
+name: Envoy
+options:
+  bundleIdPrefix: app.filekey
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: "PQV6T4HT58"
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+targets:
+  Envoy:
+    type: application
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.filekey.envoy
+    sources:
+      - ios/Shared
+      - ios/Envoy
+    info:
+      path: ios/Envoy/Info.plist
+      properties:
+        CFBundleDisplayName: Envoy
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: app.filekey.envoy
+            CFBundleURLSchemes:
+              - envoy
+    entitlements:
+      path: ios/Envoy/Envoy.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - webcredentials:receive.link
+          - applinks:receive.link
+        com.apple.security.application-groups:
+          - group.app.filekey.envoy
+    dependencies:
+      - target: EnvoyMessages
+        embed: true
+  EnvoyMessages:
+    type: app-extension.messages
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.filekey.envoy.messages
+    sources:
+      - ios/Shared
+      - ios/EnvoyMessages
+    info:
+      path: ios/EnvoyMessages/Info.plist
+      properties:
+        CFBundleDisplayName: Envoy
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.message-payload-provider
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MessagesViewController
+    entitlements:
+      path: ios/EnvoyMessages/EnvoyMessages.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.app.filekey.envoy
+  EnvoyTests:
+    type: bundle.unit-test
+    platform: iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    sources:
+      - ios/EnvoyTests
+    dependencies:
+      - target: Envoy
+schemes:
+  Envoy:
+    build:
+      targets:
+        Envoy: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - EnvoyTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  EnvoyMessages:
+    build:
+      targets:
+        EnvoyMessages: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
